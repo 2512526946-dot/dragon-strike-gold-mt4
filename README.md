@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0B-1：Mock 黄金行情数据结构 + 后端行情接口。
+工单 0B-2A：占位信号结构 + 占位信号接口。
 
-本轮只新增开发模拟行情数据结构、MockMarketService、`GET /api/market/snapshot` 接口和基础测试。不包含占位信号、真实行情、真实 MT4 文件桥接、前端页面、交易策略、机器学习、大模型、自动复盘或自动交易。
+本轮只新增开发用占位信号数据结构、PlaceholderSignalService、`GET /api/signals/placeholder` 接口和基础测试。不包含信号日志保存、真实信号生命周期、真实行情、真实 MT4 文件桥接、前端页面、交易策略、风控计算、机器学习、大模型、自动复盘、GoLiveGate 或自动交易。
 
 ## 启动后端
 
@@ -32,6 +32,12 @@ Mock 行情快照：
 curl http://127.0.0.1:8000/api/market/snapshot
 ```
 
+占位信号：
+
+```powershell
+curl http://127.0.0.1:8000/api/signals/placeholder
+```
+
 ## Mock 行情接口
 
 `GET /api/market/snapshot` 返回 XAUUSD 的开发模拟 Bid / Ask / Spread 快照。
@@ -44,6 +50,24 @@ curl http://127.0.0.1:8000/api/market/snapshot
 - `note=Mock market data for development only. Not a trading signal.`
 
 该接口仅用于后端开发和接口测试，不是交易信号，不可用于真实交易。
+
+## 占位信号接口
+
+`GET /api/signals/placeholder` 返回开发用占位信号。
+
+返回数据会明确标记：
+
+- `source=placeholder`
+- `action=observe_only`
+- `signal_type=placeholder_only`
+- `final_score=0`
+- `allow_chasing=false`
+- `suggested_lot=0`
+- `is_placeholder=true`
+- `is_tradable=false`
+- `note=Placeholder signal for development only. Not a trading recommendation.`
+
+该接口只用于后端接口联调和后续结构验证，不是交易建议，不能用于真实下单。
 
 示例配置：
 
@@ -81,12 +105,14 @@ python -m pytest
 
 ## 当前未实现功能
 
+- 信号日志保存
 - MT4 文件桥接
 - 前端看板
+- 真实行情
 - 10x 风控
 - 不隔夜规则
 - 亚洲时间过滤
-- 信号生命周期
+- 真实信号生命周期
 - 自动复盘
 - GoLiveGate
 - 机器学习
