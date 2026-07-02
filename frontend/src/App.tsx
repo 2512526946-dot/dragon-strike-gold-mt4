@@ -1,6 +1,15 @@
+import { useEffect, useState } from "react";
+
+import { fetchHealth, type HealthResponse } from "./api/health";
+import { BackendStatusCard } from "./components/BackendStatusCard";
 import { ConstraintPanel } from "./components/ConstraintPanel";
 import { SafetyBanner } from "./components/SafetyBanner";
 import { StatusCard } from "./components/StatusCard";
+
+type BackendStatus =
+  | { state: "loading" }
+  | { state: "online"; health: HealthResponse }
+  | { state: "offline"; message: string };
 
 const statusCards = [
   { label: "数据状态", value: "Mock 模式" },
@@ -11,6 +20,33 @@ const statusCards = [
 ];
 
 function App() {
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>({
+    state: "loading",
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchHealth()
+      .then((health) => {
+        if (isMounted) {
+          setBackendStatus({ state: "online", health });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setBackendStatus({
+            state: "offline",
+            message: "无法连接后端，仅显示静态预览",
+          });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <main className="app-shell">
       <section className="workspace-header" aria-labelledby="page-title">
@@ -31,6 +67,8 @@ function App() {
       </section>
 
       <SafetyBanner />
+
+      <BackendStatusCard status={backendStatus} />
 
       <section className="dashboard-grid" aria-label="静态状态总览">
         {statusCards.map((card) => (

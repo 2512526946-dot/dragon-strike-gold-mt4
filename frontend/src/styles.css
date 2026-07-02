@@ -126,6 +126,72 @@ h1 {
   background: rgba(148, 185, 173, 0.18);
 }
 
+.backend-status-card {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  margin: 0 0 24px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #171d1b;
+  padding: 18px;
+}
+
+.backend-status-card.is-online {
+  border-left: 4px solid #6fcf97;
+}
+
+.backend-status-card.is-offline {
+  border-left: 4px solid #d9a441;
+}
+
+.backend-status-header span,
+.backend-health-list dt {
+  display: block;
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.backend-status-header strong {
+  display: block;
+  margin-top: 12px;
+  color: #f2d891;
+  font-size: 28px;
+}
+
+.backend-status-card.is-online .backend-status-header strong {
+  color: #a6e8bd;
+}
+
+.backend-status-card p {
+  align-self: center;
+  color: #f7f2df;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.backend-health-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.backend-health-list div {
+  min-width: 0;
+  background: #1a211f;
+  padding: 14px;
+}
+
+.backend-health-list dd {
+  margin: 10px 0 0;
+  color: #edf3f0;
+  font-size: 17px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .safety-item {
   min-height: 92px;
   background: #171d1b;
@@ -221,6 +287,14 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .backend-status-card {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-health-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .constraint-list,
   .safety-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -245,6 +319,7 @@ h1 {
   }
 
   .dashboard-grid,
+  .backend-health-list,
   .constraint-list,
   .safety-band {
     grid-template-columns: 1fr;

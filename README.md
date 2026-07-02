@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0C-1：前端项目骨架 + 巨龙出击静态首页。
+工单 0C-2A：前端接入 /health，显示后端连接状态。
 
-本轮只新增 Vite + React + TypeScript 前端骨架和静态首页。首页仅展示项目阶段、安全状态和交易约束说明，不请求后端接口，不展示实时行情或图表，不包含真实信号或交易建议。
+本轮只让前端读取后端 `GET /health`，首页显示后端在线/离线状态和健康检查字段。前端不请求行情接口，不请求信号接口，不展示实时行情或图表，不包含真实信号或交易建议。
 
 ## 启动后端
 
@@ -48,26 +48,35 @@ curl -X POST http://127.0.0.1:8000/api/signals/placeholder/log
 
 ```powershell
 cd dragon-strike-gold-mt4\frontend
-npm install
-npm run dev
+npm.cmd install
+npm.cmd run dev
 ```
 
 构建：
 
 ```powershell
 cd dragon-strike-gold-mt4\frontend
-npm run build
+npm.cmd run build
 ```
 
-## 前端静态首页
+前端后端地址配置：
 
-静态首页显示：
+```powershell
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+未配置时默认使用 `http://127.0.0.1:8000`。本地配置可参考 `frontend/.env.example`，不要提交 `frontend/.env`。
+
+## 前端首页
+
+首页显示：
 
 - 项目名称：巨龙出击
 - 副标题：TradeMax MT4 Gold Decision Copilot
 - 当前阶段：Mock Core / Frontend Static Preview
 - 系统定位：黄金 MT4 稳健型买卖点辅助决策系统
 - 交易方式：系统只做辅助观察，用户手动下单
+- 后端连接状态：在线时显示 `project`、`name`、`version`、`stage`，离线时提示无法连接后端，仅显示静态预览
 - 安全状态：自动交易禁用、真实交易建议禁用、MT4 实盘连接未启用、当前页面为静态预览
 - 交易约束：USD、XAUUSD、H1、M15、不允许隔夜、单笔最大风险 1%、单日最大风险 3%
 
@@ -152,7 +161,8 @@ python -m pytest
 
 ## 当前未实现功能
 
-- 前端请求后端接口
+- 前端请求行情接口
+- 前端请求信号接口
 - 实时行情
 - 图表
 - 真实信号生命周期

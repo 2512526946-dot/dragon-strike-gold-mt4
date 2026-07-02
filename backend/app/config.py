@@ -42,6 +42,21 @@ class Settings(BaseSettings):
             "APP_PLACEHOLDER_SIGNAL_LOG_FILE",
         ),
     )
+    cors_allowed_origins: str = Field(
+        default="http://127.0.0.1:5173,http://localhost:5173",
+        validation_alias=AliasChoices(
+            "CORS_ALLOWED_ORIGINS",
+            "APP_CORS_ALLOWED_ORIGINS",
+        ),
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        ]
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),

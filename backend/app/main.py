@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.market import router as market_router
@@ -13,6 +14,15 @@ app = FastAPI(
     title=settings.project,
     version=settings.version,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
 app.include_router(health_router)
 app.include_router(market_router)
 app.include_router(signals_router)
