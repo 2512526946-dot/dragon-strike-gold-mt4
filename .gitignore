@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+*.duckdb
+
+# Runtime data
+data/mt4/*.json
+data/mt4/*.tmp
+data/bars/*
+data/signals/*
+data/reviews/*
+data/training/*
+
+# Keep data folders
+!data/mt4/.gitkeep
+!data/bars/.gitkeep
+!data/signals/.gitkeep
+!data/reviews/.gitkeep
+!data/training/.gitkeep
+
+# Models
+models/*
+!models/.gitkeep
+
+# MT4 generated files
+*.ex4
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
