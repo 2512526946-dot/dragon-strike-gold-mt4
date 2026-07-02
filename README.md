@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0B-2B：信号日志结构 + 占位信号日志保存。
+工单 0C-1：前端项目骨架 + 巨龙出击静态首页。
 
-本轮只新增开发用占位信号日志结构、SignalLogService、`POST /api/signals/placeholder/log` 接口和基础测试。不包含真实信号生命周期、真实行情、真实 MT4 文件桥接、前端页面、交易策略、风控计算、机器学习、大模型、自动复盘、GoLiveGate 或自动交易。
+本轮只新增 Vite + React + TypeScript 前端骨架和静态首页。首页仅展示项目阶段、安全状态和交易约束说明，不请求后端接口，不展示实时行情或图表，不包含真实信号或交易建议。
 
 ## 启动后端
 
@@ -43,6 +43,33 @@ curl http://127.0.0.1:8000/api/signals/placeholder
 ```powershell
 curl -X POST http://127.0.0.1:8000/api/signals/placeholder/log
 ```
+
+## 启动前端
+
+```powershell
+cd dragon-strike-gold-mt4\frontend
+npm install
+npm run dev
+```
+
+构建：
+
+```powershell
+cd dragon-strike-gold-mt4\frontend
+npm run build
+```
+
+## 前端静态首页
+
+静态首页显示：
+
+- 项目名称：巨龙出击
+- 副标题：TradeMax MT4 Gold Decision Copilot
+- 当前阶段：Mock Core / Frontend Static Preview
+- 系统定位：黄金 MT4 稳健型买卖点辅助决策系统
+- 交易方式：系统只做辅助观察，用户手动下单
+- 安全状态：自动交易禁用、真实交易建议禁用、MT4 实盘连接未启用、当前页面为静态预览
+- 交易约束：USD、XAUUSD、H1、M15、不允许隔夜、单笔最大风险 1%、单日最大风险 3%
 
 ## Mock 行情接口
 
@@ -99,18 +126,6 @@ data/signals/placeholder_signals.jsonl
 
 该日志仅用于开发验证，不是交易建议，不能用于真实下单。运行生成的 JSONL 文件位于 `data/signals/`，该目录下运行数据已被 `.gitignore` 忽略。
 
-示例配置：
-
-```env
-DEFAULT_SYMBOL=XAUUSD
-DATA_SOURCE=mock
-MOCK_INITIAL_PRICE=2030.00
-MOCK_SPREAD=0.30
-MOCK_DIGITS=2
-SIGNAL_LOG_DIR=data/signals
-PLACEHOLDER_SIGNAL_LOG_FILE=placeholder_signals.jsonl
-```
-
 ## 运行测试
 
 ```powershell
@@ -137,13 +152,15 @@ python -m pytest
 
 ## 当前未实现功能
 
+- 前端请求后端接口
+- 实时行情
+- 图表
 - 真实信号生命周期
 - MT4 文件桥接
-- 前端看板
 - 真实行情
 - 10x 风控
-- 不隔夜规则
-- 亚洲时间过滤
+- 不隔夜规则真实逻辑
+- 亚洲时间过滤真实逻辑
 - 自动复盘
 - GoLiveGate
 - 机器学习
