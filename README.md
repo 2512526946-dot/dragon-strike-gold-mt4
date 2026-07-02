@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0B-2A：占位信号结构 + 占位信号接口。
+工单 0B-2B：信号日志结构 + 占位信号日志保存。
 
-本轮只新增开发用占位信号数据结构、PlaceholderSignalService、`GET /api/signals/placeholder` 接口和基础测试。不包含信号日志保存、真实信号生命周期、真实行情、真实 MT4 文件桥接、前端页面、交易策略、风控计算、机器学习、大模型、自动复盘、GoLiveGate 或自动交易。
+本轮只新增开发用占位信号日志结构、SignalLogService、`POST /api/signals/placeholder/log` 接口和基础测试。不包含真实信号生命周期、真实行情、真实 MT4 文件桥接、前端页面、交易策略、风控计算、机器学习、大模型、自动复盘、GoLiveGate 或自动交易。
 
 ## 启动后端
 
@@ -36,6 +36,12 @@ curl http://127.0.0.1:8000/api/market/snapshot
 
 ```powershell
 curl http://127.0.0.1:8000/api/signals/placeholder
+```
+
+保存占位信号日志：
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/signals/placeholder/log
 ```
 
 ## Mock 行情接口
@@ -69,6 +75,30 @@ curl http://127.0.0.1:8000/api/signals/placeholder
 
 该接口只用于后端接口联调和后续结构验证，不是交易建议，不能用于真实下单。
 
+## 占位信号日志接口
+
+`POST /api/signals/placeholder/log` 会生成一个开发用占位信号，并把日志写入 JSONL 文件。
+
+默认日志路径：
+
+```text
+data/signals/placeholder_signals.jsonl
+```
+
+日志数据会明确标记：
+
+- `log_type=placeholder_signal`
+- `source=placeholder`
+- `action=observe_only`
+- `final_score=0`
+- `suggested_lot=0`
+- `allow_chasing=false`
+- `is_placeholder=true`
+- `is_tradable=false`
+- `note=Placeholder signal log for development only. Not a trading recommendation.`
+
+该日志仅用于开发验证，不是交易建议，不能用于真实下单。运行生成的 JSONL 文件位于 `data/signals/`，该目录下运行数据已被 `.gitignore` 忽略。
+
 示例配置：
 
 ```env
@@ -77,6 +107,8 @@ DATA_SOURCE=mock
 MOCK_INITIAL_PRICE=2030.00
 MOCK_SPREAD=0.30
 MOCK_DIGITS=2
+SIGNAL_LOG_DIR=data/signals
+PLACEHOLDER_SIGNAL_LOG_FILE=placeholder_signals.jsonl
 ```
 
 ## 运行测试
@@ -105,14 +137,13 @@ python -m pytest
 
 ## 当前未实现功能
 
-- 信号日志保存
+- 真实信号生命周期
 - MT4 文件桥接
 - 前端看板
 - 真实行情
 - 10x 风控
 - 不隔夜规则
 - 亚洲时间过滤
-- 真实信号生命周期
 - 自动复盘
 - GoLiveGate
 - 机器学习

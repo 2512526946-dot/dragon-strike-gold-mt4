@@ -31,6 +31,17 @@ class Settings(BaseSettings):
         default=2,
         validation_alias=AliasChoices("MOCK_DIGITS", "APP_MOCK_DIGITS"),
     )
+    signal_log_dir: str = Field(
+        default="data/signals",
+        validation_alias=AliasChoices("SIGNAL_LOG_DIR", "APP_SIGNAL_LOG_DIR"),
+    )
+    placeholder_signal_log_file: str = Field(
+        default="placeholder_signals.jsonl",
+        validation_alias=AliasChoices(
+            "PLACEHOLDER_SIGNAL_LOG_FILE",
+            "APP_PLACEHOLDER_SIGNAL_LOG_FILE",
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
