@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0A：项目骨架 + 后端健康检查。
+工单 0B-1：Mock 黄金行情数据结构 + 后端行情接口。
 
-本轮只创建项目骨架、FastAPI 后端基础项目、配置读取、日志配置、`/health` 接口和基础测试。
+本轮只新增开发模拟行情数据结构、MockMarketService、`GET /api/market/snapshot` 接口和基础测试。不包含占位信号、真实行情、真实 MT4 文件桥接、前端页面、交易策略、机器学习、大模型、自动复盘或自动交易。
 
 ## 启动后端
 
@@ -26,11 +26,40 @@ uvicorn app.main:app --reload
 curl http://127.0.0.1:8000/health
 ```
 
+Mock 行情快照：
+
+```powershell
+curl http://127.0.0.1:8000/api/market/snapshot
+```
+
+## Mock 行情接口
+
+`GET /api/market/snapshot` 返回 XAUUSD 的开发模拟 Bid / Ask / Spread 快照。
+
+返回数据会明确标记：
+
+- `source=mock`
+- `is_mock=true`
+- `is_tradable=false`
+- `note=Mock market data for development only. Not a trading signal.`
+
+该接口仅用于后端开发和接口测试，不是交易信号，不可用于真实交易。
+
+示例配置：
+
+```env
+DEFAULT_SYMBOL=XAUUSD
+DATA_SOURCE=mock
+MOCK_INITIAL_PRICE=2030.00
+MOCK_SPREAD=0.30
+MOCK_DIGITS=2
+```
+
 ## 运行测试
 
 ```powershell
 cd dragon-strike-gold-mt4\backend
-pytest
+python -m pytest
 ```
 
 ## 安全红线
@@ -52,7 +81,6 @@ pytest
 
 ## 当前未实现功能
 
-- Mock 行情
 - MT4 文件桥接
 - 前端看板
 - 10x 风控

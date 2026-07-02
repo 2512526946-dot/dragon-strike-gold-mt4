@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.health import router as health_router
+from app.api.market import router as market_router
 from app.config import get_settings
 from app.logging_config import configure_logging
 
@@ -12,3 +13,4 @@ app = FastAPI(
     version=settings.version,
 )
 app.include_router(health_router)
+app.include_router(market_router)

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,26 @@ class Settings(BaseSettings):
     stage: str = "development_skeleton"
     env: str = "development"
     log_level: str = "INFO"
+    default_symbol: str = Field(
+        default="XAUUSD",
+        validation_alias=AliasChoices("DEFAULT_SYMBOL", "APP_DEFAULT_SYMBOL"),
+    )
+    data_source: str = Field(
+        default="mock",
+        validation_alias=AliasChoices("DATA_SOURCE", "APP_DATA_SOURCE"),
+    )
+    mock_initial_price: float = Field(
+        default=2030.00,
+        validation_alias=AliasChoices("MOCK_INITIAL_PRICE", "APP_MOCK_INITIAL_PRICE"),
+    )
+    mock_spread: float = Field(
+        default=0.30,
+        validation_alias=AliasChoices("MOCK_SPREAD", "APP_MOCK_SPREAD"),
+    )
+    mock_digits: int = Field(
+        default=2,
+        validation_alias=AliasChoices("MOCK_DIGITS", "APP_MOCK_DIGITS"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
