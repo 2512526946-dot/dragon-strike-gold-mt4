@@ -33,6 +33,10 @@ select {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+}
+
 .app-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -192,6 +196,110 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.market-card {
+  margin: 0 0 24px;
+  border: 1px solid rgba(225, 185, 88, 0.28);
+  border-left: 4px solid #e1b958;
+  background: #171d1b;
+  padding: 20px;
+}
+
+.market-card-header {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.market-card-header p {
+  margin-bottom: 8px;
+  color: #94b9ad;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.market-card-header h2 {
+  color: #f5f7f6;
+  font-size: 28px;
+}
+
+.market-card-header button {
+  min-height: 40px;
+  border: 1px solid rgba(225, 185, 88, 0.6);
+  background: #242d29;
+  color: #f7f2df;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.market-card-header button:hover {
+  background: #2d3833;
+}
+
+.market-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.market-snapshot-grid div {
+  min-width: 0;
+  background: #1a211f;
+  padding: 14px;
+}
+
+.market-snapshot-grid dt {
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.market-snapshot-grid dd {
+  margin: 10px 0 0;
+  color: #edf3f0;
+  font-size: 17px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.market-empty-state {
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #1a211f;
+  padding: 18px;
+}
+
+.market-empty-state strong {
+  display: block;
+  color: #f2d891;
+  font-size: 22px;
+}
+
+.market-empty-state p,
+.market-note,
+.market-safety-note {
+  color: #cdd6d2;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.market-empty-state p {
+  margin-top: 8px;
+}
+
+.market-note {
+  margin-top: 14px;
+}
+
+.market-safety-note {
+  margin-top: 12px;
+  color: #f7f2df;
+  font-weight: 800;
+}
+
 .safety-item {
   min-height: 92px;
   background: #171d1b;
@@ -295,6 +403,10 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .market-snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .constraint-list,
   .safety-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -320,9 +432,14 @@ h1 {
 
   .dashboard-grid,
   .backend-health-list,
+  .market-snapshot-grid,
   .constraint-list,
   .safety-band {
     grid-template-columns: 1fr;
+  }
+
+  .market-card-header {
+    flex-direction: column;
   }
 
   .system-position {

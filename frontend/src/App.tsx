@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { fetchHealth, type HealthResponse } from "./api/health";
+import { fetchMarketSnapshot, type MarketSnapshot } from "./api/market";
 import { BackendStatusCard } from "./components/BackendStatusCard";
 import { ConstraintPanel } from "./components/ConstraintPanel";
+import { MarketSnapshotCard } from "./components/MarketSnapshotCard";
 import { SafetyBanner } from "./components/SafetyBanner";
 import { StatusCard } from "./components/StatusCard";
 
@@ -11,9 +13,14 @@ type BackendStatus =
   | { state: "online"; health: HealthResponse }
   | { state: "offline"; message: string };
 
+type MarketSnapshotStatus =
+  | { state: "loading" }
+  | { state: "ready"; snapshot: MarketSnapshot }
+  | { state: "error"; message: string };
+
 const statusCards = [
   { label: "数据状态", value: "Mock 模式" },
-  { label: "行情接口", value: "后续接入" },
+  { label: "行情接口", value: "Mock 已接入" },
   { label: "占位信号", value: "后续接入" },
   { label: "信号日志", value: "后续接入" },
   { label: "GoLiveGate", value: "未启用" },
@@ -23,6 +30,24 @@ function App() {
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({
     state: "loading",
   });
+  const [marketStatus, setMarketStatus] = useState<MarketSnapshotStatus>({
+    state: "loading",
+  });
+
+  function loadMarketSnapshot() {
+    setMarketStatus({ state: "loading" });
+
+    fetchMarketSnapshot()
+      .then((snapshot) => {
+        setMarketStatus({ state: "ready", snapshot });
+      })
+      .catch(() => {
+        setMarketStatus({
+          state: "error",
+          message: "无法获取 Mock 行情，仅显示静态预览",
+        });
+      });
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -47,6 +72,10 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    loadMarketSnapshot();
+  }, []);
+
   return (
     <main className="app-shell">
       <section className="workspace-header" aria-labelledby="page-title">
@@ -69,6 +98,11 @@ function App() {
       <SafetyBanner />
 
       <BackendStatusCard status={backendStatus} />
+
+      <MarketSnapshotCard
+        status={marketStatus}
+        onRefresh={loadMarketSnapshot}
+      />
 
       <section className="dashboard-grid" aria-label="静态状态总览">
         {statusCards.map((card) => (
