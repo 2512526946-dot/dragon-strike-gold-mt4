@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "file_type": "latest_bars",
+  "source": "mt4_file_bridge",
+  "environment": "demo_or_live_unknown",
+  "symbol": "XAUUSD",
+  "generated_at": "2026-07-03T10:15:30Z",
+  "local_time": "2026-07-03T18:15:30+08:00",
+  "is_tradable": false,
+  "timeframes": {
+    "M15": {
+      "timeframe": "M15",
+      "bar_count": 3,
+      "bars": [
+        {
+          "time": "2026-07-03T09:30:00Z",
+          "open": 2030.1,
+          "high": 2032.2,
+          "low": 2029.8,
+          "close": 2031.45,
+          "tick_volume": 1245,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T09:45:00Z",
+          "open": 2031.45,
+          "high": 2033.05,
+          "low": 2030.9,
+          "close": 2032.6,
+          "tick_volume": 1188,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T10:00:00Z",
+          "open": 2032.6,
+          "high": 2033.4,
+          "low": 2031.75,
+          "close": 2032.85,
+          "tick_volume": 963,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": false
+        }
+      ]
+    },
+    "H1": {
+      "timeframe": "H1",
+      "bar_count": 3,
+      "bars": [
+        {
+          "time": "2026-07-03T07:00:00Z",
+          "open": 2026.2,
+          "high": 2029.5,
+          "low": 2025.75,
+          "close": 2028.9,
+          "tick_volume": 4480,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T08:00:00Z",
+          "open": 2028.9,
+          "high": 2031.8,
+          "low": 2028.15,
+          "close": 2030.1,
+          "tick_volume": 5124,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T09:00:00Z",
+          "open": 2030.1,
+          "high": 2033.4,
+          "low": 2029.8,
+          "close": 2032.85,
+          "tick_volume": 4276,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": false
+        }
+      ]
+    },
+    "H4": {
+      "timeframe": "H4",
+      "bar_count": 3,
+      "bars": [
+        {
+          "time": "2026-07-02T20:00:00Z",
+          "open": 2018.75,
+          "high": 2024.6,
+          "low": 2017.95,
+          "close": 2022.35,
+          "tick_volume": 12610,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T00:00:00Z",
+          "open": 2022.35,
+          "high": 2029.5,
+          "low": 2021.9,
+          "close": 2028.9,
+          "tick_volume": 13942,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T04:00:00Z",
+          "open": 2028.9,
+          "high": 2033.4,
+          "low": 2028.15,
+          "close": 2032.85,
+          "tick_volume": 9886,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": false
+        }
+      ]
+    },
+    "D1": {
+      "timeframe": "D1",
+      "bar_count": 3,
+      "bars": [
+        {
+          "time": "2026-07-01T00:00:00Z",
+          "open": 1998.4,
+          "high": 2015.2,
+          "low": 1992.8,
+          "close": 2011.75,
+          "tick_volume": 64880,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-02T00:00:00Z",
+          "open": 2011.75,
+          "high": 2024.6,
+          "low": 2007.1,
+          "close": 2022.35,
+          "tick_volume": 70124,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": true
+        },
+        {
+          "time": "2026-07-03T00:00:00Z",
+          "open": 2022.35,
+          "high": 2033.4,
+          "low": 2021.9,
+          "close": 2032.85,
+          "tick_volume": 28042,
+          "spread": 0.3,
+          "real_volume": 0,
+          "is_closed": false
+        }
+      ]
+    }
+  },
+  "note": "MT4 latest bars snapshot for analysis only. Not a trading signal."
+}
