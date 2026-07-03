@@ -6,9 +6,9 @@
 
 ## 当前工单
 
-工单 0C-2B：前端接入 /api/market/snapshot，显示 Mock 行情卡片。
+工单 0C-2C：前端接入 /api/signals/placeholder，显示占位信号卡片。
 
-本轮让前端读取后端 `GET /health` 和 `GET /api/market/snapshot`，首页显示后端在线/离线状态、健康检查字段和 Mock 黄金行情快照。前端不请求信号接口，不请求信号日志接口，不自动轮询，不展示实时行情或图表，不包含真实信号或交易建议。
+本轮让前端读取后端 `GET /health`、`GET /api/market/snapshot` 和 `GET /api/signals/placeholder`，首页显示后端在线/离线状态、健康检查字段、Mock 黄金行情快照和占位信号预览。前端不请求信号日志接口，不自动轮询，不展示实时行情或图表，不包含真实信号或交易建议。
 
 ## 启动后端
 
@@ -78,6 +78,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - 交易方式：系统只做辅助观察，用户手动下单
 - 后端连接状态：在线时显示 `project`、`name`、`version`、`stage`，离线时提示无法连接后端，仅显示静态预览
 - Mock 黄金行情快照：显示 `symbol`、`bid`、`ask`、`spread`、`spread_points`、`source`、`data_status`、`is_mock`、`is_tradable`、`note`
+- 占位信号预览：显示 `signal_id`、`symbol`、`source`、`action`、`signal_type`、`lifecycle_status`、`market_regime`、`final_score`、`allow_chasing`、`risk_level`、`leverage_10x_status`、`suggested_lot`、`is_placeholder`、`is_tradable`、`note`
 - 安全状态：自动交易禁用、真实交易建议禁用、MT4 实盘连接未启用、当前页面为静态预览
 - 交易约束：USD、XAUUSD、H1、M15、不允许隔夜、单笔最大风险 1%、单日最大风险 3%
 
@@ -113,6 +114,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `note=Placeholder signal for development only. Not a trading recommendation.`
 
 该接口只用于后端接口联调和后续结构验证，不是交易建议，不能用于真实下单。
+
+前端当前会读取该接口并显示占位信号预览。页面会明确提示该信号是开发占位信号，不是真实交易建议，不可用于下单。前端不自动轮询该接口，只支持页面加载和手动刷新占位信号。
 
 ## 占位信号日志接口
 
@@ -164,10 +167,10 @@ python -m pytest
 
 ## 当前未实现功能
 
-- 前端请求信号接口
 - 前端请求信号日志接口
 - 实时行情
 - 图表
+- 真实信号
 - 真实信号生命周期
 - MT4 文件桥接
 - 真实行情

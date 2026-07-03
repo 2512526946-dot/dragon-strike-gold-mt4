@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 
 import { fetchHealth, type HealthResponse } from "./api/health";
 import { fetchMarketSnapshot, type MarketSnapshot } from "./api/market";
+import { fetchPlaceholderSignal, type PlaceholderSignal } from "./api/signals";
 import { BackendStatusCard } from "./components/BackendStatusCard";
 import { ConstraintPanel } from "./components/ConstraintPanel";
 import { MarketSnapshotCard } from "./components/MarketSnapshotCard";
+import { PlaceholderSignalCard } from "./components/PlaceholderSignalCard";
 import { SafetyBanner } from "./components/SafetyBanner";
 import { StatusCard } from "./components/StatusCard";
 
@@ -18,10 +20,15 @@ type MarketSnapshotStatus =
   | { state: "ready"; snapshot: MarketSnapshot }
   | { state: "error"; message: string };
 
+type PlaceholderSignalStatus =
+  | { state: "loading" }
+  | { state: "ready"; signal: PlaceholderSignal }
+  | { state: "error"; message: string };
+
 const statusCards = [
   { label: "数据状态", value: "Mock 模式" },
   { label: "行情接口", value: "Mock 已接入" },
-  { label: "占位信号", value: "后续接入" },
+  { label: "占位信号", value: "已接入" },
   { label: "信号日志", value: "后续接入" },
   { label: "GoLiveGate", value: "未启用" },
 ];
@@ -31,6 +38,9 @@ function App() {
     state: "loading",
   });
   const [marketStatus, setMarketStatus] = useState<MarketSnapshotStatus>({
+    state: "loading",
+  });
+  const [signalStatus, setSignalStatus] = useState<PlaceholderSignalStatus>({
     state: "loading",
   });
 
@@ -45,6 +55,21 @@ function App() {
         setMarketStatus({
           state: "error",
           message: "无法获取 Mock 行情，仅显示静态预览",
+        });
+      });
+  }
+
+  function loadPlaceholderSignal() {
+    setSignalStatus({ state: "loading" });
+
+    fetchPlaceholderSignal()
+      .then((signal) => {
+        setSignalStatus({ state: "ready", signal });
+      })
+      .catch(() => {
+        setSignalStatus({
+          state: "error",
+          message: "无法获取占位信号，仅显示静态预览",
         });
       });
   }
@@ -76,6 +101,10 @@ function App() {
     loadMarketSnapshot();
   }, []);
 
+  useEffect(() => {
+    loadPlaceholderSignal();
+  }, []);
+
   return (
     <main className="app-shell">
       <section className="workspace-header" aria-labelledby="page-title">
@@ -102,6 +131,11 @@ function App() {
       <MarketSnapshotCard
         status={marketStatus}
         onRefresh={loadMarketSnapshot}
+      />
+
+      <PlaceholderSignalCard
+        status={signalStatus}
+        onRefresh={loadPlaceholderSignal}
       />
 
       <section className="dashboard-grid" aria-label="静态状态总览">
