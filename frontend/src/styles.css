@@ -93,6 +93,54 @@ button {
   padding: 14px 12px;
 }
 
+.safety-notice-panel {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 1px;
+  margin-top: 16px;
+  border: 1px solid rgba(217, 164, 65, 0.42);
+  border-left: 4px solid #d9a441;
+  background: rgba(217, 164, 65, 0.16);
+}
+
+.safety-notice-heading {
+  background: #202824;
+  padding: 18px;
+}
+
+.safety-notice-heading p {
+  margin-bottom: 8px;
+  color: #f2d891;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.safety-notice-heading h2 {
+  color: #f5f7f6;
+  font-size: 24px;
+}
+
+.safety-notice-list {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.safety-notice-list li {
+  min-width: 0;
+  background: #171d1b;
+  color: #f7f2df;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  padding: 16px 12px;
+}
+
 .workspace-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
@@ -578,11 +626,13 @@ h1 {
 @media (max-width: 980px) {
   .workspace-header,
   .system-status-bar,
+  .safety-notice-panel,
   .constraint-panel {
     grid-template-columns: 1fr;
   }
 
-  .system-status-list {
+  .system-status-list,
+  .safety-notice-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -628,6 +678,7 @@ h1 {
 
   .dashboard-grid,
   .system-status-list,
+  .safety-notice-list,
   .backend-health-list,
   .market-snapshot-grid,
   .signal-snapshot-grid,

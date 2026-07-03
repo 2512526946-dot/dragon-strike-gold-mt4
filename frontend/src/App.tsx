@@ -14,6 +14,7 @@ import { MarketSnapshotCard } from "./components/MarketSnapshotCard";
 import { PlaceholderSignalCard } from "./components/PlaceholderSignalCard";
 import { PlaceholderSignalLogButton } from "./components/PlaceholderSignalLogButton";
 import { SafetyBanner } from "./components/SafetyBanner";
+import { SafetyNoticePanel } from "./components/SafetyNoticePanel";
 import { StatusCard } from "./components/StatusCard";
 import { SystemStatusBar } from "./components/SystemStatusBar";
 
@@ -140,6 +141,7 @@ function App() {
   return (
     <main className="app-shell">
       <SystemStatusBar />
+      <SafetyNoticePanel />
 
       <section className="workspace-header" aria-labelledby="page-title">
         <div className="brand-lockup">
