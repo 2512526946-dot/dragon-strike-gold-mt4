@@ -15,6 +15,7 @@ import { PlaceholderSignalCard } from "./components/PlaceholderSignalCard";
 import { PlaceholderSignalLogButton } from "./components/PlaceholderSignalLogButton";
 import { SafetyBanner } from "./components/SafetyBanner";
 import { StatusCard } from "./components/StatusCard";
+import { SystemStatusBar } from "./components/SystemStatusBar";
 
 type BackendStatus =
   | { state: "loading" }
@@ -138,6 +139,8 @@ function App() {
 
   return (
     <main className="app-shell">
+      <SystemStatusBar />
+
       <section className="workspace-header" aria-labelledby="page-title">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">
