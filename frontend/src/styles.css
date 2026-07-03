@@ -538,6 +538,124 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.mt4-diagnostics-card {
+  margin: 0 0 24px;
+  border: 1px solid rgba(111, 207, 151, 0.24);
+  border-left: 4px solid #94b9ad;
+  background: #171d1b;
+  padding: 20px;
+}
+
+.mt4-diagnostics-card.is-success {
+  border-left-color: #6fcf97;
+}
+
+.mt4-diagnostics-card.is-danger {
+  border-left-color: #d9a441;
+}
+
+.mt4-diagnostics-card.is-unknown {
+  border-left-color: #94b9ad;
+}
+
+.mt4-diagnostics-header {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.mt4-diagnostics-header p {
+  margin-bottom: 8px;
+  color: #94b9ad;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mt4-diagnostics-header h2 {
+  color: #f5f7f6;
+  font-size: 28px;
+}
+
+.mt4-diagnostics-header span {
+  border: 1px solid rgba(148, 185, 173, 0.34);
+  background: #202824;
+  color: #f2d891;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.mt4-diagnostics-summary-grid,
+.mt4-diagnostics-layer-grid {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.mt4-diagnostics-summary-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.mt4-diagnostics-layer-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.mt4-diagnostics-summary-grid div,
+.mt4-diagnostics-layer-grid div {
+  min-width: 0;
+  background: #1a211f;
+  padding: 14px;
+}
+
+.mt4-diagnostics-summary-grid dt,
+.mt4-diagnostics-layer-grid dt {
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mt4-diagnostics-summary-grid dd,
+.mt4-diagnostics-layer-grid dd {
+  margin: 10px 0 0;
+  color: #edf3f0;
+  font-size: 16px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.mt4-diagnostics-note,
+.mt4-diagnostics-empty-state {
+  margin-top: 14px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #1a211f;
+  padding: 14px;
+}
+
+.mt4-diagnostics-empty-state.is-error {
+  border-left: 4px solid #d9a441;
+}
+
+.mt4-diagnostics-note strong,
+.mt4-diagnostics-empty-state strong {
+  display: block;
+  color: #f2d891;
+  font-size: 20px;
+}
+
+.mt4-diagnostics-note p,
+.mt4-diagnostics-empty-state p {
+  margin-top: 8px;
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .safety-item {
   min-height: 92px;
   background: #171d1b;
@@ -653,6 +771,11 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .mt4-diagnostics-summary-grid,
+  .mt4-diagnostics-layer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .constraint-list,
   .safety-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -683,6 +806,8 @@ h1 {
   .market-snapshot-grid,
   .signal-snapshot-grid,
   .placeholder-log-result,
+  .mt4-diagnostics-summary-grid,
+  .mt4-diagnostics-layer-grid,
   .constraint-list,
   .safety-band {
     grid-template-columns: 1fr;
@@ -690,7 +815,8 @@ h1 {
 
   .market-card-header,
   .signal-card-header,
-  .placeholder-log-heading {
+  .placeholder-log-heading,
+  .mt4-diagnostics-header {
     flex-direction: column;
   }
 
