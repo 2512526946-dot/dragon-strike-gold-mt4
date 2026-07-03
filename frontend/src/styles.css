@@ -294,6 +294,52 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.mt4-diagnostics-panel {
+  margin: 0 0 24px;
+}
+
+.mt4-diagnostics-panel-heading {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #171d1b;
+  padding: 18px;
+}
+
+.mt4-diagnostics-panel-heading p {
+  margin-bottom: 8px;
+  color: #94b9ad;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mt4-diagnostics-panel-heading h2 {
+  color: #f5f7f6;
+  font-size: 28px;
+}
+
+.mt4-diagnostics-panel-heading button {
+  min-height: 40px;
+  border: 1px solid rgba(148, 185, 173, 0.44);
+  background: #242d29;
+  color: #f7f2df;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.mt4-diagnostics-panel-heading button:hover {
+  background: #2d3833;
+}
+
+.mt4-diagnostics-panel-heading button:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
 .market-card {
   margin: 0 0 24px;
   border: 1px solid rgba(225, 185, 88, 0.28);
@@ -816,6 +862,7 @@ h1 {
   .market-card-header,
   .signal-card-header,
   .placeholder-log-heading,
+  .mt4-diagnostics-panel-heading,
   .mt4-diagnostics-header {
     flex-direction: column;
   }

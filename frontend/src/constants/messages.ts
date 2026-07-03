@@ -10,4 +10,4 @@ export const ERROR_MESSAGES = {
 } as const;
 
 export const ERROR_SAFETY_NOTE =
-  "错误状态不影响安全边界：不是真实交易建议，不会自动下单，不会连接真实账户。";
+  "错误状态不影响安全边界：不是真实交易建议，不会执行交易，不会连接真实账户。";

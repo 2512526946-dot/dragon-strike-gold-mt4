@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import { fetchHealth, type HealthResponse } from "./api/health";
 import { fetchMarketSnapshot, type MarketSnapshot } from "./api/market";
 import {
+  getMt4Diagnostics,
+  type Mt4DiagnosticsResponse,
+} from "./api/mt4Diagnostics";
+import {
   createPlaceholderSignalLog,
   fetchPlaceholderSignal,
   type PlaceholderSignal,
@@ -11,6 +15,7 @@ import {
 import { BackendStatusCard } from "./components/BackendStatusCard";
 import { ConstraintPanel } from "./components/ConstraintPanel";
 import { MarketSnapshotCard } from "./components/MarketSnapshotCard";
+import { Mt4DiagnosticsStatusCard } from "./components/Mt4DiagnosticsStatusCard";
 import { PlaceholderSignalCard } from "./components/PlaceholderSignalCard";
 import { PlaceholderSignalLogButton } from "./components/PlaceholderSignalLogButton";
 import { SafetyBanner } from "./components/SafetyBanner";
@@ -40,6 +45,12 @@ type PlaceholderLogStatus =
   | { state: "success"; response: PlaceholderSignalLogResponse }
   | { state: "error"; message: string };
 
+type Mt4DiagnosticsStatus =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "ready"; diagnostics: Mt4DiagnosticsResponse }
+  | { state: "error"; message: string };
+
 const statusCards = [
   { label: "数据状态", value: "Mock 模式" },
   { label: "行情接口", value: "Mock 已接入" },
@@ -60,6 +71,10 @@ function App() {
   });
   const [placeholderLogStatus, setPlaceholderLogStatus] =
     useState<PlaceholderLogStatus>({
+      state: "idle",
+    });
+  const [mt4DiagnosticsStatus, setMt4DiagnosticsStatus] =
+    useState<Mt4DiagnosticsStatus>({
       state: "idle",
     });
 
@@ -104,6 +119,22 @@ function App() {
         setPlaceholderLogStatus({
           state: "error",
           message: ERROR_MESSAGES.placeholderLogWriteFailed,
+        });
+      });
+  }
+
+  function handleRefreshMt4Diagnostics() {
+    setMt4DiagnosticsStatus({ state: "loading" });
+
+    getMt4Diagnostics()
+      .then((diagnostics) => {
+        setMt4DiagnosticsStatus({ state: "ready", diagnostics });
+      })
+      .catch(() => {
+        setMt4DiagnosticsStatus({
+          state: "error",
+          message:
+            "无法读取 MT4 只读诊断。请确认后端已启动；只读诊断不是交易许可，不生成交易信号。",
         });
       });
   }
@@ -164,6 +195,41 @@ function App() {
       <SafetyBanner />
 
       <BackendStatusCard status={backendStatus} />
+
+      <section
+        className="mt4-diagnostics-panel"
+        aria-labelledby="mt4-diagnostics-panel-title"
+      >
+        <div className="mt4-diagnostics-panel-heading">
+          <div>
+            <p>MT4 Diagnostics</p>
+            <h2 id="mt4-diagnostics-panel-title">MT4 只读诊断</h2>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefreshMt4Diagnostics}
+            disabled={mt4DiagnosticsStatus.state === "loading"}
+            aria-busy={mt4DiagnosticsStatus.state === "loading"}
+          >
+            {mt4DiagnosticsStatus.state === "loading"
+              ? "读取中..."
+              : "刷新只读诊断"}
+          </button>
+        </div>
+        <Mt4DiagnosticsStatusCard
+          loading={mt4DiagnosticsStatus.state === "loading"}
+          error={
+            mt4DiagnosticsStatus.state === "error"
+              ? mt4DiagnosticsStatus.message
+              : null
+          }
+          diagnostics={
+            mt4DiagnosticsStatus.state === "ready"
+              ? mt4DiagnosticsStatus.diagnostics
+              : null
+          }
+        />
+      </section>
 
       <MarketSnapshotCard
         status={marketStatus}
