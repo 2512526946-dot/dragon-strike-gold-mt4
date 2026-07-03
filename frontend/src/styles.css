@@ -390,6 +390,56 @@ h1 {
   line-height: 1.5;
 }
 
+.placeholder-log-status {
+  margin-top: 14px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #1a211f;
+  padding: 14px;
+}
+
+.placeholder-log-status.is-success {
+  border-left: 4px solid #6fcf97;
+}
+
+.placeholder-log-status.is-error {
+  border-left: 4px solid #d9a441;
+}
+
+.placeholder-log-status p {
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.placeholder-log-result {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 12px 0 0;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.placeholder-log-result div {
+  min-width: 0;
+  background: #171d1b;
+  padding: 12px;
+}
+
+.placeholder-log-result dt {
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.placeholder-log-result dd {
+  margin: 8px 0 0;
+  color: #edf3f0;
+  font-size: 16px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .safety-item {
   min-height: 92px;
   background: #171d1b;
@@ -525,6 +575,7 @@ h1 {
   .backend-health-list,
   .market-snapshot-grid,
   .signal-snapshot-grid,
+  .placeholder-log-result,
   .constraint-list,
   .safety-band {
     grid-template-columns: 1fr;
