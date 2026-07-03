@@ -17,6 +17,7 @@ import { SafetyBanner } from "./components/SafetyBanner";
 import { SafetyNoticePanel } from "./components/SafetyNoticePanel";
 import { StatusCard } from "./components/StatusCard";
 import { SystemStatusBar } from "./components/SystemStatusBar";
+import { ERROR_MESSAGES, ERROR_SAFETY_NOTE } from "./constants/messages";
 
 type BackendStatus =
   | { state: "loading" }
@@ -72,7 +73,7 @@ function App() {
       .catch(() => {
         setMarketStatus({
           state: "error",
-          message: "无法获取 Mock 行情，仅显示静态预览",
+          message: ERROR_MESSAGES.mockMarketUnavailable,
         });
       });
   }
@@ -87,7 +88,7 @@ function App() {
       .catch(() => {
         setSignalStatus({
           state: "error",
-          message: "无法获取占位信号，仅显示静态预览",
+          message: ERROR_MESSAGES.placeholderSignalUnavailable,
         });
       });
   }
@@ -102,7 +103,7 @@ function App() {
       .catch(() => {
         setPlaceholderLogStatus({
           state: "error",
-          message: "无法写入占位信号日志，请确认后端已启动。",
+          message: ERROR_MESSAGES.placeholderLogWriteFailed,
         });
       });
   }
@@ -120,7 +121,7 @@ function App() {
         if (isMounted) {
           setBackendStatus({
             state: "offline",
-            message: "无法连接后端，仅显示静态预览",
+            message: ERROR_MESSAGES.backendOffline,
           });
         }
       });
@@ -219,6 +220,7 @@ function App() {
         {placeholderLogStatus.state === "error" ? (
           <div className="placeholder-log-status is-error">
             <p>{placeholderLogStatus.message}</p>
+            <p>{ERROR_SAFETY_NOTE}</p>
           </div>
         ) : null}
       </section>

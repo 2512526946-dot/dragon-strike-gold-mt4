@@ -1,4 +1,5 @@
 import type { PlaceholderSignal } from "../api/signals";
+import { ERROR_SAFETY_NOTE } from "../constants/messages";
 
 type PlaceholderSignalStatus =
   | { state: "loading" }
@@ -100,6 +101,7 @@ export function PlaceholderSignalCard({
               ? "正在读取占位信号。"
               : status.message}
           </p>
+          {status.state === "error" ? <p>{ERROR_SAFETY_NOTE}</p> : null}
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import type { HealthResponse } from "../api/health";
+import { ERROR_SAFETY_NOTE } from "../constants/messages";
 
 type BackendStatus =
   | { state: "loading" }
@@ -52,6 +53,7 @@ export function BackendStatusCard({ status }: BackendStatusCardProps) {
         <strong>{value}</strong>
       </div>
       <p>{message}</p>
+      {status.state === "offline" ? <p>{ERROR_SAFETY_NOTE}</p> : null}
     </section>
   );
 }

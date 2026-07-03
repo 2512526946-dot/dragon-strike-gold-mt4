@@ -1,4 +1,5 @@
 import type { MarketSnapshot } from "../api/market";
+import { ERROR_SAFETY_NOTE } from "../constants/messages";
 
 type MarketSnapshotStatus =
   | { state: "loading" }
@@ -80,6 +81,7 @@ export function MarketSnapshotCard({
               ? "正在读取 Mock 行情快照。"
               : status.message}
           </p>
+          {status.state === "error" ? <p>{ERROR_SAFETY_NOTE}</p> : null}
         </div>
       )}
 
