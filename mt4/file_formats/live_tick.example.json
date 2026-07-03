@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "file_type": "live_tick",
+  "source": "mt4_file_bridge",
+  "environment": "demo_or_live_unknown",
+  "symbol": "XAUUSD",
+  "server_time": "2026-07-03T10:15:30Z",
+  "local_time": "2026-07-03T18:15:30+08:00",
+  "bid": 2030.12,
+  "ask": 2030.42,
+  "spread": 0.3,
+  "spread_points": 30,
+  "digits": 2,
+  "point": 0.01,
+  "tick_time_msc": 1783073730000,
+  "is_tradable": false,
+  "note": "MT4 live tick snapshot for analysis only. Not a trading signal."
+}
