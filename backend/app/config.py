@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +43,10 @@ class Settings(BaseSettings):
             "APP_PLACEHOLDER_SIGNAL_LOG_FILE",
         ),
     )
+    mt4_data_dir: str = Field(
+        default="data/mt4",
+        validation_alias=AliasChoices("MT4_DATA_DIR", "APP_MT4_DATA_DIR"),
+    )
     cors_allowed_origins: str = Field(
         default="http://127.0.0.1:5173,http://localhost:5173",
         validation_alias=AliasChoices(
@@ -57,6 +62,13 @@ class Settings(BaseSettings):
             for origin in self.cors_allowed_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def mt4_data_path(self) -> Path:
+        path = Path(self.mt4_data_dir)
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parents[2] / path
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
