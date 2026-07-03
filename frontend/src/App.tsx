@@ -7,6 +7,7 @@ import { BackendStatusCard } from "./components/BackendStatusCard";
 import { ConstraintPanel } from "./components/ConstraintPanel";
 import { MarketSnapshotCard } from "./components/MarketSnapshotCard";
 import { PlaceholderSignalCard } from "./components/PlaceholderSignalCard";
+import { PlaceholderSignalLogButton } from "./components/PlaceholderSignalLogButton";
 import { SafetyBanner } from "./components/SafetyBanner";
 import { StatusCard } from "./components/StatusCard";
 
@@ -137,6 +138,26 @@ function App() {
         status={signalStatus}
         onRefresh={loadPlaceholderSignal}
       />
+
+      <section
+        className="placeholder-log-panel"
+        aria-labelledby="placeholder-log-title"
+      >
+        <div className="placeholder-log-heading">
+          <div>
+            <p>Placeholder Signal Log</p>
+            <h2 id="placeholder-log-title">占位信号日志</h2>
+          </div>
+          <span>暂未启用</span>
+        </div>
+        <PlaceholderSignalLogButton
+          disabled
+          label="记录占位信号"
+          helperText={
+            "当前按钮仅为开发阶段预览，当前不会写入日志，当前不会下单，当前不会连接真实账户，当前不是交易操作。"
+          }
+        />
+      </section>
 
       <section className="dashboard-grid" aria-label="静态状态总览">
         {statusCards.map((card) => (

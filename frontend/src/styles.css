@@ -325,6 +325,71 @@ h1 {
   padding: 20px;
 }
 
+.placeholder-log-panel {
+  margin: 0 0 24px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  border-left: 4px solid #94b9ad;
+  background: #171d1b;
+  padding: 20px;
+}
+
+.placeholder-log-heading {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.placeholder-log-heading p {
+  margin-bottom: 8px;
+  color: #94b9ad;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.placeholder-log-heading h2 {
+  color: #f5f7f6;
+  font-size: 28px;
+}
+
+.placeholder-log-heading span {
+  border: 1px solid rgba(225, 185, 88, 0.5);
+  background: #242d29;
+  color: #f2d891;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.placeholder-signal-log-control {
+  display: grid;
+  gap: 10px;
+}
+
+.placeholder-signal-log-control button {
+  width: fit-content;
+  min-height: 40px;
+  border: 1px solid rgba(148, 185, 173, 0.34);
+  background: #202824;
+  color: #9ba6a3;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.placeholder-signal-log-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.placeholder-signal-log-control p {
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .safety-item {
   min-height: 92px;
   background: #171d1b;
@@ -466,7 +531,8 @@ h1 {
   }
 
   .market-card-header,
-  .signal-card-header {
+  .signal-card-header,
+  .placeholder-log-heading {
     flex-direction: column;
   }
 
