@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "record_type": "execution_audit_log",
+  "audit_id": "AUDIT-GOLD-H1-20260703-001",
+  "trade_plan_id": "PLAN-GOLD-H1-20260703-001",
+  "created_at": "2026-07-03T10:35:00Z",
+  "symbol": "XAUUSD",
+  "account_mode": "demo_only",
+  "execution_mode": "manual_confirm_demo",
+  "source": "dragon_strike",
+  "trade_plan_snapshot": {
+    "direction": "long_candidate",
+    "entry_price": 2301.0,
+    "stop_loss_price": 2294.0,
+    "take_profit_price": 2312.0,
+    "suggested_risk_percent": 0.3,
+    "suggested_lot": null,
+    "is_order": false,
+    "is_tradable": false
+  },
+  "gate_results": {
+    "data_quality_gate": {
+      "checked": true,
+      "passed": true,
+      "status_code": "DATA_QUALITY_PASSED",
+      "block_reasons": []
+    },
+    "risk_gate": {
+      "checked": true,
+      "passed": false,
+      "status_code": "RISK_BLOCKED_EXAMPLE",
+      "block_reasons": [
+        "Example blocked audit log. Not a real execution."
+      ],
+      "warning_reasons": []
+    },
+    "position_sizing": {
+      "checked": false,
+      "passed": false,
+      "status_code": "POSITION_NOT_RUN_RISK_BLOCKED",
+      "calculated_lot": null,
+      "max_loss_amount": null,
+      "block_reasons": [
+        "PositionSizing was not run because RiskGate blocked the plan."
+      ]
+    },
+    "execution_gate": {
+      "checked": true,
+      "execution_allowed": false,
+      "status_code": "EXECUTION_BLOCKED_RISK_GATE",
+      "block_reasons": [
+        "ExecutionGate blocked because RiskGate did not pass."
+      ],
+      "ea_command_allowed": false
+    }
+  },
+  "manual_confirm": {
+    "required": true,
+    "user_confirmed": false,
+    "confirmed_at": null,
+    "confirmation_source": null
+  },
+  "auto_demo_training": {
+    "enabled": false,
+    "allowed": false,
+    "reason": "AutoDemoTrainingMode is disabled by default."
+  },
+  "ea_command": {
+    "command_created": false,
+    "command_sent": false,
+    "ea_command_id": null,
+    "sent_at": null
+  },
+  "ea_result": {
+    "received": false,
+    "executed": false,
+    "demo_order_id": null,
+    "error_code": null,
+    "error_message": null
+  },
+  "final_decision": {
+    "execution_attempted": false,
+    "execution_completed": false,
+    "final_status": "blocked_before_ea",
+    "final_reason": "Example audit log only. RiskGate blocked before any EA command."
+  },
+  "safety_flags": {
+    "demo_only": true,
+    "is_order": false,
+    "is_real_trade": false,
+    "is_auto_trade": false,
+    "contains_credentials": false,
+    "contains_password": false,
+    "contains_real_pnl": false
+  },
+  "note": "ExecutionAuditLog schema example only. Not an order, not real PnL, not trading advice, not trading permission, and not automatic trading."
+}
