@@ -59,3 +59,9 @@
 ## 当前阶段边界
 
 当前阶段不实现智能体代码，不实现机器学习，不实现自动交易。所有智能体内容都是未来架构规划。
+
+## Demo Account Training 中的智能体边界
+
+未来 MT4 模拟账号训练方向中，智能体只能生成 TradePlan 或解释判断，不能直接调用 EA 下单，不能修改风控规则，不能开启 AutoDemoTrainingMode。
+
+TradePlan 不是订单，也不是交易许可。它必须经过 DataQualityGate、RiskGate、PositionSizing 和 ExecutionGate。风控智能体、仓位智能体和安全合规智能体仍然拥有否决权。

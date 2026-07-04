@@ -6,19 +6,22 @@
 
 ## 当前阶段状态
 
-当前 main 已完成到 G36：合并 1C-6 到 main 并推送 GitHub。
+当前 main 已完成到 `v0.10.0-observation-review-policy` 阶段，并开始进入 MT4 模拟账号训练方向的 docs-only 规划。
 
 当前 main commit：
 
 ```text
-9bc2367b13fde81fdd962e20f47a35e24b901daf
+080134897a35b945605facd24b74ebef5efb3cf4
 ```
 
 已完成阶段：
 
 - 1A：MT4 文件格式规划阶段，tag 为 `v0.5.0-mt4-file-format-planning`
 - 1B：后端 MT4 文件只读读取链路阶段，tag 为 `v0.6.0-mt4-read-pipeline`
-- 1C：DataQualityGate 核心代码阶段已完成并合并到 main
+- 1C：DataQualityGate 核心代码阶段，tag 为 `v0.7.0-data-quality-gate`
+- 1D：MT4 只读诊断 API + 前端手动诊断展示，tag 为 `v0.8.0-mt4-diagnostics-preview`
+- 1E：观察信号与纸面复盘基础格式，tag 为 `v0.9.0-observation-review-formats`
+- 1F：观察复盘生命周期与归因规则，tag 为 `v0.10.0-observation-review-policy`
 
 1C 已进入 main 的内容：
 
@@ -29,7 +32,7 @@
 - 1C-5：MT4 四文件最小跨字段关系检查层
 - 1C-6：DataQualityGate v1 最终汇总层
 
-阶段 tag `v0.7.0-data-quality-gate` 尚未创建。
+当前 1H-1 只新增 MT4 模拟账号训练方向文档，不实现连接、凭证保存、EA、MQL4、执行 API、前端确认按钮、风控计算、仓位计算、自动模拟训练或自动交易。
 
 ## 产品最终形态
 
@@ -110,14 +113,26 @@ MT4 的职责：
 
 ## 文档索引
 
+- `docs/devlog.md`：当前文档入口之一，记录 MT4 Demo Account Training Direction
+- `docs/architecture.md`：当前文档入口之一，记录未来 demo-only 执行链路
+- `docs/decisions.md`：当前文档入口之一，记录 demo-only、只读优先、半自动优先、自动模拟训练后置等关键决策
+- `docs/implementation_plans/demo_account_training_plan.md`：MT4 模拟账号训练方向详细规划
 - `docs/architecture_decisions.md`：产品形态、架构边界、QuantDinger 借鉴边界
 - `docs/ui_design_principles.md`：首页信息优先级、界面布局和颜色原则
 - `docs/agent_architecture.md`：未来多智能体分工与智能体经理原则
 - `docs/review_and_execution_policy.md`：观察信号、纸面复盘、人工执行复盘和仓位设计原则
 - `docs/autotrade_long_term_policy.md`：长期自动交易路线和 AutoTradeGate 边界
 
+## MT4 Demo Account Training Direction
+
+1H-1 新增 MT4 模拟账号训练方向设计。该方向当前只进入文档，不接账号、不保存凭证、不写 EA、不开放下单。
+
+未来路线必须 demo-only、只读优先、半自动确认优先。自动模拟训练必须后置并默认关闭，实盘交易不在当前阶段范围内。
+
+该方向用于提高训练效率、提高复盘质量、积累模拟盘交易与智能体判断数据，并验证 DataQualityGate / RiskGate / PositionSizing / ExecutionGate。
+
 ## 后续建议顺序
 
-1. 执行 docs-only 工单并本地提交本文档集合。
-2. 创建并推送 `v0.7.0-data-quality-gate` 阶段性 tag。
-3. 继续 1D 或后续只读诊断规划，仍保持不接真实 MT4、不做自动交易。
+1. 完成 1H-1 docs-only 工单并本地提交。
+2. 后续如进入实现阶段，应先做 demo-only 只读连接规划，仍不得保存凭证、不得下单。
+3. 半自动确认和 AutoDemoTrainingMode 必须后置，并继续保持 ExecutionGate、RiskGate 和人工确认边界。
