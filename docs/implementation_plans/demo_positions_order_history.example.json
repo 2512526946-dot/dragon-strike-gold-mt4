@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "record_type": "demo_positions_order_history",
+  "generated_at": "2026-07-03T10:45:00Z",
+  "source": "mt4_demo_readonly_bridge_future",
+  "account_mode": "demo_only",
+  "demo_account": {
+    "is_demo_account": true,
+    "is_live_account": false,
+    "account_alias": "demo-account-example",
+    "account_number": null,
+    "currency": "USD"
+  },
+  "open_positions_summary": {
+    "open_positions_count": 1,
+    "xauusd_positions_count": 1,
+    "long_positions_count": 1,
+    "short_positions_count": 0,
+    "total_lots": 0.01,
+    "floating_pnl": 20.0,
+    "has_position_conflict": false
+  },
+  "open_positions": [
+    {
+      "position_ref": "DEMO-POSITION-EXAMPLE-001",
+      "symbol": "XAUUSD",
+      "direction": "long",
+      "lot": 0.01,
+      "open_price": 2298.8,
+      "current_bid": 2300.5,
+      "current_ask": 2300.8,
+      "stop_loss": 2294.0,
+      "take_profit": 2312.0,
+      "floating_pnl": 20.0,
+      "swap": 0.0,
+      "commission": 0.0,
+      "opened_at": "2026-07-03T09:50:00Z",
+      "comment": "example demo position only"
+    }
+  ],
+  "order_history_summary": {
+    "history_window": "today",
+    "orders_count": 2,
+    "closed_orders_count": 2,
+    "winning_orders_count": 1,
+    "losing_orders_count": 1,
+    "consecutive_losses": 1,
+    "today_closed_pnl": -5.0,
+    "today_commission": 0.0,
+    "today_swap": 0.0,
+    "last_closed_order_time": "2026-07-03T09:10:00Z"
+  },
+  "closed_orders": [
+    {
+      "order_ref": "DEMO-CLOSED-ORDER-EXAMPLE-001",
+      "symbol": "XAUUSD",
+      "direction": "long",
+      "lot": 0.01,
+      "open_price": 2299.0,
+      "close_price": 2304.0,
+      "stop_loss": 2294.0,
+      "take_profit": 2310.0,
+      "opened_at": "2026-07-03T08:10:00Z",
+      "closed_at": "2026-07-03T08:55:00Z",
+      "closed_pnl": 10.0,
+      "swap": 0.0,
+      "commission": 0.0,
+      "close_reason": "take_profit_example",
+      "comment": "example demo closed order only"
+    },
+    {
+      "order_ref": "DEMO-CLOSED-ORDER-EXAMPLE-002",
+      "symbol": "XAUUSD",
+      "direction": "short",
+      "lot": 0.01,
+      "open_price": 2303.0,
+      "close_price": 2308.0,
+      "stop_loss": 2308.0,
+      "take_profit": 2295.0,
+      "opened_at": "2026-07-03T08:58:00Z",
+      "closed_at": "2026-07-03T09:10:00Z",
+      "closed_pnl": -15.0,
+      "swap": 0.0,
+      "commission": 0.0,
+      "close_reason": "stop_loss_example",
+      "comment": "example demo closed order only"
+    }
+  ],
+  "risk_readonly_features": {
+    "can_detect_open_position_conflict": true,
+    "can_count_daily_trades": true,
+    "can_count_consecutive_losses": true,
+    "can_compute_today_closed_pnl": true,
+    "can_detect_missing_stop_loss": true
+  },
+  "bridge_status": {
+    "read_only": true,
+    "last_update_age_seconds": 3,
+    "data_freshness_status": "fresh_example",
+    "bridge_status_code": "DEMO_POSITIONS_HISTORY_EXAMPLE"
+  },
+  "safety_flags": {
+    "demo_only": true,
+    "is_tradable": false,
+    "is_order_instruction": false,
+    "is_trade_plan": false,
+    "is_execution_permission": false,
+    "can_execute": false,
+    "contains_credentials": false,
+    "contains_password": false,
+    "contains_live_account": false
+  },
+  "note": "Demo positions and order history schema example only. Read-only demo account data, not trading advice, not trading permission, not an order instruction, and not automatic trading."
+}
