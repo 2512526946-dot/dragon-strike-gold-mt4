@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "record_type": "trade_plan",
+  "trade_plan_id": "PLAN-GOLD-H1-20260703-001",
+  "created_at": "2026-07-03T10:30:00Z",
+  "symbol": "XAUUSD",
+  "account_mode": "demo_only",
+  "source": "dragon_strike_agent",
+  "plan_mode": "demo_training_candidate",
+  "direction": "long_candidate",
+  "timeframe_basis": "H1",
+  "confirmation_timeframe": "M15",
+  "market_context": {
+    "d1_bias": "example_only",
+    "h4_context": "example_only",
+    "h1_setup": "example_only",
+    "m15_confirmation": "pending_example"
+  },
+  "entry_plan": {
+    "entry_type": "limit_or_manual_confirm",
+    "entry_price": 2301.0,
+    "entry_zone_low": 2300.0,
+    "entry_zone_high": 2302.0,
+    "stop_loss_price": 2294.0,
+    "take_profit_price": 2312.0,
+    "invalidation_condition": "Example only. Not a trading instruction."
+  },
+  "risk_request": {
+    "suggested_risk_percent": 0.3,
+    "max_risk_percent": 1.0,
+    "max_loss_amount": null,
+    "suggested_lot": null,
+    "requires_position_sizing": true
+  },
+  "required_gates": {
+    "data_quality_gate_required": true,
+    "risk_gate_required": true,
+    "position_sizing_required": true,
+    "execution_gate_required": true,
+    "manual_confirm_required": true
+  },
+  "agent_reasoning_summary": [
+    "Example plan for schema documentation only."
+  ],
+  "safety_flags": {
+    "is_order": false,
+    "is_tradable": false,
+    "is_real_trade": false,
+    "is_auto_trade": false,
+    "demo_only": true,
+    "requires_user_confirmation": true,
+    "requires_execution_gate": true
+  },
+  "note": "TradePlan schema example only. Not an order, not trading advice, not trading permission, not real trading, and not automatic trading."
+}
