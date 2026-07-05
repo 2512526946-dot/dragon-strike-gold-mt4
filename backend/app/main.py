@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.demo_readonly import router as demo_readonly_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
 from app.api.mt4 import router as mt4_router
@@ -24,6 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(demo_readonly_router)
 app.include_router(health_router)
 app.include_router(market_router)
 app.include_router(mt4_router)
