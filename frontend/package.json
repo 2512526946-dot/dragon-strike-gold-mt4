@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "npm run test:demo-diagnostics-safety",
     "test:demo-diagnostics-safety": "node scripts/check-demo-diagnostics-safety.mjs",
+    "test:demo-explanation-safety": "node scripts/check-demo-explanation-safety.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
