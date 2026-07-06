@@ -71,7 +71,7 @@ export function OverallStatusPanel({
       </ul>
       <div className="demo-diagnostics-safety-copy">
         <p>只读诊断；非交易许可；非执行指令。</p>
-        <p>交易能力禁用；执行能力禁用；不可自动下单。</p>
+        <p>交易能力禁用；执行能力禁用；无自动执行入口。</p>
       </div>
     </section>
   );

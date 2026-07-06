@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "npm run test:demo-diagnostics-safety",
+    "test:demo-diagnostics-safety": "node scripts/check-demo-diagnostics-safety.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
