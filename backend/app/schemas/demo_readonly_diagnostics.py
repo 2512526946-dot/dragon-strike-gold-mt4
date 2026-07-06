@@ -26,6 +26,58 @@ _REQUIRED_SUMMARY_SAFETY_FIELDS = {
     "can_execute": False,
 }
 
+_OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS = {
+    "is_trading_permission": False,
+    "is_execution_instruction": False,
+    "allowed_to_call_ea": False,
+    "allowed_to_modify_risk": False,
+}
+
+_FORBIDDEN_RESPONSE_KEYS = {
+    "order_id",
+    "ticket",
+    "execute_trade",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
+    "auto_trade",
+    "can_trade",
+    "allow_trade",
+    "should_buy",
+    "should_sell",
+    "buy_now",
+    "sell_now",
+    "open_position",
+    "close_position",
+    "suggested_lot",
+    "final_lot",
+    "override_risk",
+    "bypass_gate",
+    "ea_command",
+    "account_number",
+    "password",
+    "credential",
+    "token",
+    "secret",
+    "login",
+    "raw_payload",
+    "raw_account_snapshot",
+    "raw_positions_order_history",
+    "raw_market_symbol",
+}
+
+_FORBIDDEN_TEXT_MARKERS = _FORBIDDEN_RESPONSE_KEYS | {
+    "traceback",
+    "stack trace",
+    ".env",
+    "c:\\",
+    "\\users\\",
+    "/users/",
+}
+
+_REDACTED_UNSAFE_TEXT = "[redacted unsafe content]"
+
 
 class DemoReadonlyDiagnosticsResponse(BaseModel):
     api_version: str
@@ -151,6 +203,12 @@ def _safety_violation_reasons(summary: Any) -> list[str]:
             continue
         if actual_value is not expected_value:
             reasons.append(f"Unsafe safety field value: {field_name}.")
+    for field_name, expected_value in _OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS.items():
+        actual_value = _value(summary, field_name, _Missing)
+        if actual_value is not _Missing and actual_value is not expected_value:
+            reasons.append(f"Unsafe safety field value: {field_name}.")
+    if _contains_forbidden_content(summary):
+        reasons.append("Unsafe response content was removed.")
     return reasons
 
 
@@ -187,6 +245,8 @@ def _safe_component_statuses(value: Any) -> dict[str, dict[str, Any]]:
     for component_name, component_status in value.items():
         if not isinstance(component_name, str):
             continue
+        if _is_unsafe_text(component_name):
+            continue
         safe_components[component_name] = _safe_status_dict(component_status)
     return safe_components
 
@@ -194,20 +254,20 @@ def _safe_component_statuses(value: Any) -> dict[str, dict[str, Any]]:
 def _safe_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value]
+    return [_safe_text(str(item)) for item in value]
 
 
 def _safe_scalar(value: Any) -> str | None:
     if value is None:
         return None
-    return str(value)
+    return _safe_text(str(value))
 
 
 def _str_value(value: Any, field_name: str, default: str) -> str:
     field_value = _value(value, field_name, default)
     if field_value is None:
         return default
-    return str(field_value)
+    return _safe_text(str(field_value))
 
 
 def _bool_value(value: Any, field_name: str, *, default: bool) -> bool:
@@ -223,6 +283,37 @@ def _value(value: Any, field_name: str, default: Any = None) -> Any:
 
 def _generated_at() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _safe_text(value: str) -> str:
+    if _is_unsafe_text(value):
+        return _REDACTED_UNSAFE_TEXT
+    return value
+
+
+def _is_unsafe_text(value: str) -> bool:
+    normalized = value.casefold()
+    return any(marker in normalized for marker in _FORBIDDEN_TEXT_MARKERS)
+
+
+def _contains_forbidden_content(value: Any) -> bool:
+    if isinstance(value, str):
+        return _is_unsafe_text(value)
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str) and _is_unsafe_text(key):
+                return True
+            if _contains_forbidden_content(child):
+                return True
+        return False
+    if isinstance(value, list | tuple | set):
+        return any(_contains_forbidden_content(child) for child in value)
+    if isinstance(value, bool | int | float | type(None)):
+        return False
+    value_dict = getattr(value, "__dict__", None)
+    if isinstance(value_dict, dict):
+        return _contains_forbidden_content(value_dict)
+    return False
 
 
 class _MissingType:

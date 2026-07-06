@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.api.demo_readonly as demo_readonly_api
@@ -166,6 +167,40 @@ def test_demo_readonly_diagnostics_api_blocks_unsafe_is_tradable(
     _assert_forbidden_keys_absent(data)
 
 
+@pytest.mark.parametrize(
+    ("field_name", "unsafe_value"),
+    [
+        ("is_trading_permission", True),
+        ("is_execution_instruction", True),
+        ("allowed_to_call_ea", True),
+        ("allowed_to_modify_risk", True),
+        ("read_only", False),
+        ("demo_only", False),
+    ],
+)
+def test_demo_readonly_diagnostics_api_blocks_unsafe_safety_flags(
+    monkeypatch,
+    field_name: str,
+    unsafe_value: bool,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "summarize_demo_readonly_docs_fixture_validation",
+        lambda: _summary(**{field_name: unsafe_value}),
+    )
+    client = TestClient(app)
+
+    response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert f"Unsafe safety field value: {field_name}." in data["block_reasons"]
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+
+
 def test_demo_readonly_diagnostics_api_blocks_missing_safety_field(
     monkeypatch,
 ) -> None:
@@ -243,8 +278,64 @@ def test_demo_readonly_diagnostics_api_sanitizes_raw_payload_fields(
 
     assert response.status_code == 200
     data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert "Unsafe response content was removed." in data["block_reasons"]
     _assert_required_safe_flags(data)
     _assert_forbidden_keys_absent(data)
+    _assert_forbidden_text_absent(data)
+
+
+def test_demo_readonly_diagnostics_api_blocks_top_level_raw_payload(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "summarize_demo_readonly_docs_fixture_validation",
+        lambda: _summary(raw_payload={"account_number": "hidden"}),
+    )
+    client = TestClient(app)
+
+    response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert "Unsafe response content was removed." in data["block_reasons"]
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+    _assert_forbidden_text_absent(data)
+
+
+def test_demo_readonly_diagnostics_api_redacts_unsafe_readiness_notes(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "summarize_demo_readonly_docs_fixture_validation",
+        lambda: _summary(
+            readiness_notes=[
+                "execute_trade must not leak",
+                "ea_command must not leak",
+            ],
+        ),
+    )
+    client = TestClient(app)
+
+    response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert data["readiness_notes"] == [
+        "[redacted unsafe content]",
+        "[redacted unsafe content]",
+    ]
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+    _assert_forbidden_text_absent(data)
 
 
 def test_demo_readonly_diagnostics_api_calls_summary_once(monkeypatch) -> None:
@@ -331,6 +422,12 @@ def _assert_forbidden_keys_absent(data: dict[str, Any]) -> None:
     keys = _collect_keys(data)
     for forbidden_key in FORBIDDEN_RESPONSE_KEYS:
         assert forbidden_key not in keys
+
+
+def _assert_forbidden_text_absent(data: dict[str, Any]) -> None:
+    serialized = json.dumps(data).casefold()
+    for forbidden_key in FORBIDDEN_RESPONSE_KEYS:
+        assert forbidden_key.casefold() not in serialized
 
 
 def _collect_keys(value: Any) -> set[str]:
