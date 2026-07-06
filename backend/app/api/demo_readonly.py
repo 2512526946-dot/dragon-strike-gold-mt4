@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -9,9 +14,151 @@ from app.schemas.demo_readonly_diagnostics import (
 from app.services.demo_readonly_docs_fixture_validation_summary import (
     summarize_demo_readonly_docs_fixture_validation,
 )
+from app.services.read_only_diagnostics_explainer import (
+    READONLY_EXPLANATION_BLOCKED,
+    READONLY_EXPLANATION_INPUT_INVALID,
+    READONLY_EXPLANATION_READY,
+    READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION,
+    READONLY_EXPLANATION_SOURCE_ERROR,
+    explain_demo_readonly_docs_fixture_diagnostics,
+)
 
 
 router = APIRouter(prefix="/api/demo-readonly", tags=["demo-readonly"])
+
+DEMO_READONLY_EXPLANATION_ENDPOINT = "/api/demo-readonly/explanation"
+READONLY_EXPLANATION_API_ERROR = "READONLY_EXPLANATION_API_ERROR"
+
+_ALLOWED_EXPLANATION_STATUS_CODES = {
+    READONLY_EXPLANATION_READY,
+    READONLY_EXPLANATION_BLOCKED,
+    READONLY_EXPLANATION_INPUT_INVALID,
+    READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION,
+    READONLY_EXPLANATION_SOURCE_ERROR,
+    READONLY_EXPLANATION_API_ERROR,
+}
+
+_EXPLANATION_RESPONSE_FIELDS = (
+    "passed",
+    "status_code",
+    "report_version",
+    "report_type",
+    "generated_at",
+    "source_scope",
+    "input_status_code",
+    "input_passed",
+    "explanation_scope",
+    "overall_explanation",
+    "status_explanation",
+    "component_explanations",
+    "blocker_explanations",
+    "warning_explanations",
+    "readiness_explanation",
+    "next_allowed_stage_explanation",
+    "next_blocked_stage_explanation",
+    "user_safe_next_steps",
+    "user_forbidden_actions",
+    "unknowns",
+    "safety_flags",
+    "block_reasons",
+    "warning_reasons",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
+    "is_trading_permission",
+    "is_execution_instruction",
+    "allowed_to_call_ea",
+    "allowed_to_modify_risk",
+    "notes",
+)
+
+_SAFE_EXPLANATION_FLAGS = {
+    "read_only": True,
+    "demo_only": True,
+    "is_tradable": False,
+    "can_execute": False,
+    "is_trading_permission": False,
+    "is_execution_instruction": False,
+    "allowed_to_call_ea": False,
+    "allowed_to_modify_risk": False,
+}
+
+_FORBIDDEN_EXPLANATION_KEYS = {
+    "raw_payload",
+    "raw_account_snapshot",
+    "raw_positions_order_history",
+    "raw_market_symbol",
+    "account_number",
+    "login",
+    "password",
+    "credential",
+    "token",
+    "secret",
+    "api_key",
+    "key",
+    "traceback",
+    "stack_trace",
+    "system_path",
+    "order_id",
+    "ticket",
+    "execute_trade",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
+    "auto_trade",
+    "can_trade",
+    "allow_trade",
+    "should_buy",
+    "should_sell",
+    "buy_now",
+    "sell_now",
+    "open_position",
+    "close_position",
+    "suggested_lot",
+    "final_lot",
+    "override_risk",
+    "bypass_gate",
+    "ea_command",
+    "trade_signal",
+    "trading_action",
+}
+
+_FORBIDDEN_EXPLANATION_TEXT_MARKERS = _FORBIDDEN_EXPLANATION_KEYS | {
+    "traceback",
+    "stack trace",
+    ".env",
+    "c:\\",
+    "\\users\\",
+    "/users/",
+    "/home/",
+    ".py",
+    "site-packages",
+    "买入",
+    "卖出",
+    "开仓",
+    "平仓",
+    "建议手数",
+    "可以交易",
+    "允许交易",
+    "自动下单",
+    "自动交易",
+    "执行交易",
+    "下单指令",
+    "风控放行",
+    "绕过风控",
+    "should buy",
+    "should sell",
+    "open position",
+    "close position",
+    "execute trade",
+    "allow trade",
+    "can trade",
+    "suggested lot",
+}
+
+_REDACTED_EXPLANATION_TEXT = "存在不适合展示的原始内容，API 层已隐藏。"
 
 
 @router.get("/diagnostics", response_model=DemoReadonlyDiagnosticsResponse)
@@ -28,3 +175,202 @@ def get_demo_readonly_diagnostics() -> (
         )
 
     return demo_readonly_diagnostics_response(summary)
+
+
+@router.get("/explanation")
+def get_demo_readonly_explanation() -> dict[str, Any]:
+    try:
+        report = explain_demo_readonly_docs_fixture_diagnostics()
+    except Exception:
+        return _safe_explanation_api_error_response()
+
+    return _safe_explanation_response(report)
+
+
+def _safe_explanation_response(report: Any) -> dict[str, Any]:
+    safety_reasons = _explanation_safety_violation_reasons(report)
+    safe_report = _safe_explanation_output_value(report)
+    response = _default_explanation_response()
+
+    if isinstance(safe_report, dict):
+        for field_name in _EXPLANATION_RESPONSE_FIELDS:
+            if field_name in safe_report:
+                response[field_name] = safe_report[field_name]
+
+    response["passed"] = response.get("passed") is True
+    status_code = str(response.get("status_code") or "")
+    if status_code not in _ALLOWED_EXPLANATION_STATUS_CODES:
+        safety_reasons.append("Unsafe explanation status code was blocked.")
+
+    if safety_reasons:
+        response["passed"] = False
+        response["status_code"] = READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+        response["block_reasons"] = [
+            *_safe_explanation_list(response.get("block_reasons")),
+            *safety_reasons,
+        ]
+
+    response.update(_SAFE_EXPLANATION_FLAGS)
+    response["safety_flags"] = dict(_SAFE_EXPLANATION_FLAGS)
+
+    return _safe_explanation_output_value(response)
+
+
+def _safe_explanation_api_error_response() -> dict[str, Any]:
+    response = _default_explanation_response()
+    response["passed"] = False
+    response["status_code"] = READONLY_EXPLANATION_API_ERROR
+    response["overall_explanation"] = (
+        "只读解释 API 发生安全失败，未暴露内部细节。"
+    )
+    response["status_explanation"] = (
+        "当前仍是 demo-only / read-only 状态，非交易许可，非执行指令。"
+    )
+    response["block_reasons"] = ["Explanation API failed safely."]
+    response["blocker_explanations"] = ["只读解释 API 安全失败。"]
+    response["notes"] = [
+        "只读解释 API 只返回安全失败摘要。",
+        "非交易许可，非执行指令。",
+        "交易能力禁用，执行能力禁用。",
+    ]
+    response.update(_SAFE_EXPLANATION_FLAGS)
+    response["safety_flags"] = dict(_SAFE_EXPLANATION_FLAGS)
+    return response
+
+
+def _default_explanation_response() -> dict[str, Any]:
+    response: dict[str, Any] = {
+        "passed": False,
+        "status_code": READONLY_EXPLANATION_INPUT_INVALID,
+        "report_version": "1.0",
+        "report_type": "read_only_explanation_report",
+        "generated_at": _generated_at(),
+        "source_scope": "demo_readonly_diagnostics_api",
+        "input_status_code": "STATUS_UNAVAILABLE",
+        "input_passed": False,
+        "explanation_scope": "demo_readonly_diagnostics_summary_only",
+        "overall_explanation": "当前只读解释不可用，API 返回安全失败摘要。",
+        "status_explanation": "解释 API 不会进入任何交易或执行链路。",
+        "component_explanations": [],
+        "blocker_explanations": ["当前没有可展示的阻断原因。"],
+        "warning_explanations": ["当前没有可展示的警告原因。"],
+        "readiness_explanation": ["当前没有可展示的 readiness 说明。"],
+        "next_allowed_stage_explanation": [
+            "当前没有可展示的下一阶段流程提示。"
+        ],
+        "next_blocked_stage_explanation": [
+            "当前没有可展示的后续阶段限制。"
+        ],
+        "user_safe_next_steps": [
+            "查看只读解释",
+            "查看只读诊断",
+            "查看阻断原因",
+            "查看警告原因",
+            "进行安全回归检查",
+        ],
+        "user_forbidden_actions": [
+            "任何交易性操作仍被禁止",
+            "任何执行链路仍被禁止",
+            "任何 MT4 或 EA 操作入口仍被禁止",
+        ],
+        "unknowns": [],
+        "safety_flags": dict(_SAFE_EXPLANATION_FLAGS),
+        "block_reasons": [],
+        "warning_reasons": [],
+        "notes": [
+            "只读解释 API 只解释安全摘要。",
+            "非交易许可，非执行指令。",
+            "交易能力禁用，执行能力禁用。",
+        ],
+    }
+    response.update(_SAFE_EXPLANATION_FLAGS)
+    return response
+
+
+def _explanation_safety_violation_reasons(report: Any) -> list[str]:
+    reasons = []
+    if not isinstance(report, dict):
+        reasons.append("Explanation report was not a JSON object.")
+        return reasons
+
+    for field_name, expected_value in _SAFE_EXPLANATION_FLAGS.items():
+        if report.get(field_name) is not expected_value:
+            reasons.append(f"Unsafe safety field value: {field_name}.")
+
+    safety_flags = report.get("safety_flags")
+    if isinstance(safety_flags, dict):
+        for field_name, expected_value in _SAFE_EXPLANATION_FLAGS.items():
+            if safety_flags.get(field_name) is not expected_value:
+                reasons.append(f"Unsafe safety_flags value: {field_name}.")
+
+    if _contains_explanation_forbidden_content(report):
+        reasons.append("Unsafe explanation response content was blocked.")
+
+    return reasons
+
+
+def _safe_explanation_output_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _safe_explanation_output_value(child)
+            for key, child in value.items()
+            if not _is_forbidden_explanation_key(key)
+        }
+    if isinstance(value, list):
+        return [_safe_explanation_output_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_safe_explanation_output_value(child) for child in value]
+    if isinstance(value, str):
+        return _safe_explanation_text(value)
+    return value
+
+
+def _safe_explanation_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_safe_explanation_text(str(item)) for item in value]
+
+
+def _safe_explanation_text(value: str) -> str:
+    if _is_unsafe_explanation_text(value):
+        return _REDACTED_EXPLANATION_TEXT
+    return value
+
+
+def _contains_explanation_forbidden_content(value: Any) -> bool:
+    if isinstance(value, str):
+        return _is_unsafe_explanation_text(value)
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if _is_forbidden_explanation_key(key):
+                return True
+            if _contains_explanation_forbidden_content(child):
+                return True
+        return False
+    if isinstance(value, list | tuple | set):
+        return any(_contains_explanation_forbidden_content(child) for child in value)
+    if isinstance(value, bool | int | float | type(None)):
+        return False
+
+    value_dict = getattr(value, "__dict__", None)
+    if isinstance(value_dict, dict):
+        return _contains_explanation_forbidden_content(value_dict)
+    return False
+
+
+def _is_forbidden_explanation_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    return key.casefold() in {item.casefold() for item in _FORBIDDEN_EXPLANATION_KEYS}
+
+
+def _is_unsafe_explanation_text(value: str) -> bool:
+    normalized = value.casefold()
+    return any(
+        marker.casefold() in normalized
+        for marker in _FORBIDDEN_EXPLANATION_TEXT_MARKERS
+    )
+
+
+def _generated_at() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
