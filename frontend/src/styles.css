@@ -298,6 +298,252 @@ h1 {
   margin: 0 0 24px;
 }
 
+.demo-diagnostics-dashboard {
+  margin: 0 0 24px;
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  border-left: 4px solid #94b9ad;
+  background: #171d1b;
+  padding: 20px;
+}
+
+.demo-diagnostics-dashboard-heading {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.demo-diagnostics-dashboard-heading p,
+.demo-diagnostics-section-heading p {
+  margin-bottom: 8px;
+  color: #94b9ad;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.demo-diagnostics-dashboard-heading h2,
+.demo-diagnostics-section-heading h3 {
+  color: #f5f7f6;
+  font-size: 28px;
+}
+
+.demo-diagnostics-dashboard-heading span {
+  display: block;
+  margin-top: 10px;
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.demo-diagnostics-dashboard-heading button {
+  min-height: 40px;
+  border: 1px solid rgba(148, 185, 173, 0.44);
+  background: #242d29;
+  color: #f7f2df;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.demo-diagnostics-dashboard-heading button:hover {
+  background: #2d3833;
+}
+
+.demo-diagnostics-dashboard-heading button:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.demo-diagnostics-panel-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.demo-diagnostics-card,
+.demo-diagnostics-empty-state {
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #1a211f;
+  padding: 16px;
+}
+
+.demo-diagnostics-empty-state.is-error,
+.demo-diagnostics-empty-state.is-security-blocked {
+  border-left: 4px solid #d9a441;
+}
+
+.demo-diagnostics-empty-state strong {
+  display: block;
+  color: #f2d891;
+  font-size: 20px;
+}
+
+.demo-diagnostics-empty-state p {
+  margin-top: 8px;
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.demo-diagnostics-section-heading {
+  margin-bottom: 14px;
+}
+
+.demo-diagnostics-summary-grid,
+.demo-diagnostics-badge-list,
+.demo-diagnostics-reason-grid,
+.demo-diagnostics-readiness-grid {
+  display: grid;
+  gap: 1px;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.demo-diagnostics-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.demo-diagnostics-badge-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-diagnostics-reason-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.demo-diagnostics-readiness-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.demo-diagnostics-summary-grid div,
+.demo-diagnostics-badge-list li,
+.demo-diagnostics-reason-grid div,
+.demo-diagnostics-readiness-grid div {
+  min-width: 0;
+  background: #171d1b;
+  padding: 14px;
+}
+
+.demo-diagnostics-summary-grid dt,
+.demo-diagnostics-badge-list span {
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.demo-diagnostics-summary-grid dd,
+.demo-diagnostics-badge-list strong {
+  display: block;
+  margin: 10px 0 0;
+  color: #edf3f0;
+  font-size: 16px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.demo-diagnostics-safety-copy {
+  margin-top: 14px;
+  border: 1px solid rgba(217, 164, 65, 0.36);
+  background: rgba(217, 164, 65, 0.1);
+  padding: 14px;
+}
+
+.demo-diagnostics-safety-copy p,
+.demo-diagnostics-reason-grid p,
+.demo-diagnostics-readiness-grid p,
+.demo-diagnostics-readiness-grid li,
+.demo-diagnostics-component-list p {
+  color: #f7f2df;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.demo-diagnostics-reason-grid strong,
+.demo-diagnostics-readiness-grid strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #f2d891;
+  font-size: 16px;
+}
+
+.demo-diagnostics-readiness-grid ul {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.demo-diagnostics-component-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-diagnostics-component-list li {
+  border: 1px solid rgba(148, 185, 173, 0.24);
+  background: #171d1b;
+  padding: 14px;
+}
+
+.demo-diagnostics-component-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.demo-diagnostics-component-header strong {
+  color: #f5f7f6;
+  font-size: 18px;
+}
+
+.demo-diagnostics-component-header span {
+  border: 1px solid rgba(148, 185, 173, 0.34);
+  background: #202824;
+  color: #f2d891;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.demo-diagnostics-component-list dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 12px;
+  background: rgba(148, 185, 173, 0.2);
+}
+
+.demo-diagnostics-component-list dl div {
+  min-width: 0;
+  background: #1a211f;
+  padding: 12px;
+}
+
+.demo-diagnostics-component-list dt {
+  color: #9ba6a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.demo-diagnostics-component-list dd {
+  margin: 8px 0 0;
+  color: #edf3f0;
+  font-size: 15px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .mt4-diagnostics-panel-heading {
   display: flex;
   gap: 18px;
@@ -818,7 +1064,11 @@ h1 {
   }
 
   .mt4-diagnostics-summary-grid,
-  .mt4-diagnostics-layer-grid {
+  .mt4-diagnostics-layer-grid,
+  .demo-diagnostics-summary-grid,
+  .demo-diagnostics-badge-list,
+  .demo-diagnostics-reason-grid,
+  .demo-diagnostics-readiness-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -852,6 +1102,11 @@ h1 {
   .market-snapshot-grid,
   .signal-snapshot-grid,
   .placeholder-log-result,
+  .demo-diagnostics-summary-grid,
+  .demo-diagnostics-badge-list,
+  .demo-diagnostics-reason-grid,
+  .demo-diagnostics-readiness-grid,
+  .demo-diagnostics-component-list dl,
   .mt4-diagnostics-summary-grid,
   .mt4-diagnostics-layer-grid,
   .constraint-list,
@@ -862,6 +1117,8 @@ h1 {
   .market-card-header,
   .signal-card-header,
   .placeholder-log-heading,
+  .demo-diagnostics-dashboard-heading,
+  .demo-diagnostics-component-header,
   .mt4-diagnostics-panel-heading,
   .mt4-diagnostics-header {
     flex-direction: column;

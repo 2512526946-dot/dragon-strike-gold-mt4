@@ -23,6 +23,7 @@ import { SafetyNoticePanel } from "./components/SafetyNoticePanel";
 import { StatusCard } from "./components/StatusCard";
 import { SystemStatusBar } from "./components/SystemStatusBar";
 import { ERROR_MESSAGES, ERROR_SAFETY_NOTE } from "./constants/messages";
+import { DemoReadOnlyDiagnosticsDashboard } from "./features/demoDiagnostics/components/DemoReadOnlyDiagnosticsDashboard";
 
 type BackendStatus =
   | { state: "loading" }
@@ -195,6 +196,8 @@ function App() {
       <SafetyBanner />
 
       <BackendStatusCard status={backendStatus} />
+
+      <DemoReadOnlyDiagnosticsDashboard />
 
       <section
         className="mt4-diagnostics-panel"
