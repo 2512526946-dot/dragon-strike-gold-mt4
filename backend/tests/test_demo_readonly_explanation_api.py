@@ -67,6 +67,9 @@ REQUIRED_RESPONSE_FIELDS = {
 
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_payload",
+    "account_snapshot",
+    "positions_order_history",
+    "market_symbol",
     "raw_account_snapshot",
     "raw_positions_order_history",
     "raw_market_symbol",
@@ -83,6 +86,10 @@ FORBIDDEN_RESPONSE_KEYS = {
     "system_path",
     "order_id",
     "ticket",
+    "buy",
+    "sell",
+    "open",
+    "close",
     "execute_trade",
     "order_send",
     "order_close",
@@ -120,6 +127,7 @@ FORBIDDEN_TEXT = {
     "api_key",
     "traceback",
     "stack trace",
+    "raw payload",
     "system_path",
     "order_id",
     "ticket",
@@ -133,6 +141,8 @@ FORBIDDEN_TEXT = {
     "allow_trade",
     "should_buy",
     "should_sell",
+    "buy",
+    "sell",
     "buy_now",
     "sell_now",
     "open_position",
@@ -168,6 +178,8 @@ FORBIDDEN_PAGE_ACTION_TEXT = {
     "绕过风控",
     "should buy",
     "should sell",
+    "buy",
+    "sell",
     "open position",
     "close position",
     "execute trade",
@@ -315,6 +327,217 @@ def test_demo_readonly_explanation_api_blocks_unsafe_payload_keys(
     assert data["passed"] is False
     assert data["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
     assert "Unsafe explanation response content was blocked." in data["block_reasons"]
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+    _assert_no_forbidden_text(data)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("raw_payload", {"secret": "hidden"}),
+        ("account_snapshot", {"equity": 1000}),
+        ("positions_order_history", [{"ticket": "hidden"}]),
+        ("market_symbol", {"symbol": "XAUUSD"}),
+        ("raw_account_snapshot", {"account_number": "hidden"}),
+        ("raw_positions_order_history", [{"order_id": "hidden"}]),
+        ("raw_market_symbol", {"login": "hidden"}),
+        ("account_number", "hidden"),
+        ("login", "hidden"),
+        ("password", "hidden"),
+        ("credential", "hidden"),
+        ("token", "hidden"),
+        ("secret", "hidden"),
+        ("api_key", "hidden"),
+        ("key", "hidden"),
+        ("traceback", "hidden"),
+        ("stack_trace", "hidden"),
+        ("system_path", "C:\\Users\\hidden\\secret.py"),
+        ("order_id", "hidden"),
+        ("ticket", "hidden"),
+        ("buy", True),
+        ("sell", True),
+        ("open", True),
+        ("close", True),
+        ("execute_trade", True),
+        ("order_send", True),
+        ("order_close", True),
+        ("order_modify", True),
+        ("order_delete", True),
+        ("auto_trade", True),
+        ("can_trade", True),
+        ("allow_trade", True),
+        ("should_buy", True),
+        ("should_sell", True),
+        ("buy_now", True),
+        ("sell_now", True),
+        ("open_position", True),
+        ("close_position", True),
+        ("suggested_lot", 1.0),
+        ("final_lot", 1.0),
+        ("override_risk", True),
+        ("bypass_gate", True),
+        ("ea_command", "hidden"),
+        ("trade_signal", "hidden"),
+        ("trading_action", "hidden"),
+    ],
+)
+def test_demo_readonly_explanation_api_removes_each_forbidden_field(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    field_value: Any,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "explain_demo_readonly_docs_fixture_diagnostics",
+        lambda: _safe_report(
+            component_explanations=[
+                {
+                    "component_name": "account_snapshot",
+                    "status": "passed",
+                    "user_impact": "只影响只读诊断展示。",
+                    field_name: field_value,
+                }
+            ],
+        ),
+    )
+    client = TestClient(app)
+
+    response = client.get(ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    assert "Unsafe explanation response content was blocked." in data["block_reasons"]
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+    _assert_no_forbidden_text(data)
+    _assert_no_page_action_suggestions(data)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "unsafe_text"),
+    [
+        ("blocker_explanations", "Traceback C:\\Users\\hidden\\secret.py"),
+        ("warning_explanations", "stack trace from /home/hidden/app.py"),
+        ("readiness_explanation", "raw payload contains password"),
+        ("next_allowed_stage_explanation", "可以交易 should buy now"),
+        ("next_blocked_stage_explanation", "execute trade after bypass_gate"),
+        ("user_safe_next_steps", "自动下单"),
+        ("user_forbidden_actions", "建议手数"),
+        ("unknowns", "token=hidden api_key=hidden"),
+        ("notes", "buy sell open position close position suggested lot"),
+    ],
+)
+def test_demo_readonly_explanation_api_redacts_unsafe_user_visible_text(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    unsafe_text: str,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "explain_demo_readonly_docs_fixture_diagnostics",
+        lambda: _safe_report(**{field_name: [unsafe_text]}),
+    )
+    client = TestClient(app)
+
+    response = client.get(ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    _assert_required_safe_flags(data)
+    _assert_forbidden_keys_absent(data)
+    _assert_no_forbidden_text(data)
+    _assert_no_page_action_suggestions(data)
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    [
+        "买入",
+        "卖出",
+        "开仓",
+        "平仓",
+        "建议手数",
+        "可以交易",
+        "允许交易",
+        "自动下单",
+        "自动交易",
+        "执行交易",
+        "下单指令",
+        "风控放行",
+        "绕过风控",
+        "buy",
+        "sell",
+        "should buy",
+        "should sell",
+        "open position",
+        "close position",
+        "execute trade",
+        "allow trade",
+        "can trade",
+        "suggested lot",
+    ],
+)
+def test_demo_readonly_explanation_api_redacts_actionable_trading_text(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_text: str,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "explain_demo_readonly_docs_fixture_diagnostics",
+        lambda: _safe_report(status_explanation=unsafe_text),
+    )
+    client = TestClient(app)
+
+    response = client.get(ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    _assert_required_safe_flags(data)
+    _assert_no_forbidden_text(data)
+    _assert_no_page_action_suggestions(data)
+
+
+def test_demo_readonly_explanation_api_component_explanations_stay_summary_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "explain_demo_readonly_docs_fixture_diagnostics",
+        lambda: _safe_report(
+            component_explanations=[
+                {
+                    "component_name": "market_symbol",
+                    "status": "blocked",
+                    "plain_language_summary": "组件处于只读诊断状态。",
+                    "user_impact": "只影响只读诊断展示和流程提示。",
+                    "account_snapshot": {"account_number": "hidden"},
+                    "positions_order_history": [{"ticket": "hidden"}],
+                    "market_symbol": {"raw_payload": "hidden"},
+                }
+            ],
+        ),
+    )
+    client = TestClient(app)
+
+    response = client.get(ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    serialized_components = json.dumps(
+        data["component_explanations"],
+        ensure_ascii=False,
+    )
+    assert "只读诊断展示" in serialized_components
+    assert "account_number" not in serialized_components
+    assert "ticket" not in serialized_components
+    assert "raw_payload" not in serialized_components
     _assert_required_safe_flags(data)
     _assert_forbidden_keys_absent(data)
     _assert_no_forbidden_text(data)
