@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.services.read_only_diagnostics_explainer import (
     READONLY_EXPLANATION_INPUT_INVALID,
     READONLY_EXPLANATION_READY,
     READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION,
+    READONLY_EXPLANATION_SOURCE_ERROR,
     explain_demo_readonly_docs_fixture_diagnostics,
     explain_readonly_diagnostics_summary,
 )
@@ -24,9 +26,19 @@ FORBIDDEN_KEYS = {
     "credential",
     "token",
     "secret",
+    "api_key",
+    "key",
+    "traceback",
+    "stack_trace",
+    "system_path",
     "raw_payload",
+    "raw_account_snapshot",
+    "raw_positions_order_history",
+    "raw_market_symbol",
     "suggested_lot",
     "final_lot",
+    "buy",
+    "sell",
     "buy_now",
     "sell_now",
     "should_buy",
@@ -35,7 +47,19 @@ FORBIDDEN_KEYS = {
     "close_position",
     "order_id",
     "ticket",
+    "execute_trade",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
     "ea_command",
+    "auto_trade",
+    "can_trade",
+    "allow_trade",
+    "override_risk",
+    "bypass_gate",
+    "trade_signal",
+    "trading_action",
 }
 
 FORBIDDEN_TEXT = {
@@ -47,7 +71,49 @@ FORBIDDEN_TEXT = {
     "should_sell",
     "open_position",
     "close_position",
+    "order_send",
+    "execute_trade",
     "ea_command",
+    "can_trade",
+    "allow_trade",
+    "traceback",
+    "stack trace",
+    "account_number",
+    "password",
+    "token",
+    "secret",
+    "api_key",
+    "raw_payload",
+    "c:\\",
+    "\\users\\",
+    "/home/",
+    ".py",
+}
+
+FORBIDDEN_ACTION_SUGGESTION_TEXT = {
+    "买入",
+    "卖出",
+    "开仓",
+    "平仓",
+    "建议手数",
+    "可以交易",
+    "允许交易",
+    "自动下单",
+    "自动交易",
+    "执行交易",
+    "下单指令",
+    "风控放行",
+    "绕过风控",
+    "buy",
+    "sell",
+    "should buy",
+    "should sell",
+    "open position",
+    "close position",
+    "execute trade",
+    "allow trade",
+    "can trade",
+    "suggested lot",
 }
 
 
@@ -58,6 +124,7 @@ def test_summary_passed_returns_ready_explanation() -> None:
     assert result["status_code"] == READONLY_EXPLANATION_READY
     assert "当前只读诊断摘要可解释" in result["overall_explanation"]
     _assert_safety_fields(result)
+    _assert_no_action_suggestions(result)
 
 
 def test_summary_blocked_returns_blocked_explanation() -> None:
@@ -70,6 +137,7 @@ def test_summary_blocked_returns_blocked_explanation() -> None:
     assert result["block_reasons"] == ["bundle validation failed"]
     assert any("bundle validation failed" in item for item in result["blocker_explanations"])
     _assert_safety_fields(result)
+    _assert_no_action_suggestions(result)
 
 
 def test_summary_missing_required_field_returns_input_invalid() -> None:
@@ -82,6 +150,7 @@ def test_summary_missing_required_field_returns_input_invalid() -> None:
     assert result["status_code"] == READONLY_EXPLANATION_INPUT_INVALID
     assert "Missing required summary field: passed." in result["unknowns"]
     _assert_safety_fields(result)
+    _assert_no_action_suggestions(result)
 
 
 @pytest.mark.parametrize(
@@ -102,6 +171,7 @@ def test_unsafe_true_safety_fields_return_safety_violation(field_name: str) -> N
     assert result["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
     assert f"Unsafe safety field value: {field_name}." in result["block_reasons"]
     _assert_safety_fields(result)
+    _assert_no_action_suggestions(result)
 
 
 @pytest.mark.parametrize(
@@ -123,6 +193,7 @@ def test_unsafe_false_safety_fields_return_safety_violation(
     assert result["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
     assert f"Unsafe safety field value: {field_name}." in result["block_reasons"]
     _assert_safety_fields(result)
+    _assert_no_action_suggestions(result)
 
 
 def test_output_contains_required_report_sections() -> None:
@@ -231,9 +302,92 @@ def test_output_redacts_forbidden_text_in_reason_lists() -> None:
         ),
     )
 
-    assert "[redacted unsafe content]" in result["block_reasons"]
-    assert "[redacted unsafe content]" in result["warning_reasons"]
+    assert "存在不适合展示的原始内容，解释层已隐藏。" in result["block_reasons"]
+    assert "存在不适合展示的原始内容，解释层已隐藏。" in result["warning_reasons"]
     _assert_forbidden_text_absent(result)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "unsafe_value"),
+    [
+        ("block_reasons", ["password=hidden must not leak"]),
+        ("warning_reasons", ["token=hidden must not leak"]),
+        ("readiness_notes", ["raw_payload should not be repeated"]),
+        ("unknowns", ["traceback C:\\Users\\hidden\\app.py must not leak"]),
+    ],
+)
+def test_top_level_polluted_summary_fields_are_not_repeated(
+    field_name: str,
+    unsafe_value: list[str],
+) -> None:
+    result = explain_readonly_diagnostics_summary(_summary(**{field_name: unsafe_value}))
+
+    assert result["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    assert "Unsafe summary content was blocked." in result["block_reasons"]
+    _assert_forbidden_keys_absent(result)
+    _assert_forbidden_text_absent(result)
+    _assert_safety_fields(result)
+
+
+@pytest.mark.parametrize(
+    ("unsafe_key", "unsafe_value"),
+    [
+        ("account_number", "123456"),
+        ("suggested_lot", 1.0),
+        ("ea_command", "call expert advisor"),
+        ("raw_payload", {"token": "hidden"}),
+        ("system_path", "C:\\Users\\hidden\\service.py"),
+    ],
+)
+def test_component_status_polluted_fields_are_not_repeated(
+    unsafe_key: str,
+    unsafe_value: Any,
+) -> None:
+    result = explain_readonly_diagnostics_summary(
+        _summary(
+            component_statuses={
+                "account_snapshot": {
+                    "passed": True,
+                    "status_code": "OK",
+                    "block_reasons": [],
+                    "warning_reasons": [],
+                    unsafe_key: unsafe_value,
+                },
+            },
+        ),
+    )
+
+    assert result["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    _assert_forbidden_keys_absent(result)
+    _assert_forbidden_text_absent(result)
+    _assert_safety_fields(result)
+
+
+def test_component_reason_pollution_is_redacted_without_raw_payload() -> None:
+    result = explain_readonly_diagnostics_summary(
+        _summary(
+            component_statuses={
+                "market_symbol": {
+                    "passed": False,
+                    "status_code": "MARKET_BLOCKED",
+                    "block_reasons": [
+                        "raw_payload contains buy_now and account_number",
+                    ],
+                    "warning_reasons": [
+                        "traceback from /home/hidden/service.py",
+                    ],
+                },
+            },
+        ),
+    )
+
+    assert result["status_code"] == READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION
+    _assert_forbidden_keys_absent(result)
+    _assert_forbidden_text_absent(result)
+    for component in result["component_explanations"]:
+        serialized_component = json.dumps(component, ensure_ascii=False).casefold()
+        assert "raw_payload" not in serialized_component
+        assert "traceback" not in serialized_component
 
 
 def test_next_allowed_stage_is_not_trading_permission() -> None:
@@ -292,13 +446,34 @@ def test_explain_demo_readonly_docs_fixture_diagnostics_handles_summary_exceptio
     result = explain_demo_readonly_docs_fixture_diagnostics()
 
     assert result["passed"] is False
-    assert result["status_code"] == READONLY_EXPLANATION_INPUT_INVALID
+    assert result["status_code"] == READONLY_EXPLANATION_SOURCE_ERROR
     assert "Summary service failed safely." in result["block_reasons"]
     _assert_safety_fields(result)
     serialized = json.dumps(result)
     assert "Traceback" not in serialized
     assert "password must not leak" not in serialized
     assert "C:\\" not in serialized
+
+
+def test_summary_exception_does_not_leak_python_file_path_or_user_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_summary_error() -> None:
+        raise RuntimeError(
+            "File C:\\Users\\hidden\\project\\secret.py line 1 token=hidden",
+        )
+
+    monkeypatch.setattr(
+        explainer_module.summary_service,
+        "summarize_demo_readonly_docs_fixture_validation",
+        raise_summary_error,
+    )
+
+    result = explain_demo_readonly_docs_fixture_diagnostics()
+
+    assert result["status_code"] == READONLY_EXPLANATION_SOURCE_ERROR
+    _assert_forbidden_text_absent(result)
+    _assert_safety_fields(result)
 
 
 def test_explainer_does_not_write_files(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -321,6 +496,76 @@ def test_explainer_does_not_return_runtime_data_paths() -> None:
     assert "data/mt4" not in serialized
     assert ".env" not in serialized
     assert "placeholder_signals.jsonl" not in serialized
+
+
+def test_output_all_layers_do_not_contain_forbidden_field_keys() -> None:
+    result = explain_readonly_diagnostics_summary(_summary(passed=True))
+
+    _assert_forbidden_keys_absent(result)
+    _assert_safety_fields(result)
+
+
+def test_output_all_layers_keep_non_execution_safety_boundary() -> None:
+    result = explain_readonly_diagnostics_summary(_summary(passed=True))
+
+    _assert_no_action_suggestions(result)
+    assert all(
+        "不是交易许可" in explanation
+        for explanation in result["next_allowed_stage_explanation"]
+    )
+    for component in result["component_explanations"]:
+        assert "诊断" in component["user_impact"] or "展示" in component["user_impact"]
+        assert "交易" not in component["safe_next_step"]
+
+
+@pytest.mark.parametrize(
+    "summary_case",
+    [
+        "ready",
+        "blocked",
+        "input_invalid",
+        "safety_violation",
+    ],
+)
+def test_output_safety_flags_are_forced_safe_for_all_status_paths(
+    summary_case: str,
+) -> None:
+    if summary_case == "ready":
+        summary = _summary(passed=True)
+    elif summary_case == "blocked":
+        summary = _summary(passed=False, block_reasons=["bundle validation failed"])
+    elif summary_case == "input_invalid":
+        summary = {key: value for key, value in _summary().items() if key != "passed"}
+    else:
+        summary = _summary(read_only=False)
+
+    result = explain_readonly_diagnostics_summary(summary)
+
+    _assert_safety_fields(result)
+
+
+def test_explainer_does_not_open_runtime_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("explainer must not open runtime files")
+
+    monkeypatch.setattr(Path, "open", fail_if_called)
+    monkeypatch.setattr(Path, "read_text", fail_if_called)
+    monkeypatch.setattr(Path, "read_bytes", fail_if_called)
+
+    result = explain_readonly_diagnostics_summary(_summary())
+
+    assert result["status_code"] == READONLY_EXPLANATION_READY
+
+
+def test_explainer_does_not_create_network_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("explainer must not access network")
+
+    monkeypatch.setattr(socket, "socket", fail_if_called)
+
+    result = explain_readonly_diagnostics_summary(_summary())
+
+    assert result["status_code"] == READONLY_EXPLANATION_READY
 
 
 def test_explainer_does_not_call_llm_network_or_mt4(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -439,6 +684,12 @@ def _assert_forbidden_keys_absent(value: Any) -> None:
 def _assert_forbidden_text_absent(value: Any) -> None:
     serialized = json.dumps(value).casefold()
     for forbidden_text in FORBIDDEN_TEXT:
+        assert forbidden_text.casefold() not in serialized
+
+
+def _assert_no_action_suggestions(value: Any) -> None:
+    serialized = json.dumps(value, ensure_ascii=False).casefold()
+    for forbidden_text in FORBIDDEN_ACTION_SUGGESTION_TEXT:
         assert forbidden_text.casefold() not in serialized
 
 

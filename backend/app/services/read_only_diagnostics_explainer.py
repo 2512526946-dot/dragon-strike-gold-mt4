@@ -12,6 +12,7 @@ READONLY_EXPLANATION_INPUT_INVALID = "READONLY_EXPLANATION_INPUT_INVALID"
 READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION = (
     "READONLY_EXPLANATION_SAFETY_FIELD_VIOLATION"
 )
+READONLY_EXPLANATION_SOURCE_ERROR = "READONLY_EXPLANATION_SOURCE_ERROR"
 
 REPORT_VERSION = "1.0"
 REPORT_TYPE = "read_only_explanation_report"
@@ -80,6 +81,10 @@ FORBIDDEN_FIELDS = {
     "token",
     "secret",
     "api_key",
+    "key",
+    "traceback",
+    "stack_trace",
+    "system_path",
     "order_id",
     "ticket",
     "buy",
@@ -114,6 +119,10 @@ FORBIDDEN_TEXT_MARKERS = FORBIDDEN_FIELDS | {
     "c:\\",
     "\\users\\",
     "/users/",
+    "/home/",
+    ".py",
+    "site-packages",
+    "python file",
     "建议手数",
     "可以交易",
     "允许交易",
@@ -123,6 +132,8 @@ FORBIDDEN_TEXT_MARKERS = FORBIDDEN_FIELDS | {
     "风控放行",
     "绕过风控",
 }
+
+SAFE_REDACTION_MESSAGE = "存在不适合展示的原始内容，解释层已隐藏。"
 
 SAFE_NEXT_STEPS = [
     "查看只读诊断",
@@ -222,7 +233,7 @@ def explain_demo_readonly_docs_fixture_diagnostics() -> dict[str, Any]:
     except Exception:
         return _base_report(
             passed=False,
-            status_code=READONLY_EXPLANATION_INPUT_INVALID,
+            status_code=READONLY_EXPLANATION_SOURCE_ERROR,
             summary={},
             unknowns=["Summary service failed safely."],
             block_reasons=["Summary service failed safely."],
@@ -255,7 +266,7 @@ def _base_report(
     input_passed = _bool_value(summary, "passed")
     component_explanations = _component_explanations(summary)
 
-    return {
+    report = {
         "passed": passed,
         "status_code": status_code,
         "report_version": REPORT_VERSION,
@@ -294,6 +305,7 @@ def _base_report(
             "交易能力禁用，执行能力禁用。",
         ],
     }
+    return _safe_output_value(report)
 
 
 def _component_explanations(summary: Any) -> list[dict[str, Any]]:
@@ -445,7 +457,7 @@ def _safe_text_list(value: Any) -> list[str]:
 
 def _safe_text(value: str) -> str:
     if _is_unsafe_text(value):
-        return "[redacted unsafe content]"
+        return SAFE_REDACTION_MESSAGE
     return value
 
 
@@ -473,6 +485,28 @@ def _contains_forbidden_content(value: Any) -> bool:
     if isinstance(value_dict, dict):
         return _contains_forbidden_content(value_dict)
     return False
+
+
+def _safe_output_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _safe_output_value(child)
+            for key, child in value.items()
+            if not _is_forbidden_output_key(key)
+        }
+    if isinstance(value, list):
+        return [_safe_output_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_safe_output_value(child) for child in value]
+    if isinstance(value, str):
+        return _safe_text(value)
+    return value
+
+
+def _is_forbidden_output_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    return key.casefold() in {field.casefold() for field in FORBIDDEN_FIELDS}
 
 
 def _bool_value(value: Any, field_name: str) -> bool:
