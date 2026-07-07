@@ -27,7 +27,7 @@ export function ExplanationSafeNextStepsPanel({
         </div>
       )}
       <div className="demo-diagnostics-safety-copy">
-        <p>本区块不新增组件自定义交易动作，也不提供请求按钮。</p>
+        <p>本区块不新增组件自定义交易动作，也不提供请求入口。</p>
       </div>
     </section>
   );

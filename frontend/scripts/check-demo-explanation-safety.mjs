@@ -8,6 +8,7 @@ const srcRoot = path.join(frontendRoot, "src");
 const featureRoot = path.join(srcRoot, "features", "demoExplanation");
 
 const files = {
+  packageJson: path.join(frontendRoot, "package.json"),
   types: path.join(featureRoot, "types.ts"),
   contracts: path.join(featureRoot, "contracts.ts"),
   mapper: path.join(featureRoot, "mapper.ts"),
@@ -106,11 +107,24 @@ function assertNotIncludes(label, source, forbidden) {
   }
 }
 
+function assertMatches(label, source, pattern, description) {
+  if (!pattern.test(source)) {
+    fail(`${label} must match ${description}.`);
+  }
+}
+
+function assertNotMatches(label, source, pattern, description) {
+  if (pattern.test(source)) {
+    fail(`${label} must not match ${description}.`);
+  }
+}
+
 Object.entries(files).forEach(([label, filePath]) =>
   assertFileExists(label, filePath),
 );
 
 if (failures.length === 0) {
+  const packageSource = readSource(files.packageJson);
   const typesSource = readSource(files.types);
   const contractsSource = readSource(files.contracts);
   const mapperSource = readSource(files.mapper);
@@ -132,6 +146,27 @@ if (failures.length === 0) {
     files.forbiddenActionsPanel,
   ];
   const componentSource = componentFiles.map(readSource).join("\n");
+
+  [
+    '"test:demo-explanation-safety"',
+    "check-demo-explanation-safety.mjs",
+    '"test:demo-diagnostics-safety"',
+    "check-demo-diagnostics-safety.mjs",
+    '"test"',
+    "test:demo-diagnostics-safety",
+  ].forEach((expected) =>
+    assertIncludes("package.json", packageSource, expected),
+  );
+  [
+    '"vitest"',
+    '"jest"',
+    '"@testing-library/react"',
+    '"@testing-library/jest-dom"',
+    '"playwright"',
+    '"cypress"',
+  ].forEach((forbidden) =>
+    assertNotIncludes("package.json", packageSource, forbidden),
+  );
 
   [
     "DemoReadOnlyExplanationApiResponse",
@@ -283,6 +318,44 @@ if (failures.length === 0) {
     "ExplanationSafeNextStepsPanel",
     "ExplanationForbiddenActionsPanel",
   ].forEach((expected) => assertIncludes("index.ts", indexSource, expected));
+  [
+    "fetch(",
+    "apiGet(",
+    "axios",
+    "XMLHttpRequest",
+    "useEffect",
+    "setInterval",
+    "setTimeout",
+    "WebSocket",
+    "EventSource",
+    "localStorage",
+    "sessionStorage",
+    "window.location",
+    "<button",
+    "<form",
+    "onSubmit",
+    "submit",
+    "raw_payload",
+    "suggested_lot",
+    "final_lot",
+    "execute_trade",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
+    "auto_trade",
+    "can_trade",
+    "allow_trade",
+    "should_buy",
+    "should_sell",
+    "buy_now",
+    "sell_now",
+    "open_position",
+    "close_position",
+    "ea_command",
+    "trade_signal",
+    "trading_action",
+  ].forEach((forbidden) => assertNotIncludes("index.ts", indexSource, forbidden));
 
   [
     "DemoReadOnlyExplanationPanel",
@@ -307,6 +380,17 @@ if (failures.length === 0) {
   ].forEach((expected) =>
     assertIncludes("component files", componentSource, expected),
   );
+  [
+    /type\s+DemoReadOnlyExplanationPanelProps\s*=\s*{\s*viewModel:\s*DemoReadOnlyExplanationViewModel;\s*}/s,
+    /function\s+DemoReadOnlyExplanationPanel\s*\(\s*{\s*viewModel\s*,?\s*}\s*:\s*DemoReadOnlyExplanationPanelProps\s*\)/s,
+  ].forEach((pattern) =>
+    assertMatches(
+      "component files",
+      componentSource,
+      pattern,
+      `safe ViewModel-only props pattern ${pattern}`,
+    ),
+  );
 
   [
     "只读解释",
@@ -328,6 +412,8 @@ if (failures.length === 0) {
     "mapDemoReadOnlyExplanationApiToViewModel(",
     "apiGet(",
     "fetch(",
+    "axios",
+    "XMLHttpRequest",
     "useEffect",
     "setInterval",
     "setTimeout",
@@ -335,7 +421,11 @@ if (failures.length === 0) {
     "EventSource",
     "localStorage",
     "sessionStorage",
+    "window.location",
     "<button",
+    "<form",
+    "onSubmit",
+    "submit",
     "raw_payload",
     "raw_account_snapshot",
     "raw_positions_order_history",
@@ -347,6 +437,8 @@ if (failures.length === 0) {
     "token",
     "secret",
     "api_key",
+    "label: \"key\"",
+    "label: 'key'",
     "traceback",
     "stack_trace",
     "system_path",
@@ -396,6 +488,38 @@ if (failures.length === 0) {
     "suggested lot",
   ].forEach((forbidden) =>
     assertNotIncludes("component files", componentSource, forbidden),
+  );
+
+  [
+    /:\s*any\b/,
+    /:\s*unknown\b/,
+    /Record\s*</,
+    /DemoReadOnlyExplanationApiResponse/,
+    /raw\s*api/i,
+    /raw\s*object/i,
+    /credentials/i,
+    /account\s+data/i,
+    /order\s+data/i,
+    /trade\s+action\s+data/i,
+    /交易按钮/,
+    /执行按钮/,
+    /刷新按钮/,
+    /API\s*请求按钮/i,
+    /MT4\s*操作入口/i,
+    /风控修改入口/,
+    /仓位计算入口/,
+    /账号连接入口/,
+    /文件读取入口/,
+    /读取文件入口/,
+    /手动刷新按钮/,
+    /交易\s*\/\s*执行按钮/,
+  ].forEach((pattern) =>
+    assertNotMatches(
+      "component files",
+      componentSource,
+      pattern,
+      `forbidden component safety pattern ${pattern}`,
+    ),
   );
 
   [
