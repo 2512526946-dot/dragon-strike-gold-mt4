@@ -13,6 +13,61 @@ const files = {
   mapper: path.join(featureRoot, "mapper.ts"),
   api: path.join(featureRoot, "api.ts"),
   index: path.join(featureRoot, "index.ts"),
+  panel: path.join(
+    featureRoot,
+    "components",
+    "DemoReadOnlyExplanationPanel.tsx",
+  ),
+  safetyBanner: path.join(
+    featureRoot,
+    "components",
+    "ExplanationSafetyBanner.tsx",
+  ),
+  overallPanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationOverallPanel.tsx",
+  ),
+  statusPanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationStatusPanel.tsx",
+  ),
+  componentList: path.join(
+    featureRoot,
+    "components",
+    "ExplanationComponentList.tsx",
+  ),
+  blockerList: path.join(
+    featureRoot,
+    "components",
+    "ExplanationBlockerList.tsx",
+  ),
+  warningList: path.join(
+    featureRoot,
+    "components",
+    "ExplanationWarningList.tsx",
+  ),
+  readinessPanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationReadinessPanel.tsx",
+  ),
+  nextStagePanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationNextStagePanel.tsx",
+  ),
+  safeNextStepsPanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationSafeNextStepsPanel.tsx",
+  ),
+  forbiddenActionsPanel: path.join(
+    featureRoot,
+    "components",
+    "ExplanationForbiddenActionsPanel.tsx",
+  ),
   app: path.join(srcRoot, "App.tsx"),
   diagnosticsDashboard: path.join(
     srcRoot,
@@ -39,12 +94,6 @@ function assertFileExists(label, filePath) {
   }
 }
 
-function assertFileMissing(label, filePath) {
-  if (fs.existsSync(filePath)) {
-    fail(`${label} must not exist: ${filePath}`);
-  }
-}
-
 function assertIncludes(label, source, expected) {
   if (!source.includes(expected)) {
     fail(`${label} must include ${JSON.stringify(expected)}.`);
@@ -60,11 +109,6 @@ function assertNotIncludes(label, source, forbidden) {
 Object.entries(files).forEach(([label, filePath]) =>
   assertFileExists(label, filePath),
 );
-assertFileMissing(
-  "ExplanationPanel",
-  path.join(featureRoot, "components", "DemoReadOnlyExplanationPanel.tsx"),
-);
-assertFileMissing("demoExplanation components directory", path.join(featureRoot, "components"));
 
 if (failures.length === 0) {
   const typesSource = readSource(files.types);
@@ -74,6 +118,20 @@ if (failures.length === 0) {
   const indexSource = readSource(files.index);
   const appSource = readSource(files.app);
   const diagnosticsDashboardSource = readSource(files.diagnosticsDashboard);
+  const componentFiles = [
+    files.panel,
+    files.safetyBanner,
+    files.overallPanel,
+    files.statusPanel,
+    files.componentList,
+    files.blockerList,
+    files.warningList,
+    files.readinessPanel,
+    files.nextStagePanel,
+    files.safeNextStepsPanel,
+    files.forbiddenActionsPanel,
+  ];
+  const componentSource = componentFiles.map(readSource).join("\n");
 
   [
     "DemoReadOnlyExplanationApiResponse",
@@ -213,7 +271,132 @@ if (failures.length === 0) {
     "fetchDemoReadOnlyExplanation",
     "mapDemoReadOnlyExplanationApiToViewModel",
     "DemoReadOnlyExplanationViewModel",
+    "DemoReadOnlyExplanationPanel",
+    "ExplanationSafetyBanner",
+    "ExplanationOverallPanel",
+    "ExplanationStatusPanel",
+    "ExplanationComponentList",
+    "ExplanationBlockerList",
+    "ExplanationWarningList",
+    "ExplanationReadinessPanel",
+    "ExplanationNextStagePanel",
+    "ExplanationSafeNextStepsPanel",
+    "ExplanationForbiddenActionsPanel",
   ].forEach((expected) => assertIncludes("index.ts", indexSource, expected));
+
+  [
+    "DemoReadOnlyExplanationPanel",
+    "DemoReadOnlyExplanationPanelProps",
+    "viewModel: DemoReadOnlyExplanationViewModel",
+    "ExplanationSafetyBanner",
+    "ExplanationOverallPanel",
+    "ExplanationStatusPanel",
+    "ExplanationComponentList",
+    "ExplanationBlockerList",
+    "ExplanationWarningList",
+    "ExplanationReadinessPanel",
+    "ExplanationNextStagePanel",
+    "ExplanationSafeNextStepsPanel",
+    "ExplanationForbiddenActionsPanel",
+    "ready",
+    "blocked",
+    "api_error",
+    "security_blocked",
+    "empty",
+    "stale_or_unknown",
+  ].forEach((expected) =>
+    assertIncludes("component files", componentSource, expected),
+  );
+
+  [
+    "只读解释",
+    "非交易许可",
+    "非执行指令",
+    "交易能力禁用",
+    "执行能力禁用",
+    "demo-only",
+    "read-only",
+    "next_allowed_stage 只是流程提示",
+    "当前区块不提供交易、执行、风控修改或仓位计算能力",
+    "SECURITY BLOCKED",
+  ].forEach((expected) =>
+    assertIncludes("component files", componentSource, expected),
+  );
+
+  [
+    "fetchDemoReadOnlyExplanation(",
+    "mapDemoReadOnlyExplanationApiToViewModel(",
+    "apiGet(",
+    "fetch(",
+    "useEffect",
+    "setInterval",
+    "setTimeout",
+    "WebSocket",
+    "EventSource",
+    "localStorage",
+    "sessionStorage",
+    "<button",
+    "raw_payload",
+    "raw_account_snapshot",
+    "raw_positions_order_history",
+    "raw_market_symbol",
+    "account_number",
+    "login",
+    "password",
+    "credential",
+    "token",
+    "secret",
+    "api_key",
+    "traceback",
+    "stack_trace",
+    "system_path",
+    "order_id",
+    "ticket",
+    "execute_trade",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
+    "auto_trade",
+    "can_trade",
+    "allow_trade",
+    "should_buy",
+    "should_sell",
+    "buy_now",
+    "sell_now",
+    "open_position",
+    "close_position",
+    "suggested_lot",
+    "final_lot",
+    "override_risk",
+    "bypass_gate",
+    "ea_command",
+    "trade_signal",
+    "trading_action",
+    "买入",
+    "卖出",
+    "开仓",
+    "平仓",
+    "建议手数",
+    "可以交易",
+    "允许交易",
+    "自动下单",
+    "自动交易",
+    "执行交易",
+    "下单指令",
+    "风控放行",
+    "绕过风控",
+    "should buy",
+    "should sell",
+    "open position",
+    "close position",
+    "execute trade",
+    "allow trade",
+    "can trade",
+    "suggested lot",
+  ].forEach((forbidden) =>
+    assertNotIncludes("component files", componentSource, forbidden),
+  );
 
   [
     "demoExplanation",
@@ -242,5 +425,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "[demo-explanation-safety] passed: explanation client and mapper stay read-only, demo-only, and UI-free.",
+  "[demo-explanation-safety] passed: explanation client, mapper, and panel stay read-only, demo-only, and UI-free.",
 );
