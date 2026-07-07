@@ -95,6 +95,20 @@ function assertFileExists(label, filePath) {
   }
 }
 
+function listSourceFiles(rootDir) {
+  return fs.readdirSync(rootDir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      if (["dist", "node_modules"].includes(entry.name)) {
+        return [];
+      }
+      return listSourceFiles(entryPath);
+    }
+
+    return /\.(ts|tsx|js|jsx|mjs)$/.test(entry.name) ? [entryPath] : [];
+  });
+}
+
 function assertIncludes(label, source, expected) {
   if (!source.includes(expected)) {
     fail(`${label} must include ${JSON.stringify(expected)}.`);
@@ -132,6 +146,7 @@ if (failures.length === 0) {
   const indexSource = readSource(files.index);
   const appSource = readSource(files.app);
   const diagnosticsDashboardSource = readSource(files.diagnosticsDashboard);
+  const srcFiles = listSourceFiles(srcRoot);
   const componentFiles = [
     files.panel,
     files.safetyBanner,
@@ -534,6 +549,8 @@ if (failures.length === 0) {
     "apiErrorViewModel",
     "explanationState",
     "setExplanationState",
+    "fetchDemoReadOnlyExplanation().catch(() => apiErrorViewModel())",
+    "setExplanationState({ state: \"ready\", viewModel: apiErrorViewModel() })",
   ].forEach((expected) =>
     assertIncludes(
       "DemoReadOnlyDiagnosticsDashboard.tsx",
@@ -549,15 +566,28 @@ if (failures.length === 0) {
     "EventSource",
     "localStorage",
     "sessionStorage",
+    "window.location",
+    "<form",
+    "onSubmit",
+    "submit",
     "刷新只读解释",
     "加载解释</button",
+    "加载解释",
+    "API 请求按钮",
     "交易按钮",
     "执行按钮",
+    "自动交易开关",
+    "自动训练开关",
     "MT4 操作入口",
+    "MT4 操作按钮",
     "风控修改入口",
+    "风控按钮",
     "仓位计算入口",
+    "仓位按钮",
     "账号连接入口",
+    "账号连接按钮",
     "文件读取入口",
+    "文件读取按钮",
     "raw API response",
     "raw payload",
   ].forEach((forbidden) =>
@@ -567,6 +597,34 @@ if (failures.length === 0) {
       forbidden,
     ),
   );
+  [
+    /useEffect\s*\([^)]*fetchDemoReadOnlyExplanation/s,
+    /fetchDemoReadOnlyExplanation\s*\(\s*\)(?!\.catch)/,
+    /onClick=\{(?!handleRefreshDiagnostics)[^}]*\}/,
+    /<a\s+/i,
+  ].forEach((pattern) =>
+    assertNotMatches(
+      "DemoReadOnlyDiagnosticsDashboard.tsx",
+      diagnosticsDashboardSource,
+      pattern,
+      `forbidden dashboard integration pattern ${pattern}`,
+    ),
+  );
+
+  const directExplanationPanelReferences = srcFiles.filter((filePath) => {
+    const source = readSource(filePath);
+    return (
+      source.includes("DemoReadOnlyExplanationPanel") &&
+      !filePath.endsWith(path.join("components", "DemoReadOnlyExplanationPanel.tsx")) &&
+      filePath !== files.diagnosticsDashboard &&
+      !filePath.endsWith(path.join("features", "demoExplanation", "index.ts"))
+    );
+  });
+  if (directExplanationPanelReferences.length > 0) {
+    fail(
+      `DemoReadOnlyExplanationPanel must only be directly used by the diagnostics dashboard: ${directExplanationPanelReferences.join(", ")}`,
+    );
+  }
 
   const dashboardButtonCount =
     diagnosticsDashboardSource.match(/<button\b/g)?.length ?? 0;

@@ -9,6 +9,7 @@ const featureRoot = path.join(srcRoot, "features", "demoDiagnostics");
 const componentRoot = path.join(featureRoot, "components");
 
 const files = {
+  packageJson: path.join(frontendRoot, "package.json"),
   app: path.join(srcRoot, "App.tsx"),
   contracts: path.join(featureRoot, "contracts.ts"),
   mapper: path.join(featureRoot, "mapper.ts"),
@@ -49,10 +50,30 @@ function assertMatches(label, source, pattern, message) {
   }
 }
 
+function assertNotMatches(label, source, pattern, message) {
+  if (pattern.test(source)) {
+    fail(`${label} ${message}`);
+  }
+}
+
 function assertFileExists(label, filePath) {
   if (!fs.existsSync(filePath)) {
     fail(`${label} file is missing: ${filePath}`);
   }
+}
+
+function listSourceFiles(rootDir) {
+  return fs.readdirSync(rootDir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      if (["dist", "node_modules"].includes(entry.name)) {
+        return [];
+      }
+      return listSourceFiles(entryPath);
+    }
+
+    return /\.(ts|tsx|js|jsx|mjs)$/.test(entry.name) ? [entryPath] : [];
+  });
 }
 
 Object.entries(files).forEach(([label, filePath]) => {
@@ -60,12 +81,14 @@ Object.entries(files).forEach(([label, filePath]) => {
 });
 
 if (failures.length === 0) {
+  const packageSource = readSource(files.packageJson);
   const contractsSource = readSource(files.contracts);
   const mapperSource = readSource(files.mapper);
   const apiSource = readSource(files.api);
   const typesSource = readSource(files.types);
   const appSource = readSource(files.app);
   const dashboardSource = readSource(files.dashboard);
+  const srcFiles = listSourceFiles(srcRoot);
   const visibleComponentSource = [
     files.dashboard,
     files.overall,
@@ -84,6 +107,24 @@ if (failures.length === 0) {
     "ReadinessViewModel",
     "SafetyFlagsViewModel",
   ].forEach((typeName) => assertIncludes("types.ts", typesSource, typeName));
+
+  [
+    '"test"',
+    '"test:demo-diagnostics-safety"',
+    '"test:demo-explanation-safety"',
+    "check-demo-diagnostics-safety.mjs",
+    "check-demo-explanation-safety.mjs",
+  ].forEach((expected) => assertIncludes("package.json", packageSource, expected));
+  [
+    '"vitest"',
+    '"jest"',
+    '"@testing-library/react"',
+    '"@testing-library/jest-dom"',
+    '"playwright"',
+    '"cypress"',
+  ].forEach((forbidden) =>
+    assertNotIncludes("package.json", packageSource, forbidden),
+  );
 
   [
     "ALLOWED_RESPONSE_FIELDS",
@@ -165,14 +206,45 @@ if (failures.length === 0) {
     "EventSource",
     "localStorage",
     "sessionStorage",
+    "window.location",
+    "<form",
+    "onSubmit",
+    "submit",
   ].forEach((forbidden) =>
     assertNotIncludes("Dashboard component", dashboardSource, forbidden),
+  );
+  [
+    /useEffect\s*\([^)]*fetchDemoReadOnlyExplanation/s,
+    /fetchDemoReadOnlyExplanation\s*\(\s*\)(?!\.catch)/,
+    /onClick=\{(?!handleRefreshDiagnostics)[^}]*\}/,
+    /<a\s+/i,
+  ].forEach((pattern) =>
+    assertNotMatches(
+      "Dashboard component",
+      dashboardSource,
+      pattern,
+      `must not match forbidden integration pattern ${pattern}.`,
+    ),
   );
   [
     "DemoReadOnlyExplanationPanel",
     "fetchDemoReadOnlyExplanation",
     "demoExplanation",
   ].forEach((forbidden) => assertNotIncludes("App.tsx", appSource, forbidden));
+  const directExplanationPanelReferences = srcFiles.filter((filePath) => {
+    const source = readSource(filePath);
+    return (
+      source.includes("DemoReadOnlyExplanationPanel") &&
+      !filePath.endsWith(path.join("components", "DemoReadOnlyExplanationPanel.tsx")) &&
+      filePath !== files.dashboard &&
+      !filePath.endsWith(path.join("features", "demoExplanation", "index.ts"))
+    );
+  });
+  if (directExplanationPanelReferences.length > 0) {
+    fail(
+      `DemoReadOnlyExplanationPanel must only be directly used by the diagnostics dashboard: ${directExplanationPanelReferences.join(", ")}`,
+    );
+  }
 
   const dashboardButtonCount = dashboardSource.match(/<button\b/g)?.length ?? 0;
   if (dashboardButtonCount !== 1) {
@@ -188,13 +260,22 @@ if (failures.length === 0) {
   [
     "刷新只读解释",
     "加载解释</button",
+    "加载解释",
+    "API 请求按钮",
     "交易按钮",
     "执行按钮",
+    "自动交易开关",
+    "自动训练开关",
     "MT4 操作入口",
+    "MT4 操作按钮",
     "风控修改入口",
+    "风控按钮",
     "仓位计算入口",
+    "仓位按钮",
     "账号连接入口",
+    "账号连接按钮",
     "文件读取入口",
+    "文件读取按钮",
     "raw API response",
     "raw payload",
   ].forEach((forbidden) =>
@@ -215,6 +296,8 @@ if (failures.length === 0) {
     "next_allowed_stage 是流程提示，不是交易许可",
     "next_allowed_stage 只是流程提示",
     "当前区块不提供交易、执行、风控修改或仓位计算能力",
+    "fetchDemoReadOnlyExplanation().catch(() => apiErrorViewModel())",
+    "setExplanationState({ state: \"ready\", viewModel: apiErrorViewModel() })",
   ].forEach((expected) =>
     assertIncludes("visible dashboard components", visibleComponentSource, expected),
   );
