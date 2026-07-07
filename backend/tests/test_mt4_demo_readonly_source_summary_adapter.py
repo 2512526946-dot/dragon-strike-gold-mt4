@@ -14,22 +14,44 @@ from app.services.mt4_demo_readonly_schema_validator import (
 
 
 FORBIDDEN_OUTPUT_KEYS = {
-    "payload",
+    "password",
+    "credential",
+    "token",
+    "secret",
+    "api_key",
+    "login",
+    "account_number",
     "raw_payload",
-    "suggested_lot",
-    "final_lot",
-    "buy",
-    "sell",
-    "open",
-    "close",
+    "raw_account_snapshot",
+    "raw_positions_order_history",
+    "raw_market_symbol",
+    "payload",
+    "ticket",
+    "order_id",
+    "order_send",
+    "order_close",
+    "order_modify",
+    "order_delete",
     "ea_command",
-    "trade_signal",
-    "trading_action",
-    "trade_plan",
+    "execute_trade",
     "can_trade",
     "allow_trade",
     "should_buy",
     "should_sell",
+    "buy_now",
+    "sell_now",
+    "open_position",
+    "close_position",
+    "suggested_lot",
+    "final_lot",
+    "trade_signal",
+    "trading_action",
+    "override_risk",
+    "bypass_gate",
+    "traceback",
+    "stack_trace",
+    "system_path",
+    "trade_plan",
 }
 
 
@@ -165,6 +187,19 @@ def _assert_no_forbidden_output_keys(result: dict[str, object]) -> None:
         assert FORBIDDEN_OUTPUT_KEYS.isdisjoint(component_status)
     for validation_status in result["validation_statuses"]:
         assert FORBIDDEN_OUTPUT_KEYS.isdisjoint(validation_status)
+    assert not _contains_forbidden_key_recursive(result)
+
+
+def _contains_forbidden_key_recursive(value: object) -> bool:
+    if isinstance(value, dict):
+        return any(
+            key in FORBIDDEN_OUTPUT_KEYS or _contains_forbidden_key_recursive(child)
+            for key, child in value.items()
+            if isinstance(key, str)
+        )
+    if isinstance(value, list):
+        return any(_contains_forbidden_key_recursive(item) for item in value)
+    return False
 
 
 def _assert_blocked(result: dict[str, object]) -> None:
@@ -343,7 +378,8 @@ def test_nested_forbidden_payload_field_blocks_summary_without_leaking_value() -
 
     _assert_blocked(result)
     assert "RAW_ORDER_ID_999" not in str(result)
-    assert "open_positions.order_id" in str(result["validation_statuses"])
+    assert "open_positions.order_id" not in str(result["validation_statuses"])
+    assert "forbidden_field_detected" in str(result["validation_statuses"])
 
 
 def test_unknown_field_blocks_summary() -> None:
@@ -447,6 +483,186 @@ def test_output_does_not_leak_trade_instruction_values() -> None:
     assert "BUY_SIGNAL_SHOULD_NOT_LEAK" not in result_text
     assert "OPEN_NOW_SHOULD_NOT_LEAK" not in result_text
     assert "EA_COMMAND_SHOULD_NOT_LEAK" not in result_text
+
+
+@pytest.mark.parametrize(
+    ("polluted_key", "polluted_value"),
+    [
+        ("raw_payload", {"secret": "RAW_PAYLOAD_SHOULD_NOT_LEAK"}),
+        ("password", "PASSWORD_SHOULD_NOT_LEAK"),
+        ("token", "TOKEN_SHOULD_NOT_LEAK"),
+        ("secret", "SECRET_SHOULD_NOT_LEAK"),
+        ("login", "LOGIN_SHOULD_NOT_LEAK"),
+        ("account_number", "ACCOUNT_NUMBER_SHOULD_NOT_LEAK"),
+        ("ticket", "TICKET_SHOULD_NOT_LEAK"),
+        ("order_id", "ORDER_ID_SHOULD_NOT_LEAK"),
+        ("suggested_lot", "SUGGESTED_LOT_SHOULD_NOT_LEAK"),
+        ("final_lot", "FINAL_LOT_SHOULD_NOT_LEAK"),
+        ("buy_now", "BUY_NOW_SHOULD_NOT_LEAK"),
+        ("sell_now", "SELL_NOW_SHOULD_NOT_LEAK"),
+        ("order_send", "ORDER_SEND_SHOULD_NOT_LEAK"),
+        ("order_close", "ORDER_CLOSE_SHOULD_NOT_LEAK"),
+        ("ea_command", "EA_COMMAND_SHOULD_NOT_LEAK"),
+        ("trade_signal", "TRADE_SIGNAL_SHOULD_NOT_LEAK"),
+        ("trading_action", "TRADING_ACTION_SHOULD_NOT_LEAK"),
+        ("traceback", "TRACEBACK_SHOULD_NOT_LEAK"),
+        ("system_path", "C:\\Users\\86135\\secret\\validator.py"),
+    ],
+)
+def test_polluted_validator_extra_fields_are_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    polluted_key: str,
+    polluted_value: object,
+) -> None:
+    def fake_validate(_filename: object, _payload: object) -> dict[str, object]:
+        return {
+            "passed": True,
+            "status_code": "MT4_DEMO_READONLY_SCHEMA_VALID",
+            "reason_codes": [],
+            "missing_fields": [],
+            "invalid_fields": [],
+            "blocked_fields": [],
+            polluted_key: polluted_value,
+        }
+
+    monkeypatch.setattr(
+        adapter.schema_validator,
+        "validate_mt4_demo_readonly_payload",
+        fake_validate,
+    )
+
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    _assert_blocked(result)
+    assert result["status_code"] == adapter.MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED
+    assert str(polluted_value) not in str(result)
+    _assert_no_forbidden_output_keys(result)
+
+
+@pytest.mark.parametrize(
+    "polluted_value",
+    [
+        "PASSWORD_SHOULD_NOT_LEAK",
+        "TOKEN_SHOULD_NOT_LEAK",
+        "SECRET_SHOULD_NOT_LEAK",
+        "LOGIN_SHOULD_NOT_LEAK",
+        "ACCOUNT_NUMBER_SHOULD_NOT_LEAK",
+        "TICKET_SHOULD_NOT_LEAK",
+        "ORDER_ID_SHOULD_NOT_LEAK",
+        "LOT_SHOULD_NOT_LEAK",
+        "BUY_NOW_SHOULD_NOT_LEAK",
+        "EA_COMMAND_SHOULD_NOT_LEAK",
+        "TRACEBACK_SHOULD_NOT_LEAK",
+        "C:\\Users\\86135\\secret\\validator.py",
+        "/home/user/secret/validator.py",
+    ],
+)
+def test_polluted_validator_list_values_are_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    polluted_value: str,
+) -> None:
+    def fake_validate(_filename: object, _payload: object) -> dict[str, object]:
+        return {
+            "passed": False,
+            "status_code": polluted_value,
+            "reason_codes": [polluted_value],
+            "missing_fields": [polluted_value],
+            "invalid_fields": [polluted_value],
+            "blocked_fields": [polluted_value],
+        }
+
+    monkeypatch.setattr(
+        adapter.schema_validator,
+        "validate_mt4_demo_readonly_payload",
+        fake_validate,
+    )
+
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    _assert_blocked(result)
+    assert polluted_value not in str(result)
+    assert "validator_output_sanitized" in str(result)
+    _assert_no_forbidden_output_keys(result)
+
+
+@pytest.mark.parametrize(
+    ("flag_name", "unsafe_value"),
+    [
+        ("can_execute", True),
+        ("is_tradable", True),
+        ("is_trading_permission", True),
+        ("is_execution_instruction", True),
+        ("allowed_to_call_ea", True),
+        ("allowed_to_modify_risk", True),
+    ],
+)
+def test_unsafe_validator_safety_flags_are_forced_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+    flag_name: str,
+    unsafe_value: bool,
+) -> None:
+    def fake_validate(_filename: object, _payload: object) -> dict[str, object]:
+        return {
+            "passed": True,
+            "status_code": "MT4_DEMO_READONLY_SCHEMA_VALID",
+            "reason_codes": [],
+            "missing_fields": [],
+            "invalid_fields": [],
+            "blocked_fields": [],
+            flag_name: unsafe_value,
+        }
+
+    monkeypatch.setattr(
+        adapter.schema_validator,
+        "validate_mt4_demo_readonly_payload",
+        fake_validate,
+    )
+
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    _assert_blocked(result)
+    assert result["status_code"] == adapter.MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED
+    _assert_safety_fields(result)
+
+
+def test_validator_exception_is_safely_blocked_without_leaking_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_validate(_filename: object, _payload: object) -> dict[str, object]:
+        raise RuntimeError(
+            "DO_NOT_LEAK_EXCEPTION C:\\Users\\86135\\secret\\validator.py Traceback"
+        )
+
+    monkeypatch.setattr(
+        adapter.schema_validator,
+        "validate_mt4_demo_readonly_payload",
+        fake_validate,
+    )
+
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    _assert_blocked(result)
+    assert result["status_code"] == adapter.MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED
+    assert "DO_NOT_LEAK_EXCEPTION" not in str(result)
+    assert "C:\\Users\\86135" not in str(result)
+    assert "Traceback" not in str(result)
+    assert "VALIDATOR_EXCEPTION_SANITIZED" in str(result)
+
+
+def test_final_summary_has_no_forbidden_keys_at_any_level() -> None:
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    assert result["passed"] is True
+    _assert_no_forbidden_output_keys(result)
+
+
+def test_stage_labels_do_not_mean_trading_permission_or_instruction() -> None:
+    result = adapter.build_mt4_demo_readonly_source_summary(_valid_payloads())
+
+    assert "trading_permission" not in result["next_allowed_stage"]
+    assert "trade" not in result["next_allowed_stage"]
+    assert "instruction" not in result["next_blocked_stage"]
+    assert "command" not in result["next_blocked_stage"]
 
 
 def test_adapter_does_not_call_filesystem_or_network(

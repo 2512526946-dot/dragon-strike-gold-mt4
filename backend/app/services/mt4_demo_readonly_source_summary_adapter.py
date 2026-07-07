@@ -57,24 +57,82 @@ _SAFETY_FIELDS: dict[str, bool] = {
 
 _FORBIDDEN_RESULT_FIELDS = frozenset(
     {
+        "password",
+        "credential",
+        "token",
+        "secret",
+        "api_key",
+        "login",
+        "account_number",
         "raw_payload",
+        "raw_account_snapshot",
+        "raw_positions_order_history",
+        "raw_market_symbol",
         "payload",
-        "suggested_lot",
-        "final_lot",
-        "buy",
-        "sell",
-        "open",
-        "close",
+        "ticket",
+        "order_id",
+        "order_send",
+        "order_close",
+        "order_modify",
+        "order_delete",
         "ea_command",
-        "trade_signal",
-        "trading_action",
-        "trade_plan",
+        "execute_trade",
         "can_trade",
         "allow_trade",
         "should_buy",
         "should_sell",
+        "buy_now",
+        "sell_now",
+        "open_position",
+        "close_position",
+        "suggested_lot",
+        "final_lot",
+        "trade_signal",
+        "trading_action",
+        "override_risk",
+        "bypass_gate",
+        "traceback",
+        "stack_trace",
+        "system_path",
+        "trade_plan",
     }
 )
+
+_VALIDATION_STATUS_CODES = frozenset(
+    {
+        schema_validator.MT4_DEMO_READONLY_SCHEMA_VALID,
+        schema_validator.MT4_DEMO_READONLY_SCHEMA_INVALID,
+        schema_validator.MT4_DEMO_READONLY_SCHEMA_INPUT_INVALID,
+        schema_validator.MT4_DEMO_READONLY_SCHEMA_VERSION_UNSUPPORTED,
+        schema_validator.MT4_DEMO_READONLY_SOURCE_MODE_REJECTED,
+        schema_validator.MT4_DEMO_READONLY_SAFETY_FIELD_VIOLATION,
+        schema_validator.MT4_DEMO_READONLY_FORBIDDEN_FIELD_DETECTED,
+        schema_validator.MT4_DEMO_READONLY_FILENAME_REJECTED,
+    }
+)
+
+_SAFE_REASON_CODES = frozenset(
+    {
+        "PAYLOAD_NOT_DICT",
+        "FILENAME_REJECTED",
+        "REQUIRED_FIELD_MISSING",
+        "UNKNOWN_FIELD_DETECTED",
+        "FIELD_TYPE_INVALID",
+        "FIELD_VALUE_INVALID",
+        "SCHEMA_VERSION_UNSUPPORTED",
+        "SOURCE_MODE_REJECTED",
+        "SAFETY_FIELD_VIOLATION",
+        "FORBIDDEN_FIELD_DETECTED",
+        "VALIDATOR_OUTPUT_SANITIZED",
+        "UNSAFE_VALIDATOR_OUTPUT_BLOCKED",
+        "VALIDATOR_EXCEPTION_SANITIZED",
+        "UNEXPECTED_COMPONENT",
+    }
+)
+
+_SANITIZED_REASON_CODE = "VALIDATOR_OUTPUT_SANITIZED"
+_UNSAFE_VALIDATOR_OUTPUT_REASON_CODE = "UNSAFE_VALIDATOR_OUTPUT_BLOCKED"
+_VALIDATOR_EXCEPTION_REASON_CODE = "VALIDATOR_EXCEPTION_SANITIZED"
 
 
 def get_required_mt4_demo_readonly_source_filenames() -> tuple[str, ...]:
@@ -131,10 +189,15 @@ def build_mt4_demo_readonly_source_summary(
             block_reasons.append(f"missing component: {filename}")
             continue
 
-        validation_result = schema_validator.validate_mt4_demo_readonly_payload(
-            filename,
-            payloads_by_filename[filename],
-        )
+        try:
+            raw_validation_result = schema_validator.validate_mt4_demo_readonly_payload(
+                filename,
+                payloads_by_filename[filename],
+            )
+        except Exception:
+            raw_validation_result = _validator_exception_result()
+
+        validation_result = _sanitize_validation_result(raw_validation_result)
         component_statuses.append(
             _component_status_from_validation(filename, validation_result)
         )
@@ -270,7 +333,7 @@ def _component_status_from_validation(
         "component_name": component_name,
         "filename": filename,
         "passed": passed,
-        "status_code": str(validation_result["status_code"]),
+        "status_code": _safe_status_code(validation_result.get("status_code")),
         "safe_summary": (
             f"{component_name} schema validation passed."
             if passed
@@ -298,11 +361,11 @@ def _validation_status_from_result(
     return {
         "filename": filename,
         "passed": validation_result["passed"] is True,
-        "status_code": str(validation_result["status_code"]),
-        "reason_codes": _safe_string_list(validation_result.get("reason_codes")),
-        "missing_fields": _safe_string_list(validation_result.get("missing_fields")),
-        "invalid_fields": _safe_string_list(validation_result.get("invalid_fields")),
-        "blocked_fields": _safe_string_list(validation_result.get("blocked_fields")),
+        "status_code": _safe_status_code(validation_result.get("status_code")),
+        "reason_codes": _safe_reason_codes(validation_result.get("reason_codes")),
+        "missing_fields": _safe_field_paths(validation_result.get("missing_fields")),
+        "invalid_fields": _safe_field_paths(validation_result.get("invalid_fields")),
+        "blocked_fields": _safe_field_paths(validation_result.get("blocked_fields")),
     }
 
 
@@ -339,7 +402,7 @@ def _block_reasons_from_validation(
 ) -> list[str]:
     component_name = _FILENAME_TO_COMPONENT[filename]
     reasons = [f"schema validation failed: {component_name}"]
-    reason_codes = set(_safe_string_list(validation_result.get("reason_codes")))
+    reason_codes = set(_safe_reason_codes(validation_result.get("reason_codes")))
     if "FORBIDDEN_FIELD_DETECTED" in reason_codes:
         reasons.append(f"forbidden field detected: {component_name}")
     if "SAFETY_FIELD_VIOLATION" in reason_codes:
@@ -361,10 +424,15 @@ def _blocked_status_code(
     reason_codes = {
         reason
         for status in validation_statuses
-        for reason in _safe_string_list(status.get("reason_codes"))
+        for reason in _safe_reason_codes(status.get("reason_codes"))
     }
     if reason_codes.intersection(
-        {"SAFETY_FIELD_VIOLATION", "FORBIDDEN_FIELD_DETECTED"}
+        {
+            "SAFETY_FIELD_VIOLATION",
+            "FORBIDDEN_FIELD_DETECTED",
+            _UNSAFE_VALIDATOR_OUTPUT_REASON_CODE,
+            _VALIDATOR_EXCEPTION_REASON_CODE,
+        }
     ):
         return MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED
     if any(status["passed"] is not True for status in validation_statuses):
@@ -392,10 +460,155 @@ def _safe_unexpected_component_label(
     return "<rejected_filename>"
 
 
-def _safe_string_list(value: object) -> list[str]:
+def _validator_exception_result() -> dict[str, Any]:
+    return {
+        "passed": False,
+        "status_code": MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED,
+        "reason_codes": [_VALIDATOR_EXCEPTION_REASON_CODE],
+        "missing_fields": [],
+        "invalid_fields": [],
+        "blocked_fields": [],
+    }
+
+
+def _sanitize_validation_result(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return _unsafe_validation_result()
+
+    unsafe_output = _contains_forbidden_result_key(value) or _has_unsafe_safety_flags(value)
+
+    reason_codes = _safe_reason_codes(value.get("reason_codes"))
+    missing_fields = _safe_field_paths(value.get("missing_fields"))
+    invalid_fields = _safe_field_paths(value.get("invalid_fields"))
+    blocked_fields = _safe_field_paths(value.get("blocked_fields"))
+
+    sanitized = {
+        "passed": value.get("passed") is True and not unsafe_output,
+        "status_code": _safe_status_code(value.get("status_code")),
+        "reason_codes": reason_codes,
+        "missing_fields": missing_fields,
+        "invalid_fields": invalid_fields,
+        "blocked_fields": blocked_fields,
+    }
+
+    if unsafe_output:
+        sanitized["passed"] = False
+        sanitized["status_code"] = schema_validator.MT4_DEMO_READONLY_SAFETY_FIELD_VIOLATION
+        sanitized["reason_codes"] = list(
+            dict.fromkeys(
+                [
+                    *reason_codes,
+                    _SANITIZED_REASON_CODE,
+                    _UNSAFE_VALIDATOR_OUTPUT_REASON_CODE,
+                ]
+            )
+        )
+
+    return sanitized
+
+
+def _unsafe_validation_result() -> dict[str, Any]:
+    return {
+        "passed": False,
+        "status_code": schema_validator.MT4_DEMO_READONLY_SAFETY_FIELD_VIOLATION,
+        "reason_codes": [
+            _SANITIZED_REASON_CODE,
+            _UNSAFE_VALIDATOR_OUTPUT_REASON_CODE,
+        ],
+        "missing_fields": [],
+        "invalid_fields": [],
+        "blocked_fields": [],
+    }
+
+
+def _safe_status_code(value: object) -> str:
+    if isinstance(value, str) and value in _VALIDATION_STATUS_CODES:
+        return value
+    if value == MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED:
+        return MT4_DEMO_READONLY_SOURCE_SUMMARY_SAFETY_BLOCKED
+    return "VALIDATOR_STATUS_SANITIZED"
+
+
+def _safe_reason_codes(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [item for item in value if isinstance(item, str)]
+    reason_codes: list[str] = []
+    for item in value:
+        if item in _SAFE_REASON_CODES:
+            reason_codes.append(item)
+        elif isinstance(item, str):
+            reason_codes.append(_SANITIZED_REASON_CODE)
+    return list(dict.fromkeys(reason_codes))
+
+
+def _safe_field_paths(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    field_paths: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        sanitized_path = _safe_field_path(item)
+        if sanitized_path is not None:
+            field_paths.append(sanitized_path)
+    return list(dict.fromkeys(field_paths))
+
+
+def _safe_field_path(field_path: str) -> str | None:
+    parts = [part for part in field_path.split(".") if part]
+    if not parts:
+        return None
+    lower_field_path = field_path.lower()
+    lower_parts = [part.lower() for part in parts]
+    if field_path != lower_field_path:
+        return "validator_output_sanitized"
+    if _looks_like_path_or_trace(field_path):
+        return "validator_output_sanitized"
+    if any(part in _FORBIDDEN_RESULT_FIELDS for part in lower_parts):
+        return "forbidden_field_detected"
+    if any(forbidden_key in lower_field_path for forbidden_key in _FORBIDDEN_RESULT_FIELDS):
+        return "forbidden_field_detected"
+    if any(not _is_safe_field_name_part(part) for part in parts):
+        return "validator_output_sanitized"
+    return ".".join(parts)
+
+
+def _is_safe_field_name_part(value: str) -> bool:
+    return value.replace("_", "").isalnum()
+
+
+def _contains_forbidden_result_key(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, child_value in value.items():
+            if isinstance(key, str) and key in _FORBIDDEN_RESULT_FIELDS:
+                return True
+            if _contains_forbidden_result_key(child_value):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_contains_forbidden_result_key(item) for item in value)
+    if isinstance(value, str):
+        return _looks_like_path_or_trace(value)
+    return False
+
+
+def _looks_like_path_or_trace(value: str) -> bool:
+    lower_value = value.lower()
+    return (
+        "traceback" in lower_value
+        or "stack trace" in lower_value
+        or "c:\\users\\" in lower_value
+        or "\\appdata\\" in lower_value
+        or lower_value.startswith("/home/")
+        or ".py" in lower_value
+    )
+
+
+def _has_unsafe_safety_flags(value: dict[str, Any]) -> bool:
+    for field_name, expected_value in _SAFETY_FIELDS.items():
+        if field_name in value and value[field_name] is not expected_value:
+            return True
+    return False
 
 
 def _component_safety_fields() -> dict[str, bool]:
