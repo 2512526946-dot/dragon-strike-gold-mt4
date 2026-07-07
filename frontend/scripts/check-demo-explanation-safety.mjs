@@ -529,15 +529,69 @@ if (failures.length === 0) {
     "ExplanationPanel",
   ].forEach((forbidden) => assertNotIncludes("App.tsx", appSource, forbidden));
   [
-    "demoExplanation",
     "fetchDemoReadOnlyExplanation",
     "DemoReadOnlyExplanationPanel",
-    "ExplanationPanel",
+    "apiErrorViewModel",
+    "explanationState",
+    "setExplanationState",
+  ].forEach((expected) =>
+    assertIncludes(
+      "DemoReadOnlyDiagnosticsDashboard.tsx",
+      diagnosticsDashboardSource,
+      expected,
+    ),
+  );
+  [
+    "useEffect",
+    "setInterval",
+    "setTimeout",
+    "WebSocket",
+    "EventSource",
+    "localStorage",
+    "sessionStorage",
+    "刷新只读解释",
+    "加载解释</button",
+    "交易按钮",
+    "执行按钮",
+    "MT4 操作入口",
+    "风控修改入口",
+    "仓位计算入口",
+    "账号连接入口",
+    "文件读取入口",
+    "raw API response",
+    "raw payload",
   ].forEach((forbidden) =>
     assertNotIncludes(
       "DemoReadOnlyDiagnosticsDashboard.tsx",
       diagnosticsDashboardSource,
       forbidden,
+    ),
+  );
+
+  const dashboardButtonCount =
+    diagnosticsDashboardSource.match(/<button\b/g)?.length ?? 0;
+  if (dashboardButtonCount !== 1) {
+    fail(
+      `DemoReadOnlyDiagnosticsDashboard.tsx must keep exactly one existing diagnostics refresh button, found ${dashboardButtonCount}.`,
+    );
+  }
+  [
+    "handleRefreshDiagnostics",
+    "刷新 Demo 只读诊断",
+    "只读解释",
+    "非交易许可",
+    "非执行指令",
+    "交易能力禁用",
+    "执行能力禁用",
+    "demo-only",
+    "read-only",
+    "next_allowed_stage 只是流程提示",
+    "当前区块不提供交易、执行、风控修改或仓位计算能力",
+  ].forEach((expected) =>
+    assertIncludes(
+      "DemoReadOnlyDiagnosticsDashboard.tsx",
+      diagnosticsDashboardSource,
+      expected,
     ),
   );
 }
@@ -549,5 +603,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "[demo-explanation-safety] passed: explanation client, mapper, and panel stay read-only, demo-only, and UI-free.",
+  "[demo-explanation-safety] passed: explanation client, mapper, panel, and dashboard integration stay manual, read-only, and demo-only.",
 );

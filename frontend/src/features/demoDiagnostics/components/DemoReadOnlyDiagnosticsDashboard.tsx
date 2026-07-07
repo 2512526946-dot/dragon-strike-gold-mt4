@@ -1,5 +1,11 @@
 import { useState } from "react";
 
+import {
+  DemoReadOnlyExplanationPanel,
+  apiErrorViewModel,
+  fetchDemoReadOnlyExplanation,
+  type DemoReadOnlyExplanationViewModel,
+} from "../../demoExplanation";
 import { getDemoReadOnlyDiagnostics } from "../api";
 import { SECURITY_BLOCKED_MESSAGE } from "../contracts";
 import type { DemoDiagnosticsViewModel } from "../types";
@@ -14,29 +20,46 @@ type DashboardState =
   | { state: "ready"; diagnostics: DemoDiagnosticsViewModel }
   | { state: "error"; message: string };
 
+type ExplanationState =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "ready"; viewModel: DemoReadOnlyExplanationViewModel };
+
 export function DemoReadOnlyDiagnosticsDashboard() {
   const [dashboardState, setDashboardState] = useState<DashboardState>({
+    state: "idle",
+  });
+  const [explanationState, setExplanationState] = useState<ExplanationState>({
     state: "idle",
   });
 
   async function handleRefreshDiagnostics() {
     setDashboardState({ state: "loading" });
+    setExplanationState({ state: "loading" });
 
     try {
-      const diagnostics = await getDemoReadOnlyDiagnostics();
+      const [diagnostics, explanation] = await Promise.all([
+        getDemoReadOnlyDiagnostics(),
+        fetchDemoReadOnlyExplanation().catch(() => apiErrorViewModel()),
+      ]);
       setDashboardState({ state: "ready", diagnostics });
+      setExplanationState({ state: "ready", viewModel: explanation });
     } catch {
       setDashboardState({
         state: "error",
         message:
           "无法读取 Demo 只读诊断。请确认后端已启动；页面不会展示原始错误对象或系统路径。",
       });
+      setExplanationState({ state: "ready", viewModel: apiErrorViewModel() });
     }
   }
 
   const diagnostics =
     dashboardState.state === "ready" ? dashboardState.diagnostics : null;
+  const explanationViewModel =
+    explanationState.state === "ready" ? explanationState.viewModel : null;
   const isLoading = dashboardState.state === "loading";
+  const isExplanationLoading = explanationState.state === "loading";
   const isSecurityBlocked = diagnostics?.ui_state === "security_blocked";
 
   return (
@@ -100,6 +123,42 @@ export function DemoReadOnlyDiagnosticsDashboard() {
           <ReadinessPanel readiness={diagnostics.readiness} />
         </div>
       ) : null}
+
+      <div
+        className="demo-diagnostics-panel-stack"
+        aria-label="Demo 只读解释区块"
+      >
+        {explanationState.state === "idle" ? (
+          <div className="demo-diagnostics-empty-state">
+            <strong>只读解释尚未加载</strong>
+            <p>
+              复用上方 Demo 只读诊断刷新流程后，才会同步读取 explanation。
+              没有独立解释刷新按钮，没有自动刷新，没有自动轮询。
+            </p>
+            <p>
+              只读解释；非交易许可；非执行指令；交易能力禁用；执行能力禁用；
+              demo-only；read-only。
+            </p>
+          </div>
+        ) : null}
+
+        {isExplanationLoading ? (
+          <div className="demo-diagnostics-empty-state">
+            <strong>正在加载只读解释</strong>
+            <p>
+              当前只通过现有 diagnostics 手动刷新流程同步加载，不展示原始 API
+              response。
+            </p>
+            <p>
+              next_allowed_stage 只是流程提示；当前区块不提供交易、执行、风控修改或仓位计算能力。
+            </p>
+          </div>
+        ) : null}
+
+        {explanationViewModel ? (
+          <DemoReadOnlyExplanationPanel viewModel={explanationViewModel} />
+        ) : null}
+      </div>
     </section>
   );
 }

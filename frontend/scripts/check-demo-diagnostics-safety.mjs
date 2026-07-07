@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(__dirname, "..");
-const featureRoot = path.join(frontendRoot, "src", "features", "demoDiagnostics");
+const srcRoot = path.join(frontendRoot, "src");
+const featureRoot = path.join(srcRoot, "features", "demoDiagnostics");
 const componentRoot = path.join(featureRoot, "components");
 
 const files = {
+  app: path.join(srcRoot, "App.tsx"),
   contracts: path.join(featureRoot, "contracts.ts"),
   mapper: path.join(featureRoot, "mapper.ts"),
   api: path.join(featureRoot, "api.ts"),
@@ -62,6 +64,7 @@ if (failures.length === 0) {
   const mapperSource = readSource(files.mapper);
   const apiSource = readSource(files.api);
   const typesSource = readSource(files.types);
+  const appSource = readSource(files.app);
   const dashboardSource = readSource(files.dashboard);
   const visibleComponentSource = [
     files.dashboard,
@@ -146,18 +149,61 @@ if (failures.length === 0) {
   assertIncludes("Dashboard component", dashboardSource, "handleRefreshDiagnostics");
   assertIncludes("Dashboard component", dashboardSource, "SECURITY_BLOCKED_MESSAGE");
   [
+    "DemoReadOnlyExplanationPanel",
+    "fetchDemoReadOnlyExplanation",
+    "apiErrorViewModel",
+    "explanationState",
+    "setExplanationState",
+  ].forEach((expected) =>
+    assertIncludes("Dashboard component", dashboardSource, expected),
+  );
+  [
     "useEffect",
     "setInterval",
     "setTimeout",
     "WebSocket",
+    "EventSource",
     "localStorage",
     "sessionStorage",
+  ].forEach((forbidden) =>
+    assertNotIncludes("Dashboard component", dashboardSource, forbidden),
+  );
+  [
+    "DemoReadOnlyExplanationPanel",
+    "fetchDemoReadOnlyExplanation",
+    "demoExplanation",
+  ].forEach((forbidden) => assertNotIncludes("App.tsx", appSource, forbidden));
+
+  const dashboardButtonCount = dashboardSource.match(/<button\b/g)?.length ?? 0;
+  if (dashboardButtonCount !== 1) {
+    fail(
+      `Dashboard component must keep exactly one existing manual diagnostics button, found ${dashboardButtonCount}.`,
+    );
+  }
+  assertIncludes(
+    "Dashboard component",
+    dashboardSource,
+    "刷新 Demo 只读诊断",
+  );
+  [
+    "刷新只读解释",
+    "加载解释</button",
+    "交易按钮",
+    "执行按钮",
+    "MT4 操作入口",
+    "风控修改入口",
+    "仓位计算入口",
+    "账号连接入口",
+    "文件读取入口",
+    "raw API response",
+    "raw payload",
   ].forEach((forbidden) =>
     assertNotIncludes("Dashboard component", dashboardSource, forbidden),
   );
 
   [
     "只读诊断",
+    "只读解释",
     "非交易许可",
     "非执行指令",
     "交易能力禁用",
@@ -167,6 +213,8 @@ if (failures.length === 0) {
     "is_tradable",
     "can_execute",
     "next_allowed_stage 是流程提示，不是交易许可",
+    "next_allowed_stage 只是流程提示",
+    "当前区块不提供交易、执行、风控修改或仓位计算能力",
   ].forEach((expected) =>
     assertIncludes("visible dashboard components", visibleComponentSource, expected),
   );
