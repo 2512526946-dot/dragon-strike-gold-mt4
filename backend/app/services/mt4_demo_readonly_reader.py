@@ -75,6 +75,7 @@ _FORBIDDEN_RESULT_KEYS = frozenset(
         "account_number",
         "allow_trade",
         "api_key",
+        "base_dir",
         "buy",
         "buy_now",
         "candidate_path",
@@ -113,6 +114,51 @@ _FORBIDDEN_RESULT_KEYS = frozenset(
         "trade_plan",
         "trade_signal",
         "trading_action",
+        "override_risk",
+        "bypass_gate",
+    }
+)
+
+_FORBIDDEN_RESULT_TEXT_FRAGMENTS = frozenset(
+    {
+        "account_number",
+        "allow_trade",
+        "api_key",
+        "base_dir",
+        "buy_now",
+        "bypass_gate",
+        "candidate_path",
+        "can_trade",
+        "close_position",
+        "credential",
+        "do_not_leak",
+        "ea_command",
+        "execute_trade",
+        "final_lot",
+        "login",
+        "open_position",
+        "order_close",
+        "order_delete",
+        "order_id",
+        "order_modify",
+        "order_send",
+        "override_risk",
+        "password",
+        "raw_account_snapshot",
+        "raw_market_symbol",
+        "raw_payload",
+        "raw_positions_order_history",
+        "secret",
+        "sell_now",
+        "should_buy",
+        "should_sell",
+        "suggested_lot",
+        "system_path",
+        "ticket",
+        "token",
+        "trade_plan",
+        "trade_signal",
+        "trading_action",
     }
 )
 
@@ -135,11 +181,24 @@ def read_mt4_demo_readonly_source_summary_from_dir(base_dir: object) -> dict[str
 
     payloads_by_filename: dict[str, dict[str, Any]] = {}
     for filename in _REQUIRED_FILENAMES:
-        path_result = path_guard.build_mt4_demo_readonly_candidate_path(
-            base_dir,
-            filename,
-        )
-        if path_result["passed"] is not True:
+        try:
+            path_result = path_guard.build_mt4_demo_readonly_candidate_path(
+                base_dir,
+                filename,
+            )
+        except Exception:
+            return _blocked_result(
+                status_code=MT4_DEMO_READONLY_READER_SAFETY_BLOCKED,
+                reader_block_reasons=["PATH_GUARD_EXCEPTION_SANITIZED"],
+            )
+
+        if not isinstance(path_result, dict):
+            return _blocked_result(
+                status_code=MT4_DEMO_READONLY_READER_SAFETY_BLOCKED,
+                reader_block_reasons=["PATH_GUARD_OUTPUT_SANITIZED"],
+            )
+
+        if path_result.get("passed") is not True:
             return _blocked_result(
                 status_code=MT4_DEMO_READONLY_READER_BASE_DIR_REJECTED,
                 reader_block_reasons=["PATH_GUARD_REJECTED"],
@@ -362,7 +421,7 @@ def _base_dir_rejection_reason(base_dir: object) -> str | None:
 def _contains_forbidden_result_key(value: object) -> bool:
     if isinstance(value, dict):
         for key, child_value in value.items():
-            if isinstance(key, str) and key in _FORBIDDEN_RESULT_KEYS:
+            if isinstance(key, str) and key.lower() in _FORBIDDEN_RESULT_KEYS:
                 return True
             if _contains_forbidden_result_key(child_value):
                 return True
@@ -372,9 +431,17 @@ def _contains_forbidden_result_key(value: object) -> bool:
         return any(_contains_forbidden_result_key(item) for item in value)
 
     if isinstance(value, str):
-        return _looks_like_path_or_trace(value)
+        return _looks_like_path_or_trace(value) or _looks_like_forbidden_text(value)
 
     return False
+
+
+def _looks_like_forbidden_text(value: str) -> bool:
+    lower_value = value.lower()
+    return any(
+        forbidden_fragment in lower_value
+        for forbidden_fragment in _FORBIDDEN_RESULT_TEXT_FRAGMENTS
+    )
 
 
 def _looks_like_path_or_trace(value: str) -> bool:

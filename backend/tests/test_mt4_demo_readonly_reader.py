@@ -18,6 +18,7 @@ FORBIDDEN_OUTPUT_KEYS = {
     "account_number",
     "allow_trade",
     "api_key",
+    "base_dir",
     "buy",
     "buy_now",
     "candidate_path",
@@ -56,6 +57,8 @@ FORBIDDEN_OUTPUT_KEYS = {
     "trade_plan",
     "trade_signal",
     "trading_action",
+    "override_risk",
+    "bypass_gate",
 }
 
 REQUIRED_FILENAMES = (
@@ -173,6 +176,34 @@ def _valid_payloads() -> dict[str, dict[str, object]]:
     }
 
 
+def _safe_adapter_summary(**extra_fields: object) -> dict[str, object]:
+    summary = {
+        "passed": True,
+        "status_code": "MT4_DEMO_READONLY_SOURCE_SUMMARY_READY",
+        "source_mode": "mt4_demo_readonly_file_bridge_enabled",
+        "source_scope": "mt4_demo_readonly_validated_payloads_only",
+        "component_statuses": [],
+        "validation_statuses": [],
+        "missing_components": [],
+        "unexpected_components": [],
+        "block_reasons": [],
+        "warning_reasons": [],
+        "data_quality_notes": [],
+        "next_allowed_stage": "read_only_source_summary_available_for_internal_diagnostics",
+        "next_blocked_stage": "execution_and_trading_remain_blocked",
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
+    summary.update(extra_fields)
+    return summary
+
+
 def _write_payloads(base_dir: Path, payloads: dict[str, object] | None = None) -> None:
     selected_payloads = payloads or _valid_payloads()
     base_dir.mkdir(exist_ok=True)
@@ -229,6 +260,11 @@ def _assert_no_forbidden_text(result: dict[str, object]) -> None:
         "BUY_NOW_SHOULD_NOT_LEAK",
         "SELL_NOW_SHOULD_NOT_LEAK",
         "EA_COMMAND_SHOULD_NOT_LEAK",
+        "ORDER_SEND_SHOULD_NOT_LEAK",
+        "ORDER_CLOSE_SHOULD_NOT_LEAK",
+        "TRADE_SIGNAL_SHOULD_NOT_LEAK",
+        "TRADING_ACTION_SHOULD_NOT_LEAK",
+        "BASE_DIR_SHOULD_NOT_LEAK",
         "DO_NOT_LEAK_EXCEPTION",
         "C:\\Users\\86135",
         "/home/user",
@@ -569,6 +605,189 @@ def test_reader_blocks_unsafe_source_summary_output(
 
     _assert_blocked(result)
     assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+
+
+@pytest.mark.parametrize(
+    ("polluted_key", "polluted_value"),
+    [
+        ("raw_payload", {"password": "PASSWORD_SHOULD_NOT_LEAK"}),
+        ("candidate_path", "C:\\Users\\86135\\secret.py"),
+        ("base_dir", "BASE_DIR_SHOULD_NOT_LEAK"),
+        ("password", "PASSWORD_SHOULD_NOT_LEAK"),
+        ("token", "TOKEN_SHOULD_NOT_LEAK"),
+        ("secret", "SECRET_SHOULD_NOT_LEAK"),
+        ("login", "LOGIN_SHOULD_NOT_LEAK"),
+        ("account_number", "ACCOUNT_NUMBER_SHOULD_NOT_LEAK"),
+        ("ticket", "TICKET_SHOULD_NOT_LEAK"),
+        ("order_id", "ORDER_ID_SHOULD_NOT_LEAK"),
+        ("suggested_lot", "LOT_SHOULD_NOT_LEAK"),
+        ("final_lot", "LOT_SHOULD_NOT_LEAK"),
+        ("buy_now", "BUY_NOW_SHOULD_NOT_LEAK"),
+        ("sell_now", "SELL_NOW_SHOULD_NOT_LEAK"),
+        ("order_send", "ORDER_SEND_SHOULD_NOT_LEAK"),
+        ("order_close", "ORDER_CLOSE_SHOULD_NOT_LEAK"),
+        ("ea_command", "EA_COMMAND_SHOULD_NOT_LEAK"),
+        ("trade_signal", "TRADE_SIGNAL_SHOULD_NOT_LEAK"),
+        ("trading_action", "TRADING_ACTION_SHOULD_NOT_LEAK"),
+        ("traceback", "Traceback C:\\Users\\86135\\secret.py"),
+        ("system_path", "C:\\Users\\86135\\secret.py"),
+        ("stack_trace", "stack trace C:\\Users\\86135\\secret.py"),
+    ],
+)
+def test_reader_sanitizes_polluted_adapter_top_level_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    polluted_key: str,
+    polluted_value: object,
+) -> None:
+    _write_payloads(tmp_path)
+
+    def polluted_summary(_payloads_by_filename: object) -> dict[str, object]:
+        return _safe_adapter_summary(**{polluted_key: polluted_value})
+
+    monkeypatch.setattr(
+        reader.source_summary_adapter,
+        "build_mt4_demo_readonly_source_summary",
+        polluted_summary,
+    )
+
+    result = _read(str(tmp_path))
+
+    _assert_blocked(result)
+    assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+    assert polluted_key not in str(result)
+    assert str(polluted_value) not in str(result)
+    assert str(tmp_path) not in str(result)
+
+
+@pytest.mark.parametrize(
+    ("container_name", "polluted_value"),
+    [
+        ("component_statuses", "PASSWORD_SHOULD_NOT_LEAK"),
+        ("validation_statuses", "TOKEN_SHOULD_NOT_LEAK"),
+        ("block_reasons", "SECRET_SHOULD_NOT_LEAK"),
+        ("warning_reasons", "LOGIN_SHOULD_NOT_LEAK"),
+        ("data_quality_notes", "C:\\Users\\86135\\secret.py"),
+        ("component_statuses", "/home/user/secret.py"),
+        ("validation_statuses", "Traceback DO_NOT_LEAK_EXCEPTION"),
+        ("block_reasons", "suggested_lot LOT_SHOULD_NOT_LEAK"),
+        ("warning_reasons", "trade_signal TRADE_SIGNAL_SHOULD_NOT_LEAK"),
+    ],
+)
+def test_reader_sanitizes_polluted_adapter_nested_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    container_name: str,
+    polluted_value: str,
+) -> None:
+    _write_payloads(tmp_path)
+
+    def polluted_summary(_payloads_by_filename: object) -> dict[str, object]:
+        if container_name == "component_statuses":
+            return _safe_adapter_summary(
+                component_statuses=[
+                    {
+                        "component_name": "account_snapshot",
+                        "passed": True,
+                        "safe_summary": polluted_value,
+                    }
+                ],
+            )
+        if container_name == "validation_statuses":
+            return _safe_adapter_summary(
+                validation_statuses=[
+                    {
+                        "filename": ACCOUNT_SNAPSHOT_FILE,
+                        "passed": False,
+                        "reason_codes": [polluted_value],
+                    }
+                ],
+            )
+        return _safe_adapter_summary(**{container_name: [polluted_value]})
+
+    monkeypatch.setattr(
+        reader.source_summary_adapter,
+        "build_mt4_demo_readonly_source_summary",
+        polluted_summary,
+    )
+
+    result = _read(str(tmp_path))
+
+    _assert_blocked(result)
+    assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+    assert polluted_value not in str(result)
+    assert str(tmp_path) not in str(result)
+
+
+def test_reader_sanitizes_source_summary_adapter_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_payloads(tmp_path)
+
+    def exploding_summary(_payloads_by_filename: object) -> dict[str, object]:
+        raise RuntimeError(
+            "DO_NOT_LEAK_EXCEPTION C:\\Users\\86135\\secret.py Traceback"
+        )
+
+    monkeypatch.setattr(
+        reader.source_summary_adapter,
+        "build_mt4_demo_readonly_source_summary",
+        exploding_summary,
+    )
+
+    result = _read(str(tmp_path))
+
+    _assert_blocked(result)
+    assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+    assert result["reader_block_reasons"] == [
+        "SOURCE_SUMMARY_ADAPTER_EXCEPTION_SANITIZED"
+    ]
+
+
+def test_reader_sanitizes_path_guard_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_payloads(tmp_path)
+
+    def exploding_path_guard(_base_dir: object, _filename: object) -> dict[str, object]:
+        raise RuntimeError(
+            "DO_NOT_LEAK_EXCEPTION C:\\Users\\86135\\secret.py Traceback"
+        )
+
+    monkeypatch.setattr(
+        reader.path_guard,
+        "build_mt4_demo_readonly_candidate_path",
+        exploding_path_guard,
+    )
+
+    result = _read(str(tmp_path))
+
+    _assert_blocked(result)
+    assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+    assert result["reader_block_reasons"] == ["PATH_GUARD_EXCEPTION_SANITIZED"]
+
+
+def test_reader_sanitizes_json_parse_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_payloads(tmp_path)
+
+    def exploding_json_load(_file_handle: object) -> object:
+        raise RuntimeError(
+            "{'password': 'PASSWORD_SHOULD_NOT_LEAK'} "
+            "DO_NOT_LEAK_EXCEPTION C:\\Users\\86135\\secret.py"
+        )
+
+    monkeypatch.setattr(reader.json, "load", exploding_json_load)
+
+    result = _read(str(tmp_path))
+
+    _assert_blocked(result)
+    assert result["status_code"] == reader.MT4_DEMO_READONLY_READER_SAFETY_BLOCKED
+    assert "{'password': 'PASSWORD_SHOULD_NOT_LEAK'}" not in str(result)
 
 
 def test_reader_calls_path_guard_for_each_required_file(
