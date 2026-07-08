@@ -32,6 +32,22 @@ router = APIRouter(prefix="/api/demo-readonly", tags=["demo-readonly"])
 DEMO_READONLY_EXPLANATION_ENDPOINT = "/api/demo-readonly/explanation"
 READONLY_EXPLANATION_API_ERROR = "READONLY_EXPLANATION_API_ERROR"
 _SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG: dict[str, object] = {}
+_SAFE_SOURCE_CONFIG_GUARD_EXCEPTION_RESULT: dict[str, object] = {
+    "passed": False,
+    "status_code": "SOURCE_CONFIG_GUARD_EXCEPTION_SANITIZED",
+    "selected_source_mode": "docs_fixture_only",
+    "source_status": "source_config_safety_blocked",
+    "block_reasons": ["source_config_guard_exception_sanitized"],
+    "warning_reasons": [],
+    "read_only": True,
+    "demo_only": True,
+    "is_tradable": False,
+    "can_execute": False,
+    "is_trading_permission": False,
+    "is_execution_instruction": False,
+    "allowed_to_call_ea": False,
+    "allowed_to_modify_risk": False,
+}
 
 _ALLOWED_EXPLANATION_STATUS_CODES = {
     READONLY_EXPLANATION_READY,
@@ -217,9 +233,7 @@ _REDACTED_EXPLANATION_TEXT = "存在不适合展示的原始内容，API 层已�
 def get_demo_readonly_diagnostics() -> (
     DemoReadonlyDiagnosticsResponse | JSONResponse
 ):
-    source_config_guard_result = validate_demo_readonly_source_config(
-        dict(_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG)
-    )
+    source_config_guard_result = _safe_source_config_guard_result()
 
     try:
         summary = summarize_demo_readonly_docs_fixture_validation()
@@ -244,6 +258,15 @@ def get_demo_readonly_explanation() -> dict[str, Any]:
         return _safe_explanation_api_error_response()
 
     return _safe_explanation_response(report)
+
+
+def _safe_source_config_guard_result() -> dict[str, object]:
+    try:
+        return validate_demo_readonly_source_config(
+            dict(_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG)
+        )
+    except Exception:
+        return dict(_SAFE_SOURCE_CONFIG_GUARD_EXCEPTION_RESULT)
 
 
 def _safe_explanation_response(report: Any) -> dict[str, Any]:

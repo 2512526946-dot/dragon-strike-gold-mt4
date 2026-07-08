@@ -20,8 +20,10 @@ SOURCE_SCOPE = "docs_fixture_only"
 VALIDATION_STAGE = "demo_readonly_docs_fixture_validation_summary"
 SOURCE_STATUS_DEFAULT_READY = "docs_fixture_only_ready"
 SOURCE_STATUS_BLOCKED = "source_mode_blocked"
+SOURCE_STATUS_SAFETY_BLOCKED = "source_config_safety_blocked"
 SOURCE_CONFIG_STATUS_UNAVAILABLE = "SOURCE_CONFIG_STATUS_UNAVAILABLE"
 SOURCE_CONFIG_STATUS_DEFAULT_READY = "MT4_DEMO_READONLY_SOURCE_CONFIG_DEFAULT_READY"
+SOURCE_CONFIG_STATUS_SAFETY_BLOCKED = "SOURCE_CONFIG_SAFETY_BLOCKED"
 READER_STATUS_NOT_CALLED = "not_called"
 
 _REQUIRED_SUMMARY_SAFETY_FIELDS = {
@@ -39,34 +41,51 @@ _OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS = {
 }
 
 _FORBIDDEN_RESPONSE_KEYS = {
+    "account_number",
+    "api_key",
+    "base_dir",
+    "bridge_dir",
+    "bypass_gate",
+    "buy",
+    "buy_now",
+    "candidate_path",
+    "close",
+    "close_position",
+    "credential",
+    "ea_command",
+    "final_lot",
+    "login",
+    "open",
+    "open_position",
     "order_id",
-    "ticket",
-    "execute_trade",
-    "order_send",
     "order_close",
-    "order_modify",
     "order_delete",
-    "auto_trade",
-    "can_trade",
-    "allow_trade",
+    "order_modify",
+    "order_send",
+    "orderclose",
+    "orderdelete",
+    "ordermodify",
+    "ordersend",
+    "override_risk",
+    "password",
+    "raw_payload",
+    "secret",
+    "sell",
+    "sell_now",
     "should_buy",
     "should_sell",
-    "buy_now",
-    "sell_now",
-    "open_position",
-    "close_position",
+    "stack_trace",
     "suggested_lot",
-    "final_lot",
-    "override_risk",
-    "bypass_gate",
-    "ea_command",
-    "account_number",
-    "password",
-    "credential",
+    "system_path",
+    "ticket",
     "token",
-    "secret",
-    "login",
-    "raw_payload",
+    "traceback",
+    "trade_signal",
+    "trading_action",
+    "allow_trade",
+    "auto_trade",
+    "can_trade",
+    "execute_trade",
     "raw_account_snapshot",
     "raw_positions_order_history",
     "raw_market_symbol",
@@ -79,6 +98,9 @@ _FORBIDDEN_TEXT_MARKERS = _FORBIDDEN_RESPONSE_KEYS | {
     "c:\\",
     "\\users\\",
     "/users/",
+    "/home/",
+    ".py",
+    "site-packages",
 }
 
 _REDACTED_UNSAFE_TEXT = "[redacted unsafe content]"
@@ -273,22 +295,19 @@ def _safe_status_dict(value: Any) -> dict[str, Any]:
 
 def _safe_source_config_status(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
-        return {
-            "passed": False,
-            "status_code": SOURCE_CONFIG_STATUS_UNAVAILABLE,
-            "selected_source_mode": SOURCE_SCOPE,
-            "source_status": SOURCE_STATUS_BLOCKED,
-            "block_reasons": ["Source config guard result unavailable."],
-            "warning_reasons": [],
-            "read_only": True,
-            "demo_only": True,
-            "is_tradable": False,
-            "can_execute": False,
-            "is_trading_permission": False,
-            "is_execution_instruction": False,
-            "allowed_to_call_ea": False,
-            "allowed_to_modify_risk": False,
-        }
+        return _blocked_source_config_status(
+            status_code=SOURCE_CONFIG_STATUS_UNAVAILABLE,
+            block_reason="source_config_guard_result_unavailable",
+        )
+
+    if (
+        _source_config_has_unsafe_safety_flags(value)
+        or _contains_source_config_forbidden_content(value)
+    ):
+        return _blocked_source_config_status(
+            status_code=SOURCE_CONFIG_STATUS_SAFETY_BLOCKED,
+            block_reason="source_config_output_sanitized",
+        )
 
     return {
         "passed": value.get("passed") is True,
@@ -311,11 +330,81 @@ def _safe_source_config_status(value: Any) -> dict[str, Any]:
     }
 
 
+def _blocked_source_config_status(
+    *,
+    status_code: str,
+    block_reason: str,
+) -> dict[str, Any]:
+    return {
+        "passed": False,
+        "status_code": status_code,
+        "selected_source_mode": SOURCE_SCOPE,
+        "source_status": SOURCE_STATUS_SAFETY_BLOCKED,
+        "block_reasons": [block_reason],
+        "warning_reasons": [],
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
+
+
+def _source_config_has_unsafe_safety_flags(value: dict[str, Any]) -> bool:
+    required_true_fields = {
+        "read_only": True,
+        "demo_only": True,
+    }
+    required_false_fields = {
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
+    return any(
+        value.get(field_name) is not expected_value
+        for field_name, expected_value in {
+            **required_true_fields,
+            **required_false_fields,
+        }.items()
+    )
+
+
+def _contains_source_config_forbidden_content(value: Any) -> bool:
+    if isinstance(value, str):
+        return _is_unsafe_text(value)
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str) and key.casefold() in {
+                forbidden_key.casefold()
+                for forbidden_key in _FORBIDDEN_RESPONSE_KEYS
+            }:
+                return True
+            if _contains_source_config_forbidden_content(child):
+                return True
+        return False
+    if isinstance(value, list | tuple | set):
+        return any(_contains_source_config_forbidden_content(child) for child in value)
+    if isinstance(value, bool | int | float | type(None)):
+        return False
+    value_dict = getattr(value, "__dict__", None)
+    if isinstance(value_dict, dict):
+        return _contains_source_config_forbidden_content(value_dict)
+    return False
+
+
 def _source_config_safety_violation_reasons(
     source_config_status: dict[str, Any],
 ) -> list[str]:
     if source_config_status.get("passed") is not True:
-        return ["Source config guard did not approve docs_fixture_only."]
+        return _safe_list(source_config_status.get("block_reasons")) or [
+            "source_config_guard_blocked"
+        ]
     if source_config_status.get("selected_source_mode") != SOURCE_SCOPE:
         return ["Source config guard selected a non-default source mode."]
     if source_config_status.get("read_only") is not True:
