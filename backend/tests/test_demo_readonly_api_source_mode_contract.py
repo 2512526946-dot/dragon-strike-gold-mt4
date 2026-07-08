@@ -21,7 +21,6 @@ from app.schemas.demo_readonly_diagnostics import (
     SOURCE_SCOPE,
 )
 from app.services import mt4_demo_readonly_reader
-from app.services import mt4_demo_readonly_source_config_guard
 
 
 EXPLANATION_ENDPOINT = demo_readonly_api.DEMO_READONLY_EXPLANATION_ENDPOINT
@@ -118,7 +117,13 @@ SAFE_FLAGS = {
 
 @pytest.fixture()
 def guarded_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    _install_no_reader_or_source_config_guard(monkeypatch)
+    _install_no_reader_guard(monkeypatch)
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "validate_demo_readonly_source_config",
+        _safe_source_config_guard_result,
+        raising=False,
+    )
     monkeypatch.setattr(
         demo_readonly_api,
         "summarize_demo_readonly_docs_fixture_validation",
@@ -240,10 +245,10 @@ def test_get_request_body_cannot_enable_mt4_reader(
     _assert_contract_response_safe(response.json())
 
 
-def _install_no_reader_or_source_config_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_no_reader_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_if_called(*_args: object, **_kwargs: object) -> None:
         raise AssertionError(
-            "demo-readonly API source_mode contract must not call reader or source config guard"
+            "demo-readonly API source_mode contract must not call reader"
         )
 
     monkeypatch.setattr(
@@ -254,17 +259,6 @@ def _install_no_reader_or_source_config_guard(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         demo_readonly_api,
         "read_mt4_demo_readonly_source_summary_from_dir",
-        fail_if_called,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        mt4_demo_readonly_source_config_guard,
-        "validate_demo_readonly_source_config",
-        fail_if_called,
-    )
-    monkeypatch.setattr(
-        demo_readonly_api,
-        "validate_demo_readonly_source_config",
         fail_if_called,
         raising=False,
     )
@@ -330,6 +324,25 @@ def _safe_component_status() -> dict[str, Any]:
         "demo_only": True,
         "is_tradable": False,
         "can_execute": False,
+    }
+
+
+def _safe_source_config_guard_result(config: object) -> dict[str, Any]:
+    assert config == {}
+    return {
+        "passed": True,
+        "status_code": "MT4_DEMO_READONLY_SOURCE_CONFIG_DEFAULT_READY",
+        "selected_source_mode": "docs_fixture_only",
+        "default_source_mode": "docs_fixture_only",
+        "source_status": "docs_fixture_only_ready",
+        "request_override_allowed": False,
+        "block_reasons": [],
+        "warning_reasons": [],
+        "notes": [
+            "source config guard validates caller-provided server-side config only",
+            "source_mode readiness is not a trading permission",
+        ],
+        **SAFE_FLAGS,
     }
 
 
@@ -400,6 +413,14 @@ def _assert_safe_flags(data: dict[str, Any]) -> None:
 def _assert_source_mode_not_enabled(data: dict[str, Any]) -> None:
     serialized = json.dumps(data, ensure_ascii=False)
     assert MT4_SOURCE_MODE not in serialized
+    if "source_mode" in data:
+        assert data["source_mode"] == "docs_fixture_only"
+    if "source_status" in data:
+        assert data["source_status"] == "docs_fixture_only_ready"
+    if "reader_status" in data:
+        assert data["reader_status"] == "not_called"
+    if "source_config_passed" in data:
+        assert data["source_config_passed"] is True
     for source_mode in _collect_values_for_key(data, "source_mode"):
         assert source_mode == "docs_fixture_only"
     for source_scope in _collect_values_for_key(data, "source_scope"):

@@ -14,6 +14,9 @@ from app.schemas.demo_readonly_diagnostics import (
 from app.services.demo_readonly_docs_fixture_validation_summary import (
     summarize_demo_readonly_docs_fixture_validation,
 )
+from app.services.mt4_demo_readonly_source_config_guard import (
+    validate_demo_readonly_source_config,
+)
 from app.services.read_only_diagnostics_explainer import (
     READONLY_EXPLANATION_BLOCKED,
     READONLY_EXPLANATION_INPUT_INVALID,
@@ -28,6 +31,7 @@ router = APIRouter(prefix="/api/demo-readonly", tags=["demo-readonly"])
 
 DEMO_READONLY_EXPLANATION_ENDPOINT = "/api/demo-readonly/explanation"
 READONLY_EXPLANATION_API_ERROR = "READONLY_EXPLANATION_API_ERROR"
+_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG: dict[str, object] = {}
 
 _ALLOWED_EXPLANATION_STATUS_CODES = {
     READONLY_EXPLANATION_READY,
@@ -213,6 +217,10 @@ _REDACTED_EXPLANATION_TEXT = "存在不适合展示的原始内容，API 层已�
 def get_demo_readonly_diagnostics() -> (
     DemoReadonlyDiagnosticsResponse | JSONResponse
 ):
+    source_config_guard_result = validate_demo_readonly_source_config(
+        dict(_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG)
+    )
+
     try:
         summary = summarize_demo_readonly_docs_fixture_validation()
     except Exception:
@@ -222,7 +230,10 @@ def get_demo_readonly_diagnostics() -> (
             content=safe_response.model_dump(),
         )
 
-    return demo_readonly_diagnostics_response(summary)
+    return demo_readonly_diagnostics_response(
+        summary,
+        source_config_guard_result=source_config_guard_result,
+    )
 
 
 @router.get("/explanation")

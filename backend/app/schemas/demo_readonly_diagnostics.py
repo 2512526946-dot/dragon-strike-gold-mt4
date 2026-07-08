@@ -18,6 +18,11 @@ DEMO_READONLY_SAFETY_FIELD_VIOLATION = (
 
 SOURCE_SCOPE = "docs_fixture_only"
 VALIDATION_STAGE = "demo_readonly_docs_fixture_validation_summary"
+SOURCE_STATUS_DEFAULT_READY = "docs_fixture_only_ready"
+SOURCE_STATUS_BLOCKED = "source_mode_blocked"
+SOURCE_CONFIG_STATUS_UNAVAILABLE = "SOURCE_CONFIG_STATUS_UNAVAILABLE"
+SOURCE_CONFIG_STATUS_DEFAULT_READY = "MT4_DEMO_READONLY_SOURCE_CONFIG_DEFAULT_READY"
+READER_STATUS_NOT_CALLED = "not_called"
 
 _REQUIRED_SUMMARY_SAFETY_FIELDS = {
     "read_only": True,
@@ -86,6 +91,11 @@ class DemoReadonlyDiagnosticsResponse(BaseModel):
     passed: bool
     status_code: str
     source_scope: str
+    source_mode: str
+    source_status: str
+    source_config_status_code: str
+    source_config_passed: bool
+    reader_status: str
     validation_stage: str
     fixture_source: str
     bundle_validation_status: dict[str, Any]
@@ -109,8 +119,15 @@ class DemoReadonlyDiagnosticsResponse(BaseModel):
 
 def demo_readonly_diagnostics_response(
     summary: Any,
+    source_config_guard_result: Any = None,
 ) -> DemoReadonlyDiagnosticsResponse:
     safety_reasons = _safety_violation_reasons(summary)
+    source_config_status = _safe_source_config_status(source_config_guard_result)
+    source_config_safety_reasons = _source_config_safety_violation_reasons(
+        source_config_status
+    )
+    safety_reasons.extend(source_config_safety_reasons)
+
     passed = _bool_value(summary, "passed", default=False)
 
     status_code = (
@@ -132,6 +149,18 @@ def demo_readonly_diagnostics_response(
         passed=passed,
         status_code=status_code,
         source_scope=_str_value(summary, "source_scope", SOURCE_SCOPE),
+        source_mode=_source_mode_from_source_config_status(source_config_status),
+        source_status=_source_status_from_source_config_status(source_config_status),
+        source_config_status_code=_str_value(
+            source_config_status,
+            "status_code",
+            SOURCE_CONFIG_STATUS_UNAVAILABLE,
+        ),
+        source_config_passed=(
+            source_config_status.get("passed") is True
+            and source_config_status.get("selected_source_mode") == SOURCE_SCOPE
+        ),
+        reader_status=READER_STATUS_NOT_CALLED,
         validation_stage=_str_value(
             summary,
             "validation_stage",
@@ -170,6 +199,11 @@ def demo_readonly_diagnostics_internal_error_response() -> (
         passed=False,
         status_code=DEMO_READONLY_INTERNAL_ERROR,
         source_scope=SOURCE_SCOPE,
+        source_mode=SOURCE_SCOPE,
+        source_status=SOURCE_STATUS_DEFAULT_READY,
+        source_config_status_code=SOURCE_CONFIG_STATUS_DEFAULT_READY,
+        source_config_passed=True,
+        reader_status=READER_STATUS_NOT_CALLED,
         validation_stage=VALIDATION_STAGE,
         fixture_source="docs_fixture_only",
         bundle_validation_status=_safe_status_dict(None),
@@ -235,6 +269,90 @@ def _safe_status_dict(value: Any) -> dict[str, Any]:
         "is_tradable": False,
         "can_execute": False,
     }
+
+
+def _safe_source_config_status(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "passed": False,
+            "status_code": SOURCE_CONFIG_STATUS_UNAVAILABLE,
+            "selected_source_mode": SOURCE_SCOPE,
+            "source_status": SOURCE_STATUS_BLOCKED,
+            "block_reasons": ["Source config guard result unavailable."],
+            "warning_reasons": [],
+            "read_only": True,
+            "demo_only": True,
+            "is_tradable": False,
+            "can_execute": False,
+            "is_trading_permission": False,
+            "is_execution_instruction": False,
+            "allowed_to_call_ea": False,
+            "allowed_to_modify_risk": False,
+        }
+
+    return {
+        "passed": value.get("passed") is True,
+        "status_code": _safe_scalar(value.get("status_code"))
+        or SOURCE_CONFIG_STATUS_UNAVAILABLE,
+        "selected_source_mode": _safe_scalar(value.get("selected_source_mode"))
+        or SOURCE_SCOPE,
+        "source_status": _safe_scalar(value.get("source_status"))
+        or SOURCE_STATUS_BLOCKED,
+        "block_reasons": _safe_list(value.get("block_reasons")),
+        "warning_reasons": _safe_list(value.get("warning_reasons")),
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
+
+
+def _source_config_safety_violation_reasons(
+    source_config_status: dict[str, Any],
+) -> list[str]:
+    if source_config_status.get("passed") is not True:
+        return ["Source config guard did not approve docs_fixture_only."]
+    if source_config_status.get("selected_source_mode") != SOURCE_SCOPE:
+        return ["Source config guard selected a non-default source mode."]
+    if source_config_status.get("read_only") is not True:
+        return ["Unsafe source config safety field value: read_only."]
+    if source_config_status.get("demo_only") is not True:
+        return ["Unsafe source config safety field value: demo_only."]
+    for field_name in (
+        "is_tradable",
+        "can_execute",
+        "is_trading_permission",
+        "is_execution_instruction",
+        "allowed_to_call_ea",
+        "allowed_to_modify_risk",
+    ):
+        if source_config_status.get(field_name) is not False:
+            return [f"Unsafe source config safety field value: {field_name}."]
+    return []
+
+
+def _source_mode_from_source_config_status(
+    source_config_status: dict[str, Any],
+) -> str:
+    if source_config_status.get("selected_source_mode") == SOURCE_SCOPE:
+        return SOURCE_SCOPE
+    return SOURCE_SCOPE
+
+
+def _source_status_from_source_config_status(
+    source_config_status: dict[str, Any],
+) -> str:
+    if source_config_status.get("selected_source_mode") == SOURCE_SCOPE:
+        return _str_value(
+            source_config_status,
+            "source_status",
+            SOURCE_STATUS_DEFAULT_READY,
+        )
+    return SOURCE_STATUS_BLOCKED
 
 
 def _safe_component_statuses(value: Any) -> dict[str, dict[str, Any]]:
