@@ -87,6 +87,98 @@ _REJECTED_BRIDGE_DIR_FRAGMENTS = frozenset(
     }
 )
 
+_REJECTED_PRIVATE_PATH_OR_TRACE_FRAGMENTS = (
+    "c:/users/",
+    "/home/",
+    "/root/",
+    "traceback",
+    "stack trace",
+    "stack_trace",
+    ".py",
+)
+
+_FORBIDDEN_OUTPUT_KEYS = frozenset(
+    {
+        "account_number",
+        "allow_trade",
+        "api_key",
+        "base_dir",
+        "buy",
+        "buy_now",
+        "candidate_path",
+        "can_trade",
+        "close",
+        "close_position",
+        "credential",
+        "ea_command",
+        "execute_trade",
+        "final_lot",
+        "login",
+        "open",
+        "open_position",
+        "order",
+        "order_close",
+        "order_delete",
+        "order_id",
+        "order_modify",
+        "order_send",
+        "password",
+        "raw_payload",
+        "real_account",
+        "secret",
+        "sell",
+        "sell_now",
+        "should_buy",
+        "should_sell",
+        "suggested_lot",
+        "system_path",
+        "ticket",
+        "token",
+        "traceback",
+        "trade_plan",
+        "trade_signal",
+        "trading_action",
+    }
+)
+
+_FORBIDDEN_OUTPUT_TEXT_FRAGMENTS = frozenset(
+    {
+        "account_number",
+        "allow_trade",
+        "api_key",
+        "base_dir",
+        "buy_now",
+        "candidate_path",
+        "can_trade",
+        "credential",
+        "ea_command",
+        "execute_trade",
+        "final_lot",
+        "live_account",
+        "login",
+        "open_position",
+        "order_close",
+        "order_delete",
+        "order_modify",
+        "order_send",
+        "password",
+        "raw_payload",
+        "real_account",
+        "secret",
+        "sell_now",
+        "should_buy",
+        "should_sell",
+        "suggested_lot",
+        "system_path",
+        "ticket",
+        "token",
+        "traceback",
+        "trade_plan",
+        "trade_signal",
+        "trading_action",
+    }
+)
+
 _SAFETY_FIELDS: dict[str, bool] = {
     "read_only": True,
     "demo_only": True,
@@ -108,6 +200,26 @@ def get_demo_readonly_allowed_source_modes() -> tuple[str, ...]:
 
 
 def validate_demo_readonly_source_config(config: object) -> dict[str, Any]:
+    try:
+        result = _validate_demo_readonly_source_config(config)
+    except Exception:
+        return _safety_blocked_result(
+            block_reasons=["SOURCE_CONFIG_GUARD_EXCEPTION_SANITIZED"]
+        )
+
+    if (
+        not isinstance(result, dict)
+        or _has_unsafe_safety_flags(result)
+        or _contains_forbidden_output_content(result)
+    ):
+        return _safety_blocked_result(
+            block_reasons=["SOURCE_CONFIG_GUARD_OUTPUT_SANITIZED"]
+        )
+
+    return result
+
+
+def _validate_demo_readonly_source_config(config: object) -> dict[str, Any]:
     if config is None:
         return _result(
             passed=True,
@@ -215,6 +327,25 @@ def validate_demo_readonly_source_config(config: object) -> dict[str, Any]:
     )
 
 
+def _safety_blocked_result(*, block_reasons: list[str]) -> dict[str, Any]:
+    return {
+        "passed": False,
+        "status_code": MT4_DEMO_READONLY_SOURCE_CONFIG_SAFETY_BLOCKED,
+        "selected_source_mode": DOCS_FIXTURE_ONLY_SOURCE_MODE,
+        "default_source_mode": DOCS_FIXTURE_ONLY_SOURCE_MODE,
+        "source_status": "source_mode_blocked",
+        "bridge_dir_status": "not_evaluated",
+        "request_override_allowed": False,
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "warning_reasons": [],
+        "notes": [
+            "source config guard validates caller-provided server-side config only",
+            "source_mode readiness is not a trading permission",
+        ],
+        **_SAFETY_FIELDS,
+    }
+
+
 def _blocked_result(*, status_code: str, block_reasons: list[str]) -> dict[str, Any]:
     return _result(
         passed=False,
@@ -255,6 +386,41 @@ def _result(
     }
 
 
+def _has_unsafe_safety_flags(result: dict[str, Any]) -> bool:
+    return any(result.get(key) is not expected for key, expected in _SAFETY_FIELDS.items())
+
+
+def _contains_forbidden_output_content(value: object) -> bool:
+    if isinstance(value, dict):
+        return any(
+            (
+                isinstance(key, str)
+                and key.lower() in _FORBIDDEN_OUTPUT_KEYS
+            )
+            or _contains_forbidden_output_content(child)
+            for key, child in value.items()
+        )
+
+    if isinstance(value, (list, tuple, set)):
+        return any(_contains_forbidden_output_content(item) for item in value)
+
+    if isinstance(value, str):
+        return _contains_forbidden_output_text(value)
+
+    return False
+
+
+def _contains_forbidden_output_text(value: str) -> bool:
+    lower_value = value.lower()
+    normalized_value = lower_value.replace("\\", "/")
+    return any(
+        fragment in lower_value for fragment in _FORBIDDEN_OUTPUT_TEXT_FRAGMENTS
+    ) or any(
+        fragment in normalized_value
+        for fragment in _REJECTED_PRIVATE_PATH_OR_TRACE_FRAGMENTS
+    )
+
+
 def _bridge_dir_rejection_reason(value: object) -> str | None:
     if not isinstance(value, str):
         return "BRIDGE_DIR_INPUT_NOT_STR"
@@ -271,6 +437,12 @@ def _bridge_dir_rejection_reason(value: object) -> str | None:
     normalized = value.replace("\\", "/")
     lower_normalized = normalized.lower()
     parts = [part.lower() for part in normalized.split("/") if part]
+
+    if any(
+        fragment in lower_normalized
+        for fragment in _REJECTED_PRIVATE_PATH_OR_TRACE_FRAGMENTS
+    ):
+        return "BRIDGE_DIR_CONTAINS_UNSAFE_PATH_TEXT"
 
     if ".." in parts or "../" in normalized or "..\\" in value:
         return "BRIDGE_DIR_CONTAINS_PATH_TRAVERSAL"

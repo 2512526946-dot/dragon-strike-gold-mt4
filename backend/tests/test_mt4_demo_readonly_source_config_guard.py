@@ -51,6 +51,33 @@ FORBIDDEN_OUTPUT_KEYS = {
     "trading_action",
 }
 
+FORBIDDEN_OUTPUT_TEXT_FRAGMENTS = [
+    r"C:\Users",
+    "/home/",
+    "Traceback",
+    "stack_trace",
+    ".py",
+    "PASSWORD_SHOULD_NOT_LEAK",
+    "TOKEN_SHOULD_NOT_LEAK",
+    "SECRET_SHOULD_NOT_LEAK",
+    "LOGIN_SHOULD_NOT_LEAK",
+    "ACCOUNT_NUMBER_SHOULD_NOT_LEAK",
+    "LIVE_ACCOUNT_SHOULD_NOT_LEAK",
+    "REAL_ACCOUNT_SHOULD_NOT_LEAK",
+    "ORDER_SEND_SHOULD_NOT_LEAK",
+    "TRADE_PLAN_SHOULD_NOT_LEAK",
+    "SUGGESTED_LOT_SHOULD_NOT_LEAK",
+    "FINAL_LOT_SHOULD_NOT_LEAK",
+    "BUY_NOW_SHOULD_NOT_LEAK",
+    "SELL_NOW_SHOULD_NOT_LEAK",
+    "OPEN_SHOULD_NOT_LEAK",
+    "CLOSE_SHOULD_NOT_LEAK",
+    "EA_COMMAND_SHOULD_NOT_LEAK",
+    "ORDER_CLOSE_SHOULD_NOT_LEAK",
+    "ORDER_MODIFY_SHOULD_NOT_LEAK",
+    "ORDER_DELETE_SHOULD_NOT_LEAK",
+]
+
 
 def _validate(config: object) -> dict[str, object]:
     return guard.validate_demo_readonly_source_config(config)
@@ -83,6 +110,12 @@ def _assert_no_forbidden_output_keys(result: dict[str, object]) -> None:
     assert not _contains_forbidden_key_recursive(result)
 
 
+def _assert_no_forbidden_output_text(result: dict[str, object]) -> None:
+    result_text = str(result)
+    for fragment in FORBIDDEN_OUTPUT_TEXT_FRAGMENTS:
+        assert fragment not in result_text
+
+
 def _assert_no_raw_config_leak(result: dict[str, object], raw_value: object) -> None:
     if isinstance(raw_value, str) and raw_value:
         assert raw_value not in str(result)
@@ -103,6 +136,7 @@ def _assert_common_output_shape(result: dict[str, object]) -> None:
     assert result["default_source_mode"] == "docs_fixture_only"
     _assert_safety_fields(result)
     _assert_no_forbidden_output_keys(result)
+    _assert_no_forbidden_output_text(result)
 
 
 def _assert_blocked(result: dict[str, object]) -> None:
@@ -281,6 +315,43 @@ def test_unexpected_config_fields_are_blocked_without_value_leak() -> None:
     assert "PASSWORD_SHOULD_NOT_LEAK" not in str(result)
 
 
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("raw_payload", {"password": "PASSWORD_SHOULD_NOT_LEAK"}),
+        ("base_dir", r"C:\Users\86135\secret.py"),
+        ("candidate_path", "/home/dragon/live_account"),
+        ("traceback", "Traceback SECRET_SHOULD_NOT_LEAK"),
+        ("system_path", r"C:\Users\86135\system.py"),
+        ("suggested_lot", "SUGGESTED_LOT_SHOULD_NOT_LEAK"),
+        ("final_lot", "FINAL_LOT_SHOULD_NOT_LEAK"),
+        ("buy", "BUY_NOW_SHOULD_NOT_LEAK"),
+        ("sell", "SELL_NOW_SHOULD_NOT_LEAK"),
+        ("open", "OPEN_SHOULD_NOT_LEAK"),
+        ("close", "CLOSE_SHOULD_NOT_LEAK"),
+        ("ea_command", "EA_COMMAND_SHOULD_NOT_LEAK"),
+        ("OrderSend", "ORDER_SEND_SHOULD_NOT_LEAK"),
+        ("OrderClose", "ORDER_CLOSE_SHOULD_NOT_LEAK"),
+        ("OrderModify", "ORDER_MODIFY_SHOULD_NOT_LEAK"),
+        ("OrderDelete", "ORDER_DELETE_SHOULD_NOT_LEAK"),
+    ],
+)
+def test_polluted_config_fields_are_blocked_without_field_or_value_leak(
+    field_name: str,
+    field_value: object,
+) -> None:
+    result = _validate({field_name: field_value})
+
+    _assert_blocked(result)
+    assert (
+        result["status_code"]
+        == guard.MT4_DEMO_READONLY_SOURCE_CONFIG_SAFETY_BLOCKED
+    )
+    assert field_name not in str(result)
+    if isinstance(field_value, str):
+        assert field_value not in str(result)
+
+
 @pytest.mark.parametrize("bridge_dir", [123, None, [], object()])
 def test_bridge_dir_must_be_string(bridge_dir: object) -> None:
     result = _validate(_safe_mt4_config(bridge_dir))
@@ -322,6 +393,13 @@ def test_bridge_dir_must_be_string(bridge_dir: object) -> None:
         ("execution_bridge", "BRIDGE_DIR_CONTAINS_FORBIDDEN_FRAGMENT"),
         ("order_send_bridge", "BRIDGE_DIR_CONTAINS_FORBIDDEN_FRAGMENT"),
         ("trade_plan_bridge", "BRIDGE_DIR_CONTAINS_FORBIDDEN_FRAGMENT"),
+        (
+            r"C:\Users\86135\mt4_demo_bridge",
+            "BRIDGE_DIR_CONTAINS_UNSAFE_PATH_TEXT",
+        ),
+        ("/home/dragon/mt4_demo_bridge", "BRIDGE_DIR_CONTAINS_UNSAFE_PATH_TEXT"),
+        ("Traceback: service failed", "BRIDGE_DIR_CONTAINS_UNSAFE_PATH_TEXT"),
+        ("mt4_demo_reader.py", "BRIDGE_DIR_CONTAINS_UNSAFE_PATH_TEXT"),
     ],
 )
 def test_unsafe_bridge_dir_values_are_blocked_without_raw_value_leak(
@@ -334,6 +412,116 @@ def test_unsafe_bridge_dir_values_are_blocked_without_raw_value_leak(
     assert result["status_code"] == guard.MT4_DEMO_READONLY_BRIDGE_DIR_REJECTED
     assert reason_code in result["block_reasons"]
     _assert_no_raw_config_leak(result, bridge_dir)
+
+
+def test_nested_polluted_config_is_blocked_without_sensitive_value_leak() -> None:
+    result = _validate(
+        {
+            "source_mode": "mt4_demo_readonly_file_bridge_enabled",
+            "mt4_demo_readonly_file_bridge_enabled": True,
+            "mt4_demo_readonly_bridge_dir": {
+                "raw_payload": {
+                    "base_dir": r"C:\Users\86135\secret.py",
+                    "password": "PASSWORD_SHOULD_NOT_LEAK",
+                    "token": "TOKEN_SHOULD_NOT_LEAK",
+                    "trade_plan": "TRADE_PLAN_SHOULD_NOT_LEAK",
+                }
+            },
+        }
+    )
+
+    _assert_blocked(result)
+    assert "BRIDGE_DIR_INPUT_NOT_STR" in result["block_reasons"]
+
+
+def test_public_validator_sanitizes_internal_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_sensitive_exception(_value: object) -> str | None:
+        raise RuntimeError(
+            r"Traceback C:\Users\86135\secret.py PASSWORD_SHOULD_NOT_LEAK"
+        )
+
+    monkeypatch.setattr(guard, "_bridge_dir_rejection_reason", raise_sensitive_exception)
+
+    result = _validate(_safe_mt4_config())
+
+    _assert_blocked(result)
+    assert result["status_code"] == guard.MT4_DEMO_READONLY_SOURCE_CONFIG_SAFETY_BLOCKED
+    assert "SOURCE_CONFIG_GUARD_EXCEPTION_SANITIZED" in result["block_reasons"]
+
+
+def test_public_validator_sanitizes_polluted_internal_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def return_polluted_output(_config: object) -> dict[str, object]:
+        return {
+            "passed": True,
+            "raw_payload": {
+                "base_dir": r"C:\Users\86135\secret.py",
+                "candidate_path": "/home/dragon/live_account",
+                "traceback": "Traceback PASSWORD_SHOULD_NOT_LEAK",
+                "suggested_lot": "SUGGESTED_LOT_SHOULD_NOT_LEAK",
+                "final_lot": "FINAL_LOT_SHOULD_NOT_LEAK",
+                "buy_now": "BUY_NOW_SHOULD_NOT_LEAK",
+                "sell_now": "SELL_NOW_SHOULD_NOT_LEAK",
+                "ea_command": "EA_COMMAND_SHOULD_NOT_LEAK",
+            },
+            "read_only": True,
+            "demo_only": True,
+            "is_tradable": False,
+            "can_execute": False,
+            "is_trading_permission": False,
+            "is_execution_instruction": False,
+            "allowed_to_call_ea": False,
+            "allowed_to_modify_risk": False,
+        }
+
+    monkeypatch.setattr(
+        guard, "_validate_demo_readonly_source_config", return_polluted_output
+    )
+
+    result = _validate({})
+
+    _assert_blocked(result)
+    assert result["status_code"] == guard.MT4_DEMO_READONLY_SOURCE_CONFIG_SAFETY_BLOCKED
+    assert "SOURCE_CONFIG_GUARD_OUTPUT_SANITIZED" in result["block_reasons"]
+
+
+def test_public_validator_sanitizes_unsafe_internal_safety_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def return_unsafe_safety_output(_config: object) -> dict[str, object]:
+        return {
+            "passed": True,
+            "status_code": guard.MT4_DEMO_READONLY_SOURCE_CONFIG_READY,
+            "selected_source_mode": "mt4_demo_readonly_file_bridge_enabled",
+            "default_source_mode": "docs_fixture_only",
+            "source_status": "mt4_demo_readonly_file_bridge_ready",
+            "bridge_dir_status": "safe_configured",
+            "request_override_allowed": False,
+            "block_reasons": [],
+            "warning_reasons": [],
+            "notes": [],
+            "read_only": True,
+            "demo_only": True,
+            "is_tradable": True,
+            "can_execute": True,
+            "is_trading_permission": True,
+            "is_execution_instruction": True,
+            "allowed_to_call_ea": True,
+            "allowed_to_modify_risk": True,
+        }
+
+    monkeypatch.setattr(
+        guard, "_validate_demo_readonly_source_config", return_unsafe_safety_output
+    )
+
+    result = _validate({})
+
+    _assert_blocked(result)
+    assert result["status_code"] == guard.MT4_DEMO_READONLY_SOURCE_CONFIG_SAFETY_BLOCKED
+    assert "SOURCE_CONFIG_GUARD_OUTPUT_SANITIZED" in result["block_reasons"]
 
 
 def test_output_does_not_return_bridge_dir_base_dir_candidate_path_or_system_path() -> None:
