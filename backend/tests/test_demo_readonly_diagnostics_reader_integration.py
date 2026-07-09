@@ -20,6 +20,7 @@ from app.schemas.demo_readonly_diagnostics import (
     DEMO_READONLY_DIAGNOSTICS_BLOCKED,
     DEMO_READONLY_DIAGNOSTICS_ENDPOINT,
     DEMO_READONLY_DIAGNOSTICS_READY,
+    DEMO_READONLY_SAFETY_FIELD_VIOLATION,
 )
 
 
@@ -46,16 +47,29 @@ FORBIDDEN_RESPONSE_TEXT = {
     "credential",
     "token",
     "secret",
+    "api_key",
+    "login",
     "account_number",
+    "ticket",
+    "order_id",
     "order_send",
     "order_close",
     "order_modify",
     "order_delete",
     "suggested_lot",
     "final_lot",
+    "buy_now",
+    "sell_now",
+    "should_buy",
+    "should_sell",
+    "open_position",
+    "close_position",
     "trade_signal",
     "trading_action",
     "ea_command",
+    "execute_trade",
+    "can_trade",
+    "allow_trade",
     "override_risk",
     "bypass_gate",
     "stack_trace",
@@ -231,6 +245,152 @@ def test_reader_exception_is_sanitized_without_path_or_secret_leak(
     assert data["reader_passed"] is False
     assert data["reader_status_code"] == "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE"
     assert "reader exception sanitized" in data["block_reasons"]
+    _assert_safe_flags(data)
+    _assert_forbidden_text_absent(data)
+
+
+@pytest.mark.parametrize(
+    ("polluted_key", "polluted_value"),
+    [
+        ("raw_payload", {"password": "PASSWORD_SHOULD_NOT_LEAK"}),
+        ("bridge_dir", "BRIDGE_DIR_SHOULD_NOT_LEAK"),
+        ("base_dir", "BASE_DIR_SHOULD_NOT_LEAK"),
+        ("candidate_path", "C:\\Users\\hidden\\CANDIDATE_PATH_SHOULD_NOT_LEAK.py"),
+        ("system_path", "C:\\Users\\hidden\\SYSTEM_PATH_SHOULD_NOT_LEAK.py"),
+        ("traceback", "TRACEBACK_SHOULD_NOT_LEAK"),
+        ("stack_trace", "STACK_TRACE_SHOULD_NOT_LEAK"),
+        ("password", "PASSWORD_SHOULD_NOT_LEAK"),
+        ("credential", "CREDENTIAL_SHOULD_NOT_LEAK"),
+        ("token", "TOKEN_SHOULD_NOT_LEAK"),
+        ("secret", "SECRET_SHOULD_NOT_LEAK"),
+        ("api_key", "API_KEY_SHOULD_NOT_LEAK"),
+        ("login", "LOGIN_SHOULD_NOT_LEAK"),
+        ("account_number", "ACCOUNT_NUMBER_SHOULD_NOT_LEAK"),
+        ("ticket", "TICKET_SHOULD_NOT_LEAK"),
+        ("order_id", "ORDER_ID_SHOULD_NOT_LEAK"),
+        ("suggested_lot", "LOT_SHOULD_NOT_LEAK"),
+        ("final_lot", "LOT_SHOULD_NOT_LEAK"),
+        ("buy_now", "BUY_NOW_SHOULD_NOT_LEAK"),
+        ("sell_now", "SELL_NOW_SHOULD_NOT_LEAK"),
+        ("should_buy", "SHOULD_BUY_SHOULD_NOT_LEAK"),
+        ("should_sell", "SHOULD_SELL_SHOULD_NOT_LEAK"),
+        ("open_position", "OPEN_POSITION_SHOULD_NOT_LEAK"),
+        ("close_position", "CLOSE_POSITION_SHOULD_NOT_LEAK"),
+        ("order_send", "ORDER_SEND_SHOULD_NOT_LEAK"),
+        ("order_close", "ORDER_CLOSE_SHOULD_NOT_LEAK"),
+        ("order_modify", "ORDER_MODIFY_SHOULD_NOT_LEAK"),
+        ("order_delete", "ORDER_DELETE_SHOULD_NOT_LEAK"),
+        ("ea_command", "EA_COMMAND_SHOULD_NOT_LEAK"),
+        ("trade_signal", "TRADE_SIGNAL_SHOULD_NOT_LEAK"),
+        ("trading_action", "TRADING_ACTION_SHOULD_NOT_LEAK"),
+        ("override_risk", True),
+        ("bypass_gate", True),
+        ("execute_trade", "EXECUTE_TRADE_SHOULD_NOT_LEAK"),
+        ("can_trade", True),
+        ("allow_trade", True),
+    ],
+)
+def test_reader_polluted_output_is_safety_blocked_and_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    polluted_key: str,
+    polluted_value: Any,
+) -> None:
+    summary = _safe_reader_summary(passed=True)
+    summary[polluted_key] = polluted_value
+
+    _install_server_config(monkeypatch)
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "read_mt4_demo_readonly_source_summary_from_dir",
+        lambda _base_dir: summary,
+        raising=False,
+    )
+    client = TestClient(app)
+
+    with _external_state_guard_context():
+        response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert data["reader_status"] == "safety_blocked"
+    assert data["reader_passed"] is False
+    assert data["reader_status_code"] == "READER_OUTPUT_SAFETY_BLOCKED"
+    _assert_safe_flags(data)
+    _assert_forbidden_text_absent(data)
+    assert str(polluted_value) not in json.dumps(data, ensure_ascii=False)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "unsafe_value"),
+    [
+        ("read_only", False),
+        ("demo_only", False),
+        ("is_tradable", True),
+        ("can_execute", True),
+        ("is_trading_permission", True),
+        ("is_execution_instruction", True),
+        ("allowed_to_call_ea", True),
+        ("allowed_to_modify_risk", True),
+    ],
+)
+def test_reader_unsafe_safety_flags_are_forced_safe_and_downgraded(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    unsafe_value: bool,
+) -> None:
+    summary = _safe_reader_summary(passed=True)
+    summary[field_name] = unsafe_value
+
+    _install_server_config(monkeypatch)
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "read_mt4_demo_readonly_source_summary_from_dir",
+        lambda _base_dir: summary,
+        raising=False,
+    )
+    client = TestClient(app)
+
+    with _external_state_guard_context():
+        response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert data["reader_status"] == "safety_blocked"
+    assert data["reader_passed"] is False
+    assert data["reader_status_code"] == "READER_OUTPUT_SAFETY_BLOCKED"
+    _assert_safe_flags(data)
+    _assert_forbidden_text_absent(data)
+
+
+def test_reader_unexpected_structure_does_not_crash_or_leak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_server_config(monkeypatch)
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "read_mt4_demo_readonly_source_summary_from_dir",
+        lambda _base_dir: [
+            "raw_payload",
+            "PASSWORD_SHOULD_NOT_LEAK",
+            r"C:\Users\hidden\traceback.py",
+        ],
+        raising=False,
+    )
+    client = TestClient(app)
+
+    with _external_state_guard_context():
+        response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["passed"] is False
+    assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    assert data["reader_status"] == "blocked"
+    assert data["reader_passed"] is False
     _assert_safe_flags(data)
     _assert_forbidden_text_absent(data)
 

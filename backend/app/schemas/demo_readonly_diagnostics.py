@@ -34,8 +34,10 @@ READER_STATUS_NOT_CALLED = "not_called"
 READER_STATUS_READY = "ready"
 READER_STATUS_BLOCKED = "blocked"
 READER_STATUS_ERROR_SAFE = "error_safe"
+READER_STATUS_SAFETY_BLOCKED = "safety_blocked"
 READER_STATUS_CODE_NOT_CALLED = "READER_NOT_CALLED"
 READER_STATUS_CODE_UNAVAILABLE = "READER_STATUS_UNAVAILABLE"
+READER_STATUS_CODE_SAFETY_BLOCKED = "READER_OUTPUT_SAFETY_BLOCKED"
 READER_EXCEPTION_SAFE_STATUS_CODE = "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE"
 _ALLOWED_SOURCE_MODES = {
     SOURCE_SCOPE,
@@ -170,6 +172,7 @@ def demo_readonly_diagnostics_response(
 
     passed = _bool_value(summary, "passed", default=False)
     is_reader_summary = _is_reader_summary(summary)
+    reader_safety_blocked = is_reader_summary and bool(safety_reasons)
 
     status_code = (
         DEMO_READONLY_DIAGNOSTICS_READY
@@ -202,16 +205,19 @@ def demo_readonly_diagnostics_response(
             summary,
             source_config_status=source_config_status,
             is_reader_summary=is_reader_summary,
+            reader_safety_blocked=reader_safety_blocked,
         ),
         reader_passed=_reader_passed_from_summary(
             summary,
             source_config_status=source_config_status,
             is_reader_summary=is_reader_summary,
+            reader_safety_blocked=reader_safety_blocked,
         ),
         reader_status_code=_reader_status_code_from_summary(
             summary,
             source_config_status=source_config_status,
             is_reader_summary=is_reader_summary,
+            reader_safety_blocked=reader_safety_blocked,
         ),
         validation_stage=_str_value(
             summary,
@@ -496,11 +502,14 @@ def _reader_status_from_summary(
     *,
     source_config_status: dict[str, Any],
     is_reader_summary: bool,
+    reader_safety_blocked: bool,
 ) -> str:
     if not _source_config_selected_reader(source_config_status):
         return READER_STATUS_NOT_CALLED
     if not is_reader_summary:
         return READER_STATUS_BLOCKED
+    if reader_safety_blocked:
+        return READER_STATUS_SAFETY_BLOCKED
     status_code = _str_value(summary, "status_code", READER_STATUS_CODE_UNAVAILABLE)
     if status_code == READER_EXCEPTION_SAFE_STATUS_CODE:
         return READER_STATUS_ERROR_SAFE
@@ -514,10 +523,12 @@ def _reader_passed_from_summary(
     *,
     source_config_status: dict[str, Any],
     is_reader_summary: bool,
+    reader_safety_blocked: bool,
 ) -> bool:
     return (
         _source_config_selected_reader(source_config_status)
         and is_reader_summary
+        and not reader_safety_blocked
         and _bool_value(summary, "passed", default=False)
     )
 
@@ -527,11 +538,14 @@ def _reader_status_code_from_summary(
     *,
     source_config_status: dict[str, Any],
     is_reader_summary: bool,
+    reader_safety_blocked: bool,
 ) -> str:
     if not _source_config_selected_reader(source_config_status):
         return READER_STATUS_CODE_NOT_CALLED
     if not is_reader_summary:
         return READER_STATUS_CODE_UNAVAILABLE
+    if reader_safety_blocked:
+        return READER_STATUS_CODE_SAFETY_BLOCKED
     return _str_value(summary, "status_code", READER_STATUS_CODE_UNAVAILABLE)
 
 
