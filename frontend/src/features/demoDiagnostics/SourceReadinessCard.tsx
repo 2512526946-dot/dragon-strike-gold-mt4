@@ -22,6 +22,9 @@ function renderItems(items: string[] | undefined, emptyText: string) {
 export function SourceReadinessCard({
   sourceReadiness,
 }: SourceReadinessCardProps) {
+  const isDocsFixture =
+    sourceReadiness.displaySourceModeLabel === "文档示例 / 安全 fixture";
+
   if (sourceReadiness.isUnsafeResponse) {
     return (
       <section
@@ -82,9 +85,15 @@ export function SourceReadinessCard({
           <dt>模式</dt>
           <dd>
             {sourceReadiness.showAsReadOnly && sourceReadiness.showAsDemoOnly
-              ? "只读 / Demo-only"
+              ? isDocsFixture
+                ? "只读观察"
+                : "只读 / Demo-only"
               : "只读安全状态不可确认"}
           </dd>
+        </div>
+        <div>
+          <dt>交易许可</dt>
+          <dd>否</dd>
         </div>
         <div>
           <dt>交易执行</dt>

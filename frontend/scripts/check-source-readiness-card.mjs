@@ -241,7 +241,8 @@ assertIncludes(
 );
 assertIncludes("docs_fixture_only", docsFixtureHtml, "未调用 reader");
 assertIncludes("docs_fixture_only", docsFixtureHtml, "MT4 Demo 文件桥未启用");
-assertIncludes("docs_fixture_only", docsFixtureHtml, "只读 / Demo-only");
+assertIncludes("docs_fixture_only", docsFixtureHtml, "只读观察");
+assertIncludes("docs_fixture_only", docsFixtureHtml, "交易许可");
 assertIncludes("docs_fixture_only", docsFixtureHtml, "不可执行");
 assertNoForbiddenSurface("docs_fixture_only", docsFixtureHtml);
 

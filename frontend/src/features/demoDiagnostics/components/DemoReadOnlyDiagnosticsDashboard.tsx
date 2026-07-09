@@ -6,6 +6,7 @@ import {
   fetchDemoReadOnlyExplanation,
   type DemoReadOnlyExplanationViewModel,
 } from "../../demoExplanation";
+import { SourceReadinessCard } from "../SourceReadinessCard";
 import { getDemoReadOnlyDiagnostics } from "../api";
 import { SECURITY_BLOCKED_MESSAGE } from "../contracts";
 import type { DemoDiagnosticsViewModel } from "../types";
@@ -112,6 +113,17 @@ export function DemoReadOnlyDiagnosticsDashboard() {
           <strong>{SECURITY_BLOCKED_MESSAGE}</strong>
           <p>响应包含不安全字段，或安全字段不满足只读契约。</p>
           <p>页面已阻断展示，不暴露原始响应、敏感字段、原始业务内容或本机路径细节。</p>
+        </div>
+      ) : null}
+
+      {diagnostics ? (
+        <div
+          className="demo-diagnostics-panel-stack"
+          aria-label="Demo 数据源只读状态"
+        >
+          <SourceReadinessCard
+            sourceReadiness={diagnostics.source_readiness}
+          />
         </div>
       ) : null}
 

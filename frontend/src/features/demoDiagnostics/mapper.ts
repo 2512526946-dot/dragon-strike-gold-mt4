@@ -5,6 +5,7 @@ import {
   SAFE_FLAGS,
   SECURITY_BLOCKED_STATUS_CODE,
 } from "./contracts";
+import { unsafeSourceReadinessModel } from "./sourceReadinessMapper";
 import type {
   BundleStatusViewModel,
   ComponentStatusViewModel,
@@ -59,6 +60,7 @@ export function mapDemoDiagnosticsApiToViewModel(
     block_reasons: blockReasons,
     warning_reasons: warningReasons,
     readiness: mapReadiness(response),
+    source_readiness: unsafeSourceReadinessModel(),
     ui_state: passed ? "success" : "blocked",
   };
 }
@@ -85,6 +87,7 @@ export function securityBlockedViewModel(
       next_allowed_stage: [],
       next_blocked_stage: ["security_blocked"],
     },
+    source_readiness: unsafeSourceReadinessModel(),
     ui_state: "security_blocked",
   };
 }

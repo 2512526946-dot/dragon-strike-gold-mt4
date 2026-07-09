@@ -1,3 +1,5 @@
+import type { SourceReadinessUiModel } from "./sourceReadinessMapper";
+
 export type DemoDiagnosticsUiState =
   | "loading"
   | "success"
@@ -31,6 +33,15 @@ export type DemoDiagnosticsApiResponse = {
   source_scope?: unknown;
   validation_stage?: unknown;
   fixture_source?: unknown;
+  source_mode?: unknown;
+  source_status?: unknown;
+  source_config_status_code?: unknown;
+  source_config_passed?: unknown;
+  reader_status?: unknown;
+  reader_passed?: unknown;
+  reader_status_code?: unknown;
+  mt4_demo_readonly_file_bridge_enabled?: unknown;
+  data_quality_notes?: unknown;
   bundle_validation_status?: unknown;
   component_statuses?: unknown;
   block_reasons?: unknown;
@@ -88,5 +99,6 @@ export type DemoDiagnosticsViewModel = SafetyFlagsViewModel & {
   block_reasons: string[];
   warning_reasons: string[];
   readiness: ReadinessViewModel;
+  source_readiness: SourceReadinessUiModel;
   ui_state: DemoDiagnosticsUiState;
 };
