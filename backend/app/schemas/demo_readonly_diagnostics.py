@@ -24,7 +24,23 @@ SOURCE_STATUS_SAFETY_BLOCKED = "source_config_safety_blocked"
 SOURCE_CONFIG_STATUS_UNAVAILABLE = "SOURCE_CONFIG_STATUS_UNAVAILABLE"
 SOURCE_CONFIG_STATUS_DEFAULT_READY = "MT4_DEMO_READONLY_SOURCE_CONFIG_DEFAULT_READY"
 SOURCE_CONFIG_STATUS_SAFETY_BLOCKED = "SOURCE_CONFIG_SAFETY_BLOCKED"
+MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE = (
+    "mt4_demo_readonly_file_bridge_enabled"
+)
+MT4_DEMO_READONLY_READER_SOURCE_SCOPE = (
+    "mt4_demo_readonly_reader_safe_summary_only"
+)
 READER_STATUS_NOT_CALLED = "not_called"
+READER_STATUS_READY = "ready"
+READER_STATUS_BLOCKED = "blocked"
+READER_STATUS_ERROR_SAFE = "error_safe"
+READER_STATUS_CODE_NOT_CALLED = "READER_NOT_CALLED"
+READER_STATUS_CODE_UNAVAILABLE = "READER_STATUS_UNAVAILABLE"
+READER_EXCEPTION_SAFE_STATUS_CODE = "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE"
+_ALLOWED_SOURCE_MODES = {
+    SOURCE_SCOPE,
+    MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE,
+}
 
 _REQUIRED_SUMMARY_SAFETY_FIELDS = {
     "read_only": True,
@@ -118,6 +134,8 @@ class DemoReadonlyDiagnosticsResponse(BaseModel):
     source_config_status_code: str
     source_config_passed: bool
     reader_status: str
+    reader_passed: bool
+    reader_status_code: str
     validation_stage: str
     fixture_source: str
     bundle_validation_status: dict[str, Any]
@@ -151,6 +169,7 @@ def demo_readonly_diagnostics_response(
     safety_reasons.extend(source_config_safety_reasons)
 
     passed = _bool_value(summary, "passed", default=False)
+    is_reader_summary = _is_reader_summary(summary)
 
     status_code = (
         DEMO_READONLY_DIAGNOSTICS_READY
@@ -178,11 +197,22 @@ def demo_readonly_diagnostics_response(
             "status_code",
             SOURCE_CONFIG_STATUS_UNAVAILABLE,
         ),
-        source_config_passed=(
-            source_config_status.get("passed") is True
-            and source_config_status.get("selected_source_mode") == SOURCE_SCOPE
+        source_config_passed=_source_config_passed(source_config_status),
+        reader_status=_reader_status_from_summary(
+            summary,
+            source_config_status=source_config_status,
+            is_reader_summary=is_reader_summary,
         ),
-        reader_status=READER_STATUS_NOT_CALLED,
+        reader_passed=_reader_passed_from_summary(
+            summary,
+            source_config_status=source_config_status,
+            is_reader_summary=is_reader_summary,
+        ),
+        reader_status_code=_reader_status_code_from_summary(
+            summary,
+            source_config_status=source_config_status,
+            is_reader_summary=is_reader_summary,
+        ),
         validation_stage=_str_value(
             summary,
             "validation_stage",
@@ -226,6 +256,8 @@ def demo_readonly_diagnostics_internal_error_response() -> (
         source_config_status_code=SOURCE_CONFIG_STATUS_DEFAULT_READY,
         source_config_passed=True,
         reader_status=READER_STATUS_NOT_CALLED,
+        reader_passed=False,
+        reader_status_code=READER_STATUS_CODE_NOT_CALLED,
         validation_stage=VALIDATION_STAGE,
         fixture_source="docs_fixture_only",
         bundle_validation_status=_safe_status_dict(None),
@@ -405,8 +437,8 @@ def _source_config_safety_violation_reasons(
         return _safe_list(source_config_status.get("block_reasons")) or [
             "source_config_guard_blocked"
         ]
-    if source_config_status.get("selected_source_mode") != SOURCE_SCOPE:
-        return ["Source config guard selected a non-default source mode."]
+    if source_config_status.get("selected_source_mode") not in _ALLOWED_SOURCE_MODES:
+        return ["Source config guard selected an unsupported source mode."]
     if source_config_status.get("read_only") is not True:
         return ["Unsafe source config safety field value: read_only."]
     if source_config_status.get("demo_only") is not True:
@@ -427,15 +459,16 @@ def _source_config_safety_violation_reasons(
 def _source_mode_from_source_config_status(
     source_config_status: dict[str, Any],
 ) -> str:
-    if source_config_status.get("selected_source_mode") == SOURCE_SCOPE:
-        return SOURCE_SCOPE
+    selected_source_mode = source_config_status.get("selected_source_mode")
+    if selected_source_mode in _ALLOWED_SOURCE_MODES:
+        return str(selected_source_mode)
     return SOURCE_SCOPE
 
 
 def _source_status_from_source_config_status(
     source_config_status: dict[str, Any],
 ) -> str:
-    if source_config_status.get("selected_source_mode") == SOURCE_SCOPE:
+    if source_config_status.get("selected_source_mode") in _ALLOWED_SOURCE_MODES:
         return _str_value(
             source_config_status,
             "source_status",
@@ -444,12 +477,85 @@ def _source_status_from_source_config_status(
     return SOURCE_STATUS_BLOCKED
 
 
+def _source_config_passed(source_config_status: dict[str, Any]) -> bool:
+    return (
+        source_config_status.get("passed") is True
+        and source_config_status.get("selected_source_mode") in _ALLOWED_SOURCE_MODES
+    )
+
+
+def _is_reader_summary(summary: Any) -> bool:
+    return (
+        _str_value(summary, "source_scope", "")
+        == MT4_DEMO_READONLY_READER_SOURCE_SCOPE
+    )
+
+
+def _reader_status_from_summary(
+    summary: Any,
+    *,
+    source_config_status: dict[str, Any],
+    is_reader_summary: bool,
+) -> str:
+    if not _source_config_selected_reader(source_config_status):
+        return READER_STATUS_NOT_CALLED
+    if not is_reader_summary:
+        return READER_STATUS_BLOCKED
+    status_code = _str_value(summary, "status_code", READER_STATUS_CODE_UNAVAILABLE)
+    if status_code == READER_EXCEPTION_SAFE_STATUS_CODE:
+        return READER_STATUS_ERROR_SAFE
+    if _bool_value(summary, "passed", default=False):
+        return READER_STATUS_READY
+    return READER_STATUS_BLOCKED
+
+
+def _reader_passed_from_summary(
+    summary: Any,
+    *,
+    source_config_status: dict[str, Any],
+    is_reader_summary: bool,
+) -> bool:
+    return (
+        _source_config_selected_reader(source_config_status)
+        and is_reader_summary
+        and _bool_value(summary, "passed", default=False)
+    )
+
+
+def _reader_status_code_from_summary(
+    summary: Any,
+    *,
+    source_config_status: dict[str, Any],
+    is_reader_summary: bool,
+) -> str:
+    if not _source_config_selected_reader(source_config_status):
+        return READER_STATUS_CODE_NOT_CALLED
+    if not is_reader_summary:
+        return READER_STATUS_CODE_UNAVAILABLE
+    return _str_value(summary, "status_code", READER_STATUS_CODE_UNAVAILABLE)
+
+
+def _source_config_selected_reader(source_config_status: dict[str, Any]) -> bool:
+    return (
+        source_config_status.get("selected_source_mode")
+        == MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE
+    )
+
+
 def _safe_component_statuses(value: Any) -> dict[str, dict[str, Any]]:
-    if not isinstance(value, dict):
+    safe_components = {}
+    if isinstance(value, dict):
+        items = value.items()
+    elif isinstance(value, list):
+        items = (
+            (component_status.get("component_name"), component_status)
+            for component_status in value
+            if isinstance(component_status, dict)
+        )
+    else:
         return {}
 
-    safe_components = {}
-    for component_name, component_status in value.items():
+    for component_name, component_status in items:
         if not isinstance(component_name, str):
             continue
         if _is_unsafe_text(component_name):

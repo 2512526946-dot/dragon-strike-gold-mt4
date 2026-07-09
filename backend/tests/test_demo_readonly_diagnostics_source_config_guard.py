@@ -136,7 +136,7 @@ def test_diagnostics_api_request_values_cannot_switch_source_config(
     _assert_no_forbidden_source_values(data)
 
 
-def test_diagnostics_api_blocks_non_default_source_config_guard_result(
+def test_diagnostics_api_blocks_reader_guard_result_without_server_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_no_reader_guard(monkeypatch)
@@ -163,12 +163,11 @@ def test_diagnostics_api_blocks_non_default_source_config_guard_result(
     assert data["passed"] is False
     assert data["status_code"] == DEMO_READONLY_SAFETY_FIELD_VIOLATION
     assert data["source_mode"] == "docs_fixture_only"
-    assert data["source_status"] == "source_mode_blocked"
+    assert data["source_status"] == "source_config_safety_blocked"
+    assert data["source_config_status_code"] == "SOURCE_CONFIG_SERVER_MISMATCH_BLOCKED"
     assert data["source_config_passed"] is False
     assert data["reader_status"] == "not_called"
-    assert "Source config guard selected a non-default source mode." in data[
-        "block_reasons"
-    ]
+    assert "source_config_server_mismatch_blocked" in data["block_reasons"]
     _assert_safe_flags(data)
     _assert_no_forbidden_source_values(data)
 

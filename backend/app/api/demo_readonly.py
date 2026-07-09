@@ -17,6 +17,9 @@ from app.services.demo_readonly_docs_fixture_validation_summary import (
 from app.services.mt4_demo_readonly_source_config_guard import (
     validate_demo_readonly_source_config,
 )
+from app.services.mt4_demo_readonly_reader import (
+    read_mt4_demo_readonly_source_summary_from_dir,
+)
 from app.services.read_only_diagnostics_explainer import (
     READONLY_EXPLANATION_BLOCKED,
     READONLY_EXPLANATION_INPUT_INVALID,
@@ -31,6 +34,11 @@ router = APIRouter(prefix="/api/demo-readonly", tags=["demo-readonly"])
 
 DEMO_READONLY_EXPLANATION_ENDPOINT = "/api/demo-readonly/explanation"
 READONLY_EXPLANATION_API_ERROR = "READONLY_EXPLANATION_API_ERROR"
+MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE = (
+    "mt4_demo_readonly_file_bridge_enabled"
+)
+MT4_DEMO_READONLY_FILE_BRIDGE_READY = "mt4_demo_readonly_file_bridge_ready"
+MT4_DEMO_READONLY_BRIDGE_DIR_CONFIG_KEY = "mt4_demo_readonly_bridge_dir"
 _SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG: dict[str, object] = {}
 _SAFE_SOURCE_CONFIG_GUARD_EXCEPTION_RESULT: dict[str, object] = {
     "passed": False,
@@ -38,6 +46,22 @@ _SAFE_SOURCE_CONFIG_GUARD_EXCEPTION_RESULT: dict[str, object] = {
     "selected_source_mode": "docs_fixture_only",
     "source_status": "source_config_safety_blocked",
     "block_reasons": ["source_config_guard_exception_sanitized"],
+    "warning_reasons": [],
+    "read_only": True,
+    "demo_only": True,
+    "is_tradable": False,
+    "can_execute": False,
+    "is_trading_permission": False,
+    "is_execution_instruction": False,
+    "allowed_to_call_ea": False,
+    "allowed_to_modify_risk": False,
+}
+_SAFE_SOURCE_CONFIG_SERVER_MISMATCH_RESULT: dict[str, object] = {
+    "passed": False,
+    "status_code": "SOURCE_CONFIG_SERVER_MISMATCH_BLOCKED",
+    "selected_source_mode": "docs_fixture_only",
+    "source_status": "source_config_safety_blocked",
+    "block_reasons": ["source_config_server_mismatch_blocked"],
     "warning_reasons": [],
     "read_only": True,
     "demo_only": True,
@@ -233,10 +257,20 @@ _REDACTED_EXPLANATION_TEXT = "存在不适合展示的原始内容，API 层已�
 def get_demo_readonly_diagnostics() -> (
     DemoReadonlyDiagnosticsResponse | JSONResponse
 ):
-    source_config_guard_result = _safe_source_config_guard_result()
+    server_source_config = _get_demo_readonly_server_source_config()
+    source_config_guard_result = _safe_source_config_guard_result(
+        server_source_config
+    )
+    source_config_guard_result = _safe_source_config_guard_result_for_server_config(
+        source_config_guard_result=source_config_guard_result,
+        server_source_config=server_source_config,
+    )
 
     try:
-        summary = summarize_demo_readonly_docs_fixture_validation()
+        summary = _demo_readonly_diagnostics_summary(
+            source_config_guard_result=source_config_guard_result,
+            server_source_config=server_source_config,
+        )
     except Exception:
         safe_response = demo_readonly_diagnostics_internal_error_response()
         return JSONResponse(
@@ -260,13 +294,131 @@ def get_demo_readonly_explanation() -> dict[str, Any]:
     return _safe_explanation_response(report)
 
 
-def _safe_source_config_guard_result() -> dict[str, object]:
+def _get_demo_readonly_server_source_config() -> dict[str, object]:
+    return dict(_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG)
+
+
+def _safe_source_config_guard_result(
+    server_source_config: dict[str, object],
+) -> dict[str, object]:
     try:
-        return validate_demo_readonly_source_config(
-            dict(_SERVER_SIDE_DEMO_READONLY_SOURCE_CONFIG)
-        )
+        return validate_demo_readonly_source_config(server_source_config)
     except Exception:
         return dict(_SAFE_SOURCE_CONFIG_GUARD_EXCEPTION_RESULT)
+
+
+def _safe_source_config_guard_result_for_server_config(
+    *,
+    source_config_guard_result: dict[str, object],
+    server_source_config: dict[str, object],
+) -> dict[str, object]:
+    if (
+        source_config_guard_result.get("selected_source_mode")
+        != MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE
+    ):
+        return source_config_guard_result
+    if _server_config_explicitly_selects_reader(server_source_config):
+        return source_config_guard_result
+    return dict(_SAFE_SOURCE_CONFIG_SERVER_MISMATCH_RESULT)
+
+
+def _demo_readonly_diagnostics_summary(
+    *,
+    source_config_guard_result: dict[str, object],
+    server_source_config: dict[str, object],
+) -> Any:
+    if not _should_call_mt4_demo_readonly_reader(
+        source_config_guard_result=source_config_guard_result,
+        server_source_config=server_source_config,
+    ):
+        return summarize_demo_readonly_docs_fixture_validation()
+
+    bridge_dir = server_source_config.get(MT4_DEMO_READONLY_BRIDGE_DIR_CONFIG_KEY)
+    try:
+        return read_mt4_demo_readonly_source_summary_from_dir(bridge_dir)
+    except Exception:
+        return _safe_mt4_demo_readonly_reader_exception_summary()
+
+
+def _should_call_mt4_demo_readonly_reader(
+    *,
+    source_config_guard_result: dict[str, object],
+    server_source_config: dict[str, object],
+) -> bool:
+    return (
+        source_config_guard_result.get("passed") is True
+        and source_config_guard_result.get("selected_source_mode")
+        == MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE
+        and source_config_guard_result.get("source_status")
+        == MT4_DEMO_READONLY_FILE_BRIDGE_READY
+        and source_config_guard_result.get("read_only") is True
+        and source_config_guard_result.get("demo_only") is True
+        and source_config_guard_result.get("is_tradable") is False
+        and source_config_guard_result.get("can_execute") is False
+        and source_config_guard_result.get("is_trading_permission") is False
+        and source_config_guard_result.get("is_execution_instruction") is False
+        and source_config_guard_result.get("allowed_to_call_ea") is False
+        and source_config_guard_result.get("allowed_to_modify_risk") is False
+        and _server_config_explicitly_selects_reader(server_source_config)
+    )
+
+
+def _server_config_explicitly_selects_reader(
+    server_source_config: dict[str, object],
+) -> bool:
+    return (
+        server_source_config.get("source_mode")
+        == MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE
+        and server_source_config.get("mt4_demo_readonly_file_bridge_enabled") is True
+        and server_source_config.get("allow_request_override", False) is False
+        and isinstance(
+            server_source_config.get(MT4_DEMO_READONLY_BRIDGE_DIR_CONFIG_KEY),
+            str,
+        )
+    )
+
+
+def _safe_mt4_demo_readonly_reader_exception_summary() -> dict[str, Any]:
+    return {
+        "passed": False,
+        "status_code": "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE",
+        "source_mode": MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE,
+        "source_scope": "mt4_demo_readonly_reader_safe_summary_only",
+        "validation_stage": "demo_readonly_diagnostics_reader",
+        "fixture_source": "mt4_demo_readonly_file_bridge",
+        "reader_status": "error_safe",
+        "reader_block_reasons": ["READER_EXCEPTION_SANITIZED"],
+        "reader_warning_reasons": [],
+        "bundle_validation_status": {
+            "passed": False,
+            "status_code": "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE",
+            "block_reasons": ["READER_EXCEPTION_SANITIZED"],
+            "warning_reasons": [],
+            "read_only": True,
+            "demo_only": True,
+            "is_tradable": False,
+            "can_execute": False,
+        },
+        "component_statuses": {},
+        "block_reasons": ["reader exception sanitized"],
+        "warning_reasons": [],
+        "readiness_notes": [
+            "Reader failed safely.",
+            "Diagnostics remain read-only.",
+            "Diagnostics are not trading permission.",
+            "Diagnostics do not generate trading signals.",
+        ],
+        "next_allowed_stage": [],
+        "next_blocked_stage": ["execution_chain"],
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
 
 
 def _safe_explanation_response(report: Any) -> dict[str, Any]:
