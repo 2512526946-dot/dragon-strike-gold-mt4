@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "npm run test:source-readiness-mapper && npm run test:demo-diagnostics-safety",
+    "test": "npm run test:source-readiness-mapper && npm run test:source-readiness-card && npm run test:demo-diagnostics-safety",
     "test:source-readiness-mapper": "node scripts/check-source-readiness-mapper.mjs",
+    "test:source-readiness-card": "node scripts/check-source-readiness-card.mjs",
     "test:demo-diagnostics-safety": "node scripts/check-demo-diagnostics-safety.mjs",
     "test:demo-explanation-safety": "node scripts/check-demo-explanation-safety.mjs",
     "preview": "vite preview"
