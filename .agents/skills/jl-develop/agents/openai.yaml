@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙开发"
+  short_description: "执行一个已经明确批准且范围完整的巨龙出击开发或修订工单"
+  default_prompt: "使用 $jl-develop 读取 AGENTS.md，执行用户明确批准的唯一工单；commit 和 push 后停止。"
+policy:
+  allow_implicit_invocation: false

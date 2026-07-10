@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙验收"
+  short_description: "只读审查巨龙出击当前分支、测试证据与安全边界并给出结论"
+  default_prompt: "使用 $jl-review 只读审查当前分支相对 main，并输出四种允许结论之一。"
+policy:
+  allow_implicit_invocation: false

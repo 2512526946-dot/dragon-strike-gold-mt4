@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙合并"
+  short_description: "仅以 fast-forward 合并已通过验收且获得用户批准的工作分支"
+  default_prompt: "使用 $jl-merge 合并已通过验收且获用户批准的分支；仅 ff-only，验证并 push main 后停止。"
+policy:
+  allow_implicit_invocation: false

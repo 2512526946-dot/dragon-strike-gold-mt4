@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙发布"
+  short_description: "验证同步主线并创建用户明确批准的巨龙出击阶段性标签"
+  default_prompt: "使用 $jl-release 验证主线，创建用户明确批准的 annotated tag，push 并确认后停止。"
+policy:
+  allow_implicit_invocation: false

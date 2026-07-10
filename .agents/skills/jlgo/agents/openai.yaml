@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙推进"
+  short_description: "只读检查巨龙出击项目状态、工作分支并决定唯一下一步动作"
+  default_prompt: "使用 $jlgo 读取 AGENTS.md 和当前 Git 状态，只读判断巨龙出击的唯一下一步。"
+policy:
+  allow_implicit_invocation: true
