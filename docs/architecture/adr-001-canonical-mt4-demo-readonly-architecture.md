@@ -130,7 +130,7 @@ Newer surface:
 - Source readiness mapper:
   - `frontend/src/features/demoDiagnostics/sourceReadinessMapper.ts`
 - Source readiness component:
-  - `frontend/src/features/demoDiagnostics/components/SourceReadinessCard.tsx`
+  - `frontend/src/features/demoDiagnostics/SourceReadinessCard.tsx`
 
 Current frontend conclusion:
 
@@ -224,9 +224,14 @@ GET /api/mt4/diagnostics
 ```
 
 is deprecated for new development. It may remain temporarily as a compatibility
-surface, but it must not receive new product features. After migration, it should
-either become a thin adapter to the canonical service or be removed in a later
-explicit compatibility decision.
+surface, but it must not receive new product features. During the compatibility
+migration phase, it must become a thin compatibility adapter that calls the same
+canonical internal diagnostics service as `/api/demo-readonly/diagnostics`. It
+must not continue to maintain an independent reader, freshness chain,
+DataQualityGate chain, or product capability. It must not be removed immediately;
+frontend users and other callers should migrate first, and compatibility tests
+must pass. Whether the old endpoint is ultimately removed should be decided by a
+separate ADR after compatibility migration is complete.
 
 The canonical internal MT4 Demo readonly diagnostics architecture will converge
 on one service chain:
@@ -250,6 +255,30 @@ Server-side Config
 Source mode authority is server-side only. Query parameters, headers, request
 bodies, cookies, and browser state must not select source mode, bridge directory,
 base directory, or candidate file paths.
+
+### Canonical Configuration Authority
+
+Canonical source configuration authority is server-side only.
+
+Long-term implementation should use typed server-side settings or an explicit
+dependency/config object. That configuration should be loaded at application
+startup or through a deliberate internal dependency boundary.
+
+The following inputs must not enter the canonical source configuration object:
+
+- request query parameters;
+- request headers;
+- request body;
+- request cookies;
+- request form fields;
+- request path parameters;
+- frontend state.
+
+The current module-level mutable dictionary used by the demo-readonly route is
+only a transitional implementation detail. It is not the canonical long-term
+configuration authority. This ADR decides the direction; it does not modify
+configuration code and does not claim typed settings have already been
+implemented for this path.
 
 The canonical first bundle will use a manifest plus the established four core
 files:
@@ -377,9 +406,15 @@ Phase 2: Build canonical service behind demo-readonly endpoint
 
 Phase 3: Adapt old endpoint
 
-- Option A: make `/api/mt4/diagnostics` a thin adapter to the canonical service.
-- Option B: keep it disabled or compatibility-only until removal.
-- The choice must be made in a later explicit compatibility work order.
+- `/api/mt4/diagnostics` must become a thin compatibility adapter to the
+  canonical internal diagnostics service.
+- It must not keep an independent reader.
+- It must not keep an independent freshness or DataQualityGate business chain.
+- It must not receive new product capabilities.
+- It must remain available until frontend and caller migration is complete and
+  compatibility tests pass.
+- Final removal, if any, is a separate post-migration ADR. That later ADR decides
+  endpoint removal only; this ADR already decides the migration mechanism.
 
 Phase 4: Remove duplicated frontend dependency
 
@@ -435,8 +470,8 @@ These invariants are mandatory for the canonical architecture:
 
 1. Default mode is docs fixture only.
 2. Reader activation is server-side only.
-3. Request query, headers, body, cookies, and frontend state cannot enable the
-   reader.
+3. Request query, headers, body, cookies, form fields, path parameters, and
+   frontend state cannot enable the reader.
 4. The reader is never enabled by default.
 5. Bridge directory is never client supplied.
 6. Raw MT4 payload is never returned to the frontend.
@@ -526,6 +561,14 @@ the strongest validation layers from the older chain.
 
 Phase numbers are planning labels, not commitments to exact work-order IDs.
 
+Migration questions outside G144 are assigned as follows:
+
+- Validation module wiring belongs to the canonical service/reader implementation
+  phase, especially the service seam and validation integration work.
+- Golden canonical fixtures belong to the canonical fixtures and contract tests
+  phase.
+- Old endpoint compatibility tests belong to the endpoint migration phase.
+
 ## Open Questions for G144
 
 1. What exact manifest field names and types are required in
@@ -545,10 +588,6 @@ Phase numbers are planning labels, not commitments to exact work-order IDs.
 11. Should `terminal_id_masked` be required or optional?
 12. What exact fields from `account_snapshot.json` are required for readonly
     diagnostics before any future risk engine exists?
-13. Which old validation modules should be reused directly and which should be
-    wrapped by a canonical bundle service?
-14. What fixture set should represent a fully valid canonical bundle?
-15. How should old endpoint compatibility be tested during migration?
 
 ## Explicit Non-Goals
 
