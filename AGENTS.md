@@ -6,9 +6,14 @@
 
 - 项目代号：巨龙出击。
 - 仓库：`dragon-strike-gold-mt4`。
-- 品种：XAUUSD，broker symbol 可为 GOLD。
+- 平台：TradeMax Global MT4 Demo。
+- Canonical 品种：XAUUSD。
+- Broker symbol 示例：GOLD。
 - 当前默认：Demo-only / Read-only。
+- 当前下单责任：用户本人。
+- 当前系统权限：只读分析和建议，不允许自动下单。
 - 当前不是自动实盘交易系统。
+- 上述平台定位不代表当前已经接入真实 MT4 或真实账户。
 - 当前目标是构建智能副驾驶、数据质量、风险教练、仓位助手和复盘训练底座。
 
 ## 2. 权限模型
@@ -63,6 +68,23 @@ Server-side policy 包括：
 
 Writer、manifest、payload 和 client 均不得覆盖 server policy。
 
+## 已批准的交易与风险政策
+
+- 杠杆上限：10 倍；
+- 单笔最大允许亏损：账户权益的 1%；
+- 单日最大允许亏损：账户权益的 3%；
+- 主要计划交易时段：亚洲时段；
+- 不允许隔夜持仓；
+- 必须先经过模拟盘训练；
+- 当前所有交易由用户手动确认和下单；
+- 当前不允许自动下单；
+- DataQualityGate 未通过时不得进入分析；
+- GoLiveGate 未通过时不得升级到任何实盘阶段。
+
+以上是已经批准的 server-side policy 和未来验收约束，不代表当前代码已经完整实现这些 Gate，也不代表系统已获得交易或执行许可。
+
+Writer、manifest、payload 和 client 均不得覆盖这些政策。
+
 ## 5. 工单和 Git 纪律
 
 - 一次只执行一个工单。
@@ -103,7 +125,7 @@ Writer、manifest、payload 和 client 均不得覆盖 server policy。
 
 ## 7. 输出安全
 
-不得在结果、日志或报告中暴露：
+不得在结果、日志或报告中暴露敏感信息：
 
 - 密码、token 或凭证；
 - 真实账户号；
@@ -111,9 +133,32 @@ Writer、manifest、payload 和 client 均不得覆盖 server policy。
 - raw payload；
 - 不必要的价格和余额；
 - traceback 或异常原文；
-- checksum；
-- 订单指令；
-- 交易建议。
+- checksum。
+
+### 允许的只读建议
+
+- 行情与趋势分析；
+- 风险提示；
+- 情景分析；
+- 机会候选；
+- 失效条件；
+- 止损距离分析；
+- 建议仓位范围；
+- 复盘和训练反馈。
+
+这些输出必须明确标记为非执行性建议，不代表交易许可，不代表 Gate 已通过，也不得自动转化为订单。
+
+### 禁止输出
+
+- 可直接执行的订单指令；
+- 下单 payload；
+- 自动买卖命令；
+- EA 调用指令；
+- 将分析包装成交易许可；
+- 将 readiness、DataQualityGate 或 GoLiveGate 包装成执行许可；
+- 绕过用户确认的交易动作。
+
+不得放宽 Demo-only、Read-only 和无自动下单边界。
 
 ## 8. 模型选择
 
