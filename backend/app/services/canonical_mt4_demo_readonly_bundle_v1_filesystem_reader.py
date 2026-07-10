@@ -479,7 +479,18 @@ def _load_json_object(
             "UTF8_DECODE_INVALID",
         )
     try:
-        parsed = json.loads(text, parse_constant=_reject_json_constant)
+        parsed = json.loads(
+            text,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_object_pairs,
+        )
+    except _DuplicateJsonKeyDetected:
+        _reject(
+            context,
+            CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID,
+            component_name,
+            "JSON_DUPLICATE_KEY",
+        )
     except (json.JSONDecodeError, ValueError):
         _reject(
             context,
@@ -608,6 +619,19 @@ def _reject_json_constant(_: str) -> None:
     raise ValueError
 
 
+def _reject_duplicate_object_pairs(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    seen: set[str] = set()
+    for key, value in pairs:
+        if key in seen:
+            raise _DuplicateJsonKeyDetected
+        seen.add(key)
+        result[key] = value
+    return result
+
+
 def _is_within(candidate: Path, parent: Path) -> bool:
     try:
         candidate.relative_to(parent)
@@ -650,6 +674,10 @@ class _ReaderRejected(Exception):
         super().__init__()
         self.status_code = status_code
         self.context = context
+
+
+class _DuplicateJsonKeyDetected(ValueError):
+    pass
 
 
 class _ReaderContext:

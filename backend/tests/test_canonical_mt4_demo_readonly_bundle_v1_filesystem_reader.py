@@ -380,6 +380,96 @@ def test_invalid_json_is_rejected(tmp_path: Path, filename: str) -> None:
     assert result["reason_codes"] == ["JSON_INVALID"]
 
 
+def test_manifest_top_level_duplicate_key_is_rejected(tmp_path: Path) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    manifest = bundle / "snapshot_manifest.json"
+    _replace_raw_json_once(
+        manifest,
+        '  "commit_state": "complete",',
+        '  "commit_state": "complete",\n  "commit_state": "complete",',
+    )
+
+    result = _read(root, bundle)
+
+    _assert_blocked(result, CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID)
+    assert result["reason_codes"] == ["JSON_DUPLICATE_KEY"]
+    assert result["ready_for_readonly_analysis"] is False
+
+
+def test_payload_top_level_duplicate_safety_key_is_rejected(tmp_path: Path) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    live_tick = bundle / "live_tick.json"
+    _replace_raw_json_once(
+        live_tick,
+        '  "is_tradable": false,',
+        '  "is_tradable": true,\n  "is_tradable": false,',
+    )
+
+    result = _read(root, bundle)
+
+    _assert_blocked(result, CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID)
+    assert result["reason_codes"] == ["JSON_DUPLICATE_KEY"]
+
+
+def test_nested_bar_duplicate_key_is_rejected(tmp_path: Path) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    latest_bars = bundle / "latest_bars.json"
+    _replace_raw_json_once(
+        latest_bars,
+        '          "close": 2300.2,',
+        '          "close": 2300.1,\n          "close": 2300.2,',
+    )
+
+    result = _read(root, bundle)
+
+    _assert_blocked(result, CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID)
+    assert result["reason_codes"] == ["JSON_DUPLICATE_KEY"]
+
+
+def test_manifest_descriptor_duplicate_key_is_rejected(tmp_path: Path) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    manifest = bundle / "snapshot_manifest.json"
+    _replace_raw_json_once(
+        manifest,
+        '      "filename": "live_tick.json",',
+        (
+            '      "filename": "account_snapshot.json",\n'
+            '      "filename": "live_tick.json",'
+        ),
+    )
+
+    result = _read(root, bundle)
+
+    _assert_blocked(result, CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID)
+    assert result["reason_codes"] == ["JSON_DUPLICATE_KEY"]
+
+
+def test_duplicate_key_failure_does_not_leak_key_value_path_or_exception(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    live_tick = bundle / "live_tick.json"
+    _replace_raw_json_once(
+        live_tick,
+        '  "is_tradable": false,',
+        (
+            '  "is_tradable": "SUPER_SECRET_DUPLICATE_VALUE",\n'
+            '  "is_tradable": false,'
+        ),
+    )
+
+    result = _read(root, bundle)
+    serialized = json.dumps(result, sort_keys=True)
+
+    _assert_blocked(result, CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID)
+    assert result["reason_codes"] == ["JSON_DUPLICATE_KEY"]
+    assert "SUPER_SECRET_DUPLICATE_VALUE" not in serialized
+    assert '\"is_tradable\": \"SUPER_SECRET_DUPLICATE_VALUE\"' not in serialized
+    assert str(root) not in serialized
+    assert str(bundle) not in serialized
+    assert "_DuplicateJsonKeyDetected" not in serialized
+
+
 def test_non_standard_json_constants_are_rejected(tmp_path: Path) -> None:
     root, bundle = _create_bundle(tmp_path)
     (bundle / "live_tick.json").write_text('{"value": NaN}', encoding="utf-8")
@@ -859,6 +949,12 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def _replace_raw_json_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
 def _set_checksum(bundle: Path, filename: str, digest: str) -> None:
