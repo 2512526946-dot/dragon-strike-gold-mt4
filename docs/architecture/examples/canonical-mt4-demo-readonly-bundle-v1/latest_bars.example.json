@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "file_type": "latest_bars",
+  "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
+  "sequence": 1,
+  "generated_at_utc": "2026-07-10T02:30:00Z",
+  "source_id": "trademax-demo-mt4-readonly-example",
+  "source_mode": "mt4_demo_readonly_file_bridge_enabled",
+  "writer_version": "example-writer-0.0.0",
+  "terminal_id_masked": "terminal-demo-example-01",
+  "account_mode": "demo_only",
+  "is_demo_account": true,
+  "is_live_account": false,
+  "read_only": true,
+  "demo_only": true,
+  "is_tradable": false,
+  "can_execute": false,
+  "is_trading_permission": false,
+  "is_execution_instruction": false,
+  "allowed_to_call_ea": false,
+  "allowed_to_modify_risk": false,
+  "contains_credentials": false,
+  "contains_password": false,
+  "contains_live_account": false,
+  "symbol": "XAUUSD",
+  "required_timeframes": [
+    "M15",
+    "H1",
+    "H4",
+    "D1"
+  ],
+  "timeframes": {
+    "M15": {
+      "timeframe": "M15",
+      "bar_count": 2,
+      "bars": [
+        {
+          "bar_open_time_utc": "2026-07-10T02:00:00Z",
+          "open_price": 2299.6,
+          "high_price": 2301.1,
+          "low_price": 2298.9,
+          "close_price": 2300.2,
+          "tick_volume": 1240,
+          "spread_points": 30,
+          "is_closed": true
+        },
+        {
+          "bar_open_time_utc": "2026-07-10T02:15:00Z",
+          "open_price": 2300.2,
+          "high_price": 2301.4,
+          "low_price": 2299.8,
+          "close_price": 2300.8,
+          "tick_volume": 830,
+          "spread_points": 30,
+          "is_closed": false
+        }
+      ]
+    },
+    "H1": {
+      "timeframe": "H1",
+      "bar_count": 2,
+      "bars": [
+        {
+          "bar_open_time_utc": "2026-07-10T00:00:00Z",
+          "open_price": 2296.4,
+          "high_price": 2300.7,
+          "low_price": 2295.9,
+          "close_price": 2299.7,
+          "tick_volume": 4100,
+          "spread_points": 31,
+          "is_closed": true
+        },
+        {
+          "bar_open_time_utc": "2026-07-10T01:00:00Z",
+          "open_price": 2299.7,
+          "high_price": 2301.4,
+          "low_price": 2298.9,
+          "close_price": 2300.8,
+          "tick_volume": 2950,
+          "spread_points": 30,
+          "is_closed": false
+        }
+      ]
+    },
+    "H4": {
+      "timeframe": "H4",
+      "bar_count": 2,
+      "bars": [
+        {
+          "bar_open_time_utc": "2026-07-09T16:00:00Z",
+          "open_price": 2288.5,
+          "high_price": 2298.2,
+          "low_price": 2287.9,
+          "close_price": 2296.4,
+          "tick_volume": 12300,
+          "spread_points": 32,
+          "is_closed": true
+        },
+        {
+          "bar_open_time_utc": "2026-07-09T20:00:00Z",
+          "open_price": 2296.4,
+          "high_price": 2301.4,
+          "low_price": 2295.9,
+          "close_price": 2300.8,
+          "tick_volume": 8400,
+          "spread_points": 30,
+          "is_closed": false
+        }
+      ]
+    },
+    "D1": {
+      "timeframe": "D1",
+      "bar_count": 2,
+      "bars": [
+        {
+          "bar_open_time_utc": "2026-07-09T00:00:00Z",
+          "open_price": 2278.2,
+          "high_price": 2298.2,
+          "low_price": 2275.6,
+          "close_price": 2296.4,
+          "tick_volume": 53000,
+          "spread_points": 32,
+          "is_closed": true
+        },
+        {
+          "bar_open_time_utc": "2026-07-10T00:00:00Z",
+          "open_price": 2296.4,
+          "high_price": 2301.4,
+          "low_price": 2295.9,
+          "close_price": 2300.8,
+          "tick_volume": 15200,
+          "spread_points": 30,
+          "is_closed": false
+        }
+      ]
+    }
+  },
+  "note": "Demo-only readonly bar snapshot for diagnostics. Not trading advice, not trading permission, and not an execution instruction."
+}
