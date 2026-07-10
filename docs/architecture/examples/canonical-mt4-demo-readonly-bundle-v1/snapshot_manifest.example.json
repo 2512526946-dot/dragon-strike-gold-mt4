@@ -1,17 +1,50 @@
 {
   "schema_version": "1.0",
-  "file_type": "snapshot_manifest",
-  "bundle_version": "1.0",
-  "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
+  "manifest_type": "mt4_demo_readonly_snapshot_manifest",
+  "bundle_id": "demo-bundle-000000000001",
   "sequence": 1,
   "generated_at_utc": "2026-07-10T02:30:00Z",
-  "source_id": "trademax-demo-mt4-readonly-example",
-  "source_mode": "mt4_demo_readonly_file_bridge_enabled",
-  "writer_version": "example-writer-0.0.0",
-  "terminal_id_masked": "terminal-demo-example-01",
+  "committed_at_utc": "2026-07-10T02:30:01Z",
+  "writer_heartbeat_at_utc": "2026-07-10T02:30:01Z",
+  "source_id": "trademax_mt4_demo_readonly_bridge",
+  "writer_version": "0.1.0-example",
+  "terminal_id_masked": "trademax-demo-terminal-01",
   "account_mode": "demo_only",
   "is_demo_account": true,
   "is_live_account": false,
+  "canonical_symbol": "XAUUSD",
+  "broker_symbol": "GOLD",
+  "commit_state": "complete",
+  "required_files": [
+    {
+      "filename": "live_tick.json",
+      "file_type": "live_tick",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "latest_bars.json",
+      "file_type": "latest_bars",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "symbol_spec.json",
+      "file_type": "symbol_spec",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "account_snapshot.json",
+      "file_type": "account_snapshot",
+      "schema_version": "1.0",
+      "content_sha256": null
+    }
+  ],
+  "optional_files": [],
+  "compatible_reader_schema_versions": [
+    "1.0"
+  ],
   "read_only": true,
   "demo_only": true,
   "is_tradable": false,
@@ -19,77 +52,5 @@
   "is_trading_permission": false,
   "is_execution_instruction": false,
   "allowed_to_call_ea": false,
-  "allowed_to_modify_risk": false,
-  "contains_credentials": false,
-  "contains_password": false,
-  "contains_live_account": false,
-  "writer_heartbeat_utc": "2026-07-10T02:30:00Z",
-  "publish_started_at_utc": "2026-07-10T02:29:59Z",
-  "published_at_utc": "2026-07-10T02:30:00Z",
-  "commit_state": "complete",
-  "required_files": [
-    "live_tick.json",
-    "latest_bars.json",
-    "symbol_spec.json",
-    "account_snapshot.json"
-  ],
-  "optional_files": [],
-  "payloads": {
-    "live_tick.json": {
-      "file_type": "live_tick",
-      "schema_version": "1.0",
-      "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
-      "sequence": 1,
-      "generated_at_utc": "2026-07-10T02:30:00Z",
-      "max_age_seconds": 10,
-      "max_size_bytes": 16384
-    },
-    "latest_bars.json": {
-      "file_type": "latest_bars",
-      "schema_version": "1.0",
-      "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
-      "sequence": 1,
-      "generated_at_utc": "2026-07-10T02:30:00Z",
-      "max_age_seconds": 60,
-      "max_size_bytes": 262144
-    },
-    "symbol_spec.json": {
-      "file_type": "symbol_spec",
-      "schema_version": "1.0",
-      "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
-      "sequence": 1,
-      "generated_at_utc": "2026-07-10T02:30:00Z",
-      "max_age_seconds": 86400,
-      "max_size_bytes": 32768
-    },
-    "account_snapshot.json": {
-      "file_type": "account_snapshot",
-      "schema_version": "1.0",
-      "bundle_id": "mt4-demo-readonly-20260710T023000Z-000001",
-      "sequence": 1,
-      "generated_at_utc": "2026-07-10T02:30:00Z",
-      "max_age_seconds": 30,
-      "max_size_bytes": 32768
-    }
-  },
-  "freshness_thresholds_seconds": {
-    "live_tick.json": 10,
-    "latest_bars.json": 60,
-    "symbol_spec.json": 86400,
-    "account_snapshot.json": 30
-  },
-  "file_size_limits_bytes": {
-    "snapshot_manifest.json": 32768,
-    "live_tick.json": 16384,
-    "latest_bars.json": 262144,
-    "symbol_spec.json": 32768,
-    "account_snapshot.json": 32768
-  },
-  "max_total_bundle_bytes": 524288,
-  "checksum_policy": {
-    "algorithm": "none",
-    "checksum_required": false,
-    "if_present_reader_must_verify": true
-  },
-  "note": "Demo-only readonly manifest for diagnostics. Not trading advice, not trading permission, and not an execution instruction."
+  "allowed_to_modify_risk": false
 }
