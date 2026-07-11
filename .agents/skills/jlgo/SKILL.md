@@ -47,3 +47,27 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 下一步是开发时，额外输出 `【完整候选工单】`。
 
 下一 Skill 只能是 `$jl-develop`、`$jl-review`、`$jl-merge` 或 `$jl-release`。输出后停止，不自动调用它。
+
+## 下一步操作卡
+
+固定输出之后必须追加 `【下一步操作卡】`：
+
+```text
+【下一步操作卡】
+1. 当前状态：
+2. 下一步要做什么：
+3. 是否需要用户显式批准：
+4. 模型要求：
+5. 下一 Skill：
+6. 可直接复制发送给 Codex 的完整指令：
+```
+
+映射规则：
+
+- 规划开发工单时，`下一 Skill` 写 `$jl-develop`。
+- 规划验收工单时，`下一 Skill` 写 `$jl-review`。
+- 规划 fast-forward 合并工单时，`下一 Skill` 写 `$jl-merge`。
+- 规划已明确批准的 tag-only release 时，`下一 Skill` 写 `$jl-release`。
+- checkpoint 异常、工作区不干净、无安全下一步或应停止时，`下一 Skill` 写 `无`。
+- 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
+- 不得通过完整指令自动越过用户批准，不得自动 merge、tag 或进入下一工单。

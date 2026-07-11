@@ -16,3 +16,26 @@ description: Execute exactly one explicitly approved 巨龙出击 development or
 9. 按工单要求 commit，并 push 工作分支。
 10. 不 merge，不 tag，不自动 review，不进入下一工单。
 11. 只汇报当前工单结果，并建议用户显式调用 `$jl-review`。
+12. 最终汇报末尾必须追加 `【下一步操作卡】`。
+
+## 下一步操作卡
+
+开发或修订工单结束后必须输出：
+
+```text
+【下一步操作卡】
+1. 当前状态：
+2. 下一步要做什么：
+3. 是否需要用户显式批准：
+4. 模型要求：
+5. 下一 Skill：
+6. 可直接复制发送给 Codex 的完整指令：
+```
+
+映射规则：
+
+- 开发成功、commit 并 push 工作分支后，`下一 Skill` 写 `$jl-review`。
+- checkpoint 异常、工作区不干净、测试失败、commit 失败或 push 失败时，`下一 Skill` 写 `无`，或在需要重新规划时写 `$jlgo`。
+- 完整指令必须要求只读验收，不得要求 merge、tag 或进入下一业务工单。
+- 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
+- 不得通过操作卡自动调用 `$jl-review`；必须等待用户显式批准。
