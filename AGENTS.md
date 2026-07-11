@@ -108,6 +108,26 @@ Writer、manifest、payload 和 client 均不得覆盖这些政策。
 - 工单明确要求继续现有分支时，不得因为分支存在而停止。
 - 只有工单要求创建新分支且目标分支已存在时才停止。
 
+### jl-supervisor 的有界例外
+
+用户显式启动 `jl-supervisor`，只授权一个 `NORMAL_ALLOWED` 最小工单的规划、开发、测试、工作分支普通 commit/push、独立只读 reviewer 验收，以及最多两轮最小修订。
+
+该有界例外不授权：
+
+- merge 或 push main；
+- tag 或部署；
+- MT4 或 reader 激活；
+- Demo 自动执行激活或实盘；
+- EA 调用；
+- 第二工单；
+- 已批准交易与风险政策的修改或放宽。
+
+`PRO_REQUIRED` 必须在创建或切换工作分支、写文件之前停止。用户明确声明已切换 Pro 后，也只可授权已冻结工单的开发、测试、工作分支 push 和独立 review；高风险开发授权不等于部署或激活授权。
+
+`jl-supervisor` 必须使用新的独立只读 `jl_supervisor_reviewer` subagent。reviewer 不可用、证据不足或无法独立检查实际 diff 时，Supervisor 不得自行给出 `PASS`，必须停止并降级为手工 `jl-review`。
+
+自动修订最多两轮。每轮必须创建普通新 commit；不得 amend、force push、扩大文件范围、弱化安全测试、删除无关改动或绕过失败。任何 merge、tag、部署、MT4 激活、自动交易阶段或第二工单仍需用户单独明确批准。
+
 ## 6. 测试纪律
 
 - 先运行 targeted tests，再运行相关 regression。

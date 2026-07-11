@@ -46,7 +46,19 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 
 下一步是开发时，额外输出 `【完整候选工单】`。
 
-下一 Skill 只能是 `$jl-develop`、`$jl-review`、`$jl-merge` 或 `$jl-release`。输出后停止，不自动调用它。
+下一 Skill 只能是 `$jl-develop`、`$jl-review`、`$jl-merge`、`$jl-release` 或 `$jl-supervisor`。输出后停止，不自动调用它。
+
+只有以下条件全部满足时，才可以建议用户显式调用 `$jl-supervisor`：
+
+- 当前是 clean synchronized main；
+- 没有 active unmerged work branch；
+- 唯一工单精确且能够冻结；
+- exact file scope 逐文件明确；
+- targeted、regression、full/build、grep、diff 和 commit/push 要求明确；
+- ModelGate 可以确定分类；
+- 建议不会自动越过 explicit user approval。
+
+`NORMAL_ALLOWED` 可以建议显式启动 Supervisor 的单工单自动闭环。`PRO_REQUIRED` 只能建议用户先切换 Pro，再显式调用 Supervisor 恢复已冻结工单；不得声称已经获得高风险开发、部署或激活授权。`STOP_UNCERTAIN` 不得建议自动闭环，下一 Skill 必须为 `无` 或回到安全的人工澄清。
 
 ## 下一步操作卡
 
@@ -68,6 +80,7 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 - 规划验收工单时，`下一 Skill` 写 `$jl-review`。
 - 规划 fast-forward 合并工单时，`下一 Skill` 写 `$jl-merge`。
 - 规划已明确批准的 tag-only release 时，`下一 Skill` 写 `$jl-release`。
+- 规划满足全部安全条件的单工单自动闭环时，`下一 Skill` 可以写 `$jl-supervisor`。
 - checkpoint 异常、工作区不干净、无安全下一步或应停止时，`下一 Skill` 写 `无`。
 - 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
 - 不得通过完整指令自动越过用户批准，不得自动 merge、tag 或进入下一工单。

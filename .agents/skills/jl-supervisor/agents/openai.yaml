@@ -1,0 +1,6 @@
+interface:
+  display_name: "巨龙监督"
+  short_description: "自动完成一个有界工单的开发、独立验收与最多两轮修订，PASS 后等待合并授权"
+  default_prompt: "使用 $jl-supervisor 读取 AGENTS.md 和当前 Git 状态，完成一个符合 ModelGate 的单工单开发与独立验收闭环；不得 merge、tag、部署或激活交易能力。"
+policy:
+  allow_implicit_invocation: false
