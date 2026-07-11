@@ -67,6 +67,11 @@ A small task can still be `PRO_REQUIRED`. A large task can be conceptually
 simple and still require `SPLIT_REQUIRED`. A documented policy or contract does
 not imply implementation or activation.
 
+The five TaskSize values are the complete classification vocabulary. When the
+size itself cannot be classified safely and Task decision is
+`STOP_UNCERTAIN`, the output field is `task_size = null`. `null` is an absence
+of classification, not a sixth TaskSize value.
+
 ## 3. TaskSizeGate inputs
 
 TaskSizeGate must receive or derive all of the following from repository
@@ -75,7 +80,9 @@ evidence and the candidate work order before any branch creation or file write:
 - one objective stated as a testable outcome;
 - applicable WBS package IDs;
 - current capability maturity;
-- intended single maturity transition;
+- one intended maturity transition, or one explicitly maturity-preserving
+  revision with the current and target maturity equal and a hardening or
+  maintenance reason;
 - exact base main and proposed branch;
 - estimated invested and remaining engineering-hour range for this order;
 - exact allowed file paths and their count;
@@ -105,6 +112,7 @@ work order. It must not count merge, release, or calendar observation as if
 they were implementation in the same order.
 
 If no defensible upper bound can be produced, the result is `STOP_UNCERTAIN`.
+Because the size itself is then unclassifiable, `task_size` must be `null`.
 
 ### 4.2 Files
 
@@ -178,7 +186,8 @@ Allowed only when:
 
 - the objective, base, branch, files, capability impact, dependencies, tests,
   commit, push destination, and stop conditions are exact;
-- there is one objective and one intended maturity transition;
+- there is one objective and either one intended maturity transition or one
+  explicitly maturity-preserving revision;
 - TaskSize is `XS`, `S`, or `M`;
 - no prohibited combination below applies;
 - ModelGate is independently resolvable;
@@ -212,6 +221,15 @@ compatibility, ModelGate, or expected outputs cannot be determined safely.
 
 `STOP_UNCERTAIN` must not be converted to `SPLIT_REQUIRED` merely to keep work
 moving. Missing evidence must be resolved first.
+
+TaskSize handling for a stopped decision is fixed:
+
+- `task_size = null` is permitted only when Task decision is
+  `STOP_UNCERTAIN` and the size classification itself is unsafe;
+- if TaskSize is known but another required dimension is uncertain, preserve
+  the known `XS`, `S`, `M`, `L`, or `XL` value and return `STOP_UNCERTAIN`;
+- `ALLOW_SINGLE_WORK_ORDER` and `SPLIT_REQUIRED` must always carry exactly one
+  of the five TaskSize values and must never carry `null`.
 
 ## 7. ModelGate compatibility
 
@@ -341,7 +359,9 @@ following fields before approval:
 - One objective:
 - WBS package IDs:
 - Current maturity:
-- Intended maturity transition:
+- Target maturity:
+- Intended maturity transition, or current == target with a specific
+  maturity-preserving hardening/maintenance reason:
 
 【Git checkpoint】
 - Base branch and immutable base commit:
@@ -425,7 +445,7 @@ They must not be silently deleted from the template.
 | RiskGate test hardening, 3 files, 8 hours | One TESTS layer but high-risk boundary | `S` | `ALLOW_SINGLE_WORK_ORDER` | `PRO_REQUIRED` | `CONDITIONAL_PRO_RESUME` |
 | Eight-file CI and Skill implementation, 28 hours | Multiple governance surfaces | `L` | `SPLIT_REQUIRED` | `PRO_REQUIRED` | `NOT_ELIGIBLE` |
 | End-to-end EA plus API activation, 60 hours | Multiple packages and activation | `XL` | `SPLIT_REQUIRED` | `PRO_REQUIRED` | `NOT_ELIGIBLE` |
-| Candidate with wildcard files and unknown regressions | Scope and verification cannot be frozen | indeterminate | `STOP_UNCERTAIN` | `STOP_UNCERTAIN` | `NOT_ELIGIBLE` |
+| Candidate with wildcard files, unknown regressions, and no defensible size upper bound | Scope, size, and verification cannot be frozen | `null` | `STOP_UNCERTAIN` | `STOP_UNCERTAIN` | `NOT_ELIGIBLE` |
 
 These examples describe classification only. They do not authorize those work
 orders or their capabilities.
@@ -485,6 +505,8 @@ WF-4B is complete only when review confirms that this document alone defines:
 - the independence of capability maturity, TaskSize, Task decision, ModelGate,
   and Supervisor eligibility;
 - exact `XS`, `S`, `M`, `L`, and `XL` thresholds;
+- `task_size = null` only for an unclassifiable `STOP_UNCERTAIN`, without a
+  sixth TaskSize value;
 - conservative hour, file, and capability-layer counting;
 - exact Task decision and ModelGate vocabularies;
 - deterministic stop, split, Pro, and normal priority;
@@ -492,6 +514,7 @@ WF-4B is complete only when review confirms that this document alone defines:
 - Supervisor normal and explicit-Pro-resume boundaries;
 - planning, pre-write, and review checkpoints;
 - a complete standard work-order template;
+- explicit maturity-changing and maturity-preserving revision forms;
 - examples for every TaskSize and blocking outcome;
 - WBS accounting without automatic progress inflation;
 - separation from tests, implementation, Skill integration, validation tooling,
