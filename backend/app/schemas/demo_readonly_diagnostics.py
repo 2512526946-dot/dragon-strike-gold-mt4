@@ -99,19 +99,64 @@ _CANONICAL_DATA_QUALITY_PASSED = (
 _CANONICAL_DATA_QUALITY_PASSED_WITH_WARNINGS = (
     "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED_WITH_WARNINGS"
 )
-_CANONICAL_DATA_QUALITY_BLOCKED_STATUS_CODES = frozenset(
+_CANONICAL_DATA_QUALITY_INPUT_INVALID = (
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID"
+)
+_CANONICAL_DATA_QUALITY_POLICY_INVALID = (
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_POLICY_INVALID"
+)
+_CANONICAL_DATA_QUALITY_REJECTED = (
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_REJECTED"
+)
+_CANONICAL_DATA_QUALITY_BLOCKED_REASON_CODES = {
+    _CANONICAL_DATA_QUALITY_INPUT_INVALID: frozenset(
+        {
+            "DATA_QUALITY_INPUT_NOT_OBJECT",
+            "DATA_QUALITY_REQUIRED_READER_KEY_MISSING",
+            "DATA_QUALITY_UNEXPECTED_READER_KEY",
+            "DATA_QUALITY_READER_FIELD_TYPE_INVALID",
+            "DATA_QUALITY_COMPONENT_STATUS_INVALID",
+        }
+    ),
+    _CANONICAL_DATA_QUALITY_POLICY_INVALID: frozenset(
+        {"DATA_QUALITY_POLICY_INVALID"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED": frozenset(
+        {
+            "READER_SAFETY_ENVELOPE_INVALID",
+            "READER_RESULT_INCONSISTENT",
+            "READER_WARNING_CODES_INVALID",
+        }
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_MIXED_GENERATION_BLOCKED": frozenset(
+        {"READER_MIXED_GENERATION_BLOCKED"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INTEGRITY_BLOCKED": frozenset(
+        {"READER_INTEGRITY_INVALID"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STALE_BLOCKED": frozenset(
+        {"READER_DATA_STALE"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STRUCTURE_BLOCKED": frozenset(
+        {"READER_STRUCTURE_INVALID"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_VALUE_BLOCKED": frozenset(
+        {"READER_VALUE_INVALID"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED": frozenset(
+        {"READER_BLOCKED"}
+    ),
+    _CANONICAL_DATA_QUALITY_REJECTED: frozenset(
+        {"UPSTREAM_WARNINGS_REJECTED_BY_POLICY"}
+    ),
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFE_FAILURE": frozenset(
+        {"DATA_QUALITY_GATE_EXCEPTION_SANITIZED"}
+    ),
+}
+_CANONICAL_DATA_QUALITY_NO_WARNING_STATUS_CODES = frozenset(
     {
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_POLICY_INVALID",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_MIXED_GENERATION_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INTEGRITY_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STALE_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STRUCTURE_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_VALUE_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_REJECTED",
-        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFE_FAILURE",
+        _CANONICAL_DATA_QUALITY_INPUT_INVALID,
+        _CANONICAL_DATA_QUALITY_POLICY_INVALID,
     }
 )
 _CANONICAL_DATA_QUALITY_STATUS_UNAVAILABLE = (
@@ -771,6 +816,15 @@ def _canonical_status_is_consistent(
     ):
         return False
     if (
+        summary_status_code == _CANONICAL_SUMMARY_BLOCKED
+        and not _canonical_blocked_source_details_are_consistent(
+            source_status_code=status["status_code"],
+            block_reasons=block_reasons,
+            warning_reasons=warning_reasons,
+        )
+    ):
+        return False
+    if (
         not _is_strict_string_list(status["block_reasons"])
         or status["block_reasons"] != block_reasons
         or not _is_strict_string_list(status["warning_reasons"])
@@ -799,13 +853,35 @@ def _canonical_source_status_is_consistent(
     if summary_status_code == _CANONICAL_SUMMARY_READY_WITH_WARNINGS:
         return source_status_code == _CANONICAL_DATA_QUALITY_PASSED_WITH_WARNINGS
     if summary_status_code == _CANONICAL_SUMMARY_BLOCKED:
-        return source_status_code in _CANONICAL_DATA_QUALITY_BLOCKED_STATUS_CODES
+        return source_status_code in _CANONICAL_DATA_QUALITY_BLOCKED_REASON_CODES
     if summary_status_code in {
         _CANONICAL_SUMMARY_INPUT_INVALID,
         _CANONICAL_SUMMARY_SAFE_FAILURE,
     }:
         return source_status_code == _CANONICAL_DATA_QUALITY_STATUS_UNAVAILABLE
     return False
+
+
+def _canonical_blocked_source_details_are_consistent(
+    *,
+    source_status_code: str,
+    block_reasons: list[str],
+    warning_reasons: list[str],
+) -> bool:
+    allowed_reasons = _CANONICAL_DATA_QUALITY_BLOCKED_REASON_CODES.get(
+        source_status_code
+    )
+    if (
+        allowed_reasons is None
+        or len(block_reasons) != 1
+        or block_reasons[0] not in allowed_reasons
+    ):
+        return False
+    if source_status_code in _CANONICAL_DATA_QUALITY_NO_WARNING_STATUS_CODES:
+        return not warning_reasons
+    if source_status_code == _CANONICAL_DATA_QUALITY_REJECTED:
+        return bool(warning_reasons)
+    return True
 
 
 def _is_strict_string_list(value: Any) -> bool:

@@ -18,6 +18,7 @@ from app.services.data_quality_gate import (
     CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED,
     CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED_WITH_WARNINGS,
     CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STALE_BLOCKED,
+    CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy,
     evaluate_canonical_mt4_demo_readonly_bundle_v1_data_quality_gate,
 )
 from app.services.demo_readonly_docs_fixture_validation_summary import (
@@ -107,6 +108,12 @@ FORBIDDEN_OUTPUT_KEYS = {
 def test_canonical_scope_contract_matches_g151_adapter() -> None:
     assert adapter.SOURCE_SCOPE == (
         response_schema.CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE
+    )
+
+
+def test_blocked_status_reason_contract_matches_g151_adapter() -> None:
+    assert response_schema._CANONICAL_DATA_QUALITY_BLOCKED_REASON_CODES == (
+        adapter._BLOCKED_STATUS_REASON_CODES
     )
 
 
@@ -320,6 +327,77 @@ def test_real_canonical_blocked_summary_without_reason_fails_closed(
     ]
 
 
+def test_real_stale_summary_with_wrong_reason_fails_closed(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    summary = _adapt(
+        _evaluate(_read(root, bundle, now_utc=NOW_UTC + timedelta(days=1)))
+    )
+    _set_summary_block_reasons(summary, ["READER_STRUCTURE_INVALID"])
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+
+
+def test_real_rejected_summary_without_warning_fails_closed(
+    tmp_path: Path,
+) -> None:
+    summary = _real_rejected_warning_summary(tmp_path)
+    _set_summary_warning_reasons(summary, [])
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+
+
+def test_real_rejected_summary_with_warning_remains_blocked_not_invalid(
+    tmp_path: Path,
+) -> None:
+    summary = _real_rejected_warning_summary(tmp_path)
+
+    result = _render(summary, _reader_source_config_result())
+
+    assert result["passed"] is False
+    assert result["status_code"] == response_schema.DEMO_READONLY_DIAGNOSTICS_BLOCKED
+    assert result["reader_status"] == response_schema.READER_STATUS_BLOCKED
+    assert result["warning_reasons"] == ["IDEMPOTENT_REPEAT"]
+    _assert_fixed_safety(result)
+
+
+@pytest.mark.parametrize("blocked_kind", ["input", "policy"])
+def test_blocked_status_that_forbids_warning_fails_closed(
+    tmp_path: Path,
+    blocked_kind: str,
+) -> None:
+    if blocked_kind == "input":
+        data_quality_result = _evaluate({"unexpected": "reader envelope"})
+    else:
+        root, bundle = _create_bundle(tmp_path)
+        data_quality_result = (
+            evaluate_canonical_mt4_demo_readonly_bundle_v1_data_quality_gate(
+                reader_result=_read(root, bundle),
+                policy=object(),  # type: ignore[arg-type]
+            )
+        )
+    summary = _adapt(data_quality_result)
+    _set_summary_warning_reasons(summary, ["IDEMPOTENT_REPEAT"])
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+
+
 def test_real_canonical_summary_with_unknown_nested_status_fails_closed(
     tmp_path: Path,
 ) -> None:
@@ -431,6 +509,27 @@ def _real_summary(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return data_quality_result, _adapt(data_quality_result)
 
 
+def _real_rejected_warning_summary(tmp_path: Path) -> dict[str, Any]:
+    root, bundle = _create_bundle(tmp_path)
+    manifest = _load_json(bundle / "snapshot_manifest.json")
+    reader_result = _read(
+        root,
+        bundle,
+        previous_identity={
+            "bundle_id": manifest["bundle_id"],
+            "sequence": manifest["sequence"],
+        },
+    )
+    return _adapt(
+        _evaluate(
+            reader_result,
+            policy=CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy(
+                allow_upstream_warnings=False
+            ),
+        )
+    )
+
+
 def _create_bundle(tmp_path: Path) -> tuple[Path, Path]:
     root = tmp_path / "allowed"
     bundle = root / "bundle"
@@ -455,9 +554,14 @@ def _read(
     )
 
 
-def _evaluate(reader_result: object) -> dict[str, Any]:
+def _evaluate(
+    reader_result: object,
+    *,
+    policy: CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy | None = None,
+) -> dict[str, Any]:
     return evaluate_canonical_mt4_demo_readonly_bundle_v1_data_quality_gate(
         reader_result=reader_result,
+        policy=policy,
     )
 
 
@@ -514,6 +618,30 @@ def _assert_reader_safety_blocked(result: dict[str, Any]) -> None:
     assert result["reader_status_code"] == (
         response_schema.READER_STATUS_CODE_SAFETY_BLOCKED
     )
+
+
+def _set_summary_block_reasons(
+    summary: dict[str, Any],
+    block_reasons: list[str],
+) -> None:
+    summary["block_reasons"] = list(block_reasons)
+    summary["bundle_validation_status"]["block_reasons"] = list(block_reasons)
+    summary["component_statuses"]["canonical_data_quality_gate"][
+        "block_reasons"
+    ] = list(block_reasons)
+
+
+def _set_summary_warning_reasons(
+    summary: dict[str, Any],
+    warning_reasons: list[str],
+) -> None:
+    summary["warning_reasons"] = list(warning_reasons)
+    summary["bundle_validation_status"]["warning_reasons"] = list(
+        warning_reasons
+    )
+    summary["component_statuses"]["canonical_data_quality_gate"][
+        "warning_reasons"
+    ] = list(warning_reasons)
 
 
 def _assert_no_forbidden_output(result: dict[str, Any]) -> None:
