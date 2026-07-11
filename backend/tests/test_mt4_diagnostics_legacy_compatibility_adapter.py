@@ -160,6 +160,52 @@ def test_exact_summary_envelope_is_required(mutation: str) -> None:
 @pytest.mark.parametrize(
     ("field", "unsafe_value"),
     [
+        ("source_scope", "unexpected_scope"),
+        ("validation_stage", 1),
+        ("fixture_source", "unexpected_fixture"),
+        ("read_only", False),
+        ("demo_only", False),
+        ("is_tradable", True),
+        ("can_execute", True),
+        ("is_trading_permission", True),
+        ("is_execution_instruction", True),
+        ("allowed_to_call_ea", True),
+        ("allowed_to_modify_risk", True),
+    ],
+)
+def test_fixed_identity_and_safety_fields_are_required(
+    field: str,
+    unsafe_value: object,
+) -> None:
+    source = _summary_fixture()
+    source[field] = unsafe_value
+
+    _assert_invalid_envelope(_adapt(source))
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value"),
+    [
+        ("block_reasons", ()),
+        ("warning_reasons", [1]),
+        ("readiness_notes", ["duplicate", "duplicate"]),
+        ("next_allowed_stage", "demo_readonly_diagnostics_response_integration"),
+        ("next_blocked_stage", [True]),
+    ],
+)
+def test_summary_string_lists_require_strict_unique_list_values(
+    field: str,
+    unsafe_value: object,
+) -> None:
+    source = _summary_fixture()
+    source[field] = unsafe_value
+
+    _assert_invalid_envelope(_adapt(source))
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value"),
+    [
         ("status_code", "UNKNOWN"),
         ("passed", False),
         ("block_reasons", [gate.READER_DATA_STALE]),
@@ -256,6 +302,99 @@ def test_nested_statuses_must_be_exact_and_equal() -> None:
     source["component_statuses"]["canonical_data_quality_gate"]["passed"] = False
 
     _assert_blocked(_adapt(source))
+
+
+@pytest.mark.parametrize("location", ["bundle", "component"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "dict_subclass",
+        "missing_key",
+        "extra_key",
+        "passed_type",
+        "status_type",
+        "list_container_type",
+        "list_item_type",
+        "duplicate_list_value",
+        "unsafe_flag",
+    ],
+)
+def test_nested_status_requires_exact_strict_safe_envelope(
+    location: str,
+    mutation: str,
+) -> None:
+    class DictSubclass(dict[str, Any]):
+        pass
+
+    source = _summary_fixture()
+    parent = (
+        source
+        if location == "bundle"
+        else source["component_statuses"]
+    )
+    key = (
+        "bundle_validation_status"
+        if location == "bundle"
+        else "canonical_data_quality_gate"
+    )
+    status = parent[key]
+
+    if mutation == "dict_subclass":
+        parent[key] = DictSubclass(status)
+    elif mutation == "missing_key":
+        status.pop("status_code")
+    elif mutation == "extra_key":
+        status["secret"] = "must-not-leak"
+    elif mutation == "passed_type":
+        status["passed"] = 1
+    elif mutation == "status_type":
+        status["status_code"] = 1
+    elif mutation == "list_container_type":
+        status["block_reasons"] = ()
+    elif mutation == "list_item_type":
+        status["warning_reasons"] = [1]
+    elif mutation == "duplicate_list_value":
+        status["warning_reasons"] = [
+            "IDEMPOTENT_REPEAT",
+            "IDEMPOTENT_REPEAT",
+        ]
+    else:
+        status["demo_only"] = False
+
+    _assert_invalid_envelope(_adapt(source))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["dict_subclass", "wrong_type", "missing_component", "extra_component"],
+)
+def test_component_statuses_requires_exact_plain_dict_shape(mutation: str) -> None:
+    class DictSubclass(dict[str, Any]):
+        pass
+
+    source = _summary_fixture()
+    component_statuses = source["component_statuses"]
+    if mutation == "dict_subclass":
+        source["component_statuses"] = DictSubclass(component_statuses)
+    elif mutation == "wrong_type":
+        source["component_statuses"] = []
+    elif mutation == "missing_component":
+        source["component_statuses"] = {}
+    else:
+        component_statuses["secret"] = {"passed": True}
+
+    _assert_invalid_envelope(_adapt(source))
+
+
+def test_unknown_nested_source_status_fails_closed() -> None:
+    source = _summary_fixture()
+    for status in (
+        source["bundle_validation_status"],
+        source["component_statuses"]["canonical_data_quality_gate"],
+    ):
+        status["status_code"] = "UNKNOWN_CANONICAL_DATA_QUALITY_STATUS"
+
+    _assert_invalid_envelope(_adapt(source))
 
 
 @pytest.mark.parametrize(
@@ -437,6 +576,12 @@ def _assert_blocked(result: dict[str, Any]) -> None:
     assert result["is_tradable"] is False
     Mt4DiagnosticsResponse.model_validate(result)
     _assert_safe_legacy_response(result)
+
+
+def _assert_invalid_envelope(result: dict[str, Any]) -> None:
+    _assert_blocked(result)
+    assert result["gate_v1_result"]["warning_reasons"] == []
+    _assert_no_forbidden_output(result)
 
 
 def _assert_safe_legacy_response(result: dict[str, Any]) -> None:
