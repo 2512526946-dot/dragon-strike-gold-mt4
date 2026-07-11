@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from app.schemas import demo_readonly_diagnostics as response_schema
 from app.services import demo_readonly_canonical_diagnostics_summary_adapter as adapter
 from app.services.canonical_mt4_demo_readonly_bundle_v1_filesystem_reader import (
@@ -270,6 +272,136 @@ def test_polluted_canonical_summary_is_sanitized_and_safety_blocked(
     _assert_no_forbidden_output(result)
 
 
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"status_code": adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED},
+        {"passed": False},
+        {"status_code": "CANONICAL_DIAGNOSTICS_SUMMARY_UNKNOWN"},
+        {
+            "status_code": (
+                adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS
+            )
+        },
+        {"warning_reasons": ["IDEMPOTENT_REPEAT"]},
+        {"block_reasons": ["READER_DATA_STALE"]},
+    ],
+)
+def test_real_canonical_success_with_inconsistent_envelope_fails_closed(
+    tmp_path: Path,
+    updates: dict[str, Any],
+) -> None:
+    _data_quality_result, summary = _real_summary(tmp_path)
+    summary.update(copy.deepcopy(updates))
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+    _assert_fixed_safety(result)
+
+
+def test_real_canonical_blocked_summary_without_reason_fails_closed(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    summary = _adapt(
+        _evaluate(_read(root, bundle, now_utc=NOW_UTC + timedelta(days=1)))
+    )
+    summary["block_reasons"] = []
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+
+
+def test_real_canonical_summary_with_unknown_nested_status_fails_closed(
+    tmp_path: Path,
+) -> None:
+    _data_quality_result, summary = _real_summary(tmp_path)
+    unknown_status = "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_UNKNOWN"
+    summary["bundle_validation_status"]["status_code"] = unknown_status
+    summary["component_statuses"]["canonical_data_quality_gate"][
+        "status_code"
+    ] = unknown_status
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert response_schema.CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON in result[
+        "block_reasons"
+    ]
+
+
+def test_real_adapter_input_invalid_summary_maps_to_blocked_response() -> None:
+    summary = _adapt({"unexpected": "value"})
+
+    result = _render(summary, _reader_source_config_result())
+
+    assert summary["status_code"] == (
+        adapter.CANONICAL_DIAGNOSTICS_SUMMARY_INPUT_INVALID
+    )
+    assert result["passed"] is False
+    assert result["status_code"] == response_schema.DEMO_READONLY_DIAGNOSTICS_BLOCKED
+    assert result["reader_status"] == response_schema.READER_STATUS_BLOCKED
+    assert result["reader_passed"] is False
+    assert result["reader_status_code"] == (
+        adapter.CANONICAL_DIAGNOSTICS_SUMMARY_INPUT_INVALID
+    )
+
+
+def test_real_adapter_safe_failure_summary_maps_to_blocked_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_safely(_value: object) -> None:
+        raise RuntimeError("must be sanitized")
+
+    monkeypatch.setattr(adapter, "_parse_data_quality_result", fail_safely)
+    summary = _adapt({})
+
+    result = _render(summary, _reader_source_config_result())
+
+    assert summary["status_code"] == (
+        adapter.CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE
+    )
+    assert result["passed"] is False
+    assert result["status_code"] == response_schema.DEMO_READONLY_DIAGNOSTICS_BLOCKED
+    assert result["reader_status"] == response_schema.READER_STATUS_BLOCKED
+    assert result["reader_passed"] is False
+    assert result["reader_status_code"] == (
+        adapter.CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE
+    )
+
+
+def test_checksum_key_pollution_is_safety_blocked(tmp_path: Path) -> None:
+    _data_quality_result, summary = _real_summary(tmp_path)
+    summary["checksum_checked"] = True
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert "checksum" not in json.dumps(result).casefold()
+    _assert_no_forbidden_output(result)
+
+
+def test_checksum_text_pollution_is_redacted_and_safety_blocked(
+    tmp_path: Path,
+) -> None:
+    _data_quality_result, summary = _real_summary(tmp_path)
+    summary["readiness_notes"] = ["checksum detail must remain private"]
+
+    result = _render(summary, _reader_source_config_result())
+
+    _assert_reader_safety_blocked(result)
+    assert "checksum" not in json.dumps(result).casefold()
+    _assert_no_forbidden_output(result)
+
+
 def test_summary_and_source_config_inputs_are_not_mutated(tmp_path: Path) -> None:
     _data_quality_result, summary = _real_summary(tmp_path)
     source_config = _reader_source_config_result()
@@ -330,8 +462,10 @@ def _evaluate(reader_result: object) -> dict[str, Any]:
 
 
 def _adapt(data_quality_result: object) -> dict[str, Any]:
-    return adapter.adapt_canonical_data_quality_gate_to_demo_readonly_diagnostics_summary(
-        data_quality_result=data_quality_result,
+    return (
+        adapter.adapt_canonical_data_quality_gate_to_demo_readonly_diagnostics_summary(
+            data_quality_result=data_quality_result,
+        )
     )
 
 
@@ -368,6 +502,18 @@ def _assert_fixed_safety(result: dict[str, Any]) -> None:
     assert result["is_execution_instruction"] is False
     assert result["allowed_to_call_ea"] is False
     assert result["allowed_to_modify_risk"] is False
+
+
+def _assert_reader_safety_blocked(result: dict[str, Any]) -> None:
+    assert result["passed"] is False
+    assert result["status_code"] == (
+        response_schema.DEMO_READONLY_SAFETY_FIELD_VIOLATION
+    )
+    assert result["reader_status"] == response_schema.READER_STATUS_SAFETY_BLOCKED
+    assert result["reader_passed"] is False
+    assert result["reader_status_code"] == (
+        response_schema.READER_STATUS_CODE_SAFETY_BLOCKED
+    )
 
 
 def _assert_no_forbidden_output(result: dict[str, Any]) -> None:

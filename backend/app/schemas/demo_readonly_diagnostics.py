@@ -33,6 +33,9 @@ MT4_DEMO_READONLY_READER_SOURCE_SCOPE = (
 CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE = (
     "canonical_mt4_demo_readonly_data_quality_summary_only"
 )
+CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON = (
+    "Canonical diagnostics summary envelope is inconsistent."
+)
 SUMMARY_SOURCE_CONFIG_MISMATCH_REASON = (
     "Reader summary does not match safe server source configuration."
 )
@@ -70,6 +73,94 @@ _OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS = {
     "allowed_to_modify_risk": False,
 }
 
+_CANONICAL_SUMMARY_VALIDATION_STAGE = (
+    "canonical_bundle_v1_diagnostics_summary_adapter"
+)
+_CANONICAL_SUMMARY_FIXTURE_SOURCE = (
+    "canonical_bundle_v1_data_quality_gate_result"
+)
+_CANONICAL_SUMMARY_READY = "CANONICAL_DIAGNOSTICS_SUMMARY_READY"
+_CANONICAL_SUMMARY_READY_WITH_WARNINGS = (
+    "CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS"
+)
+_CANONICAL_SUMMARY_BLOCKED = "CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED"
+_CANONICAL_SUMMARY_INPUT_INVALID = (
+    "CANONICAL_DIAGNOSTICS_SUMMARY_INPUT_INVALID"
+)
+_CANONICAL_SUMMARY_SAFE_FAILURE = (
+    "CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE"
+)
+_CANONICAL_SUMMARY_WARNING_CODES = frozenset(
+    {"IDEMPOTENT_REPEAT", "SEQUENCE_GAP"}
+)
+_CANONICAL_DATA_QUALITY_PASSED = (
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED"
+)
+_CANONICAL_DATA_QUALITY_PASSED_WITH_WARNINGS = (
+    "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED_WITH_WARNINGS"
+)
+_CANONICAL_DATA_QUALITY_BLOCKED_STATUS_CODES = frozenset(
+    {
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_POLICY_INVALID",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_MIXED_GENERATION_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INTEGRITY_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STALE_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STRUCTURE_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_VALUE_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_REJECTED",
+        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFE_FAILURE",
+    }
+)
+_CANONICAL_DATA_QUALITY_STATUS_UNAVAILABLE = (
+    "CANONICAL_DATA_QUALITY_STATUS_UNAVAILABLE"
+)
+_CANONICAL_SUMMARY_KEYS = frozenset(
+    {
+        "passed",
+        "status_code",
+        "source_scope",
+        "validation_stage",
+        "fixture_source",
+        "bundle_validation_status",
+        "component_statuses",
+        "block_reasons",
+        "warning_reasons",
+        "readiness_notes",
+        "next_allowed_stage",
+        "next_blocked_stage",
+        *_REQUIRED_SUMMARY_SAFETY_FIELDS,
+        *_OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS,
+    }
+)
+_CANONICAL_STATUS_KEYS = frozenset(
+    {
+        "passed",
+        "status_code",
+        "block_reasons",
+        "warning_reasons",
+        "read_only",
+        "demo_only",
+        "is_tradable",
+        "can_execute",
+    }
+)
+_CANONICAL_SUCCESS_NEXT_ALLOWED_STAGE = [
+    "demo_readonly_diagnostics_response_integration"
+]
+_CANONICAL_SUCCESS_NEXT_BLOCKED_STAGE = [
+    "api_reader_activation",
+    "execution_chain",
+]
+_CANONICAL_BLOCKED_NEXT_BLOCKED_STAGE = [
+    "demo_readonly_diagnostics_response_integration",
+    "api_reader_activation",
+    "readonly_analysis",
+    "execution_chain",
+]
+
 _FORBIDDEN_RESPONSE_KEYS = {
     "account_number",
     "api_key",
@@ -79,6 +170,9 @@ _FORBIDDEN_RESPONSE_KEYS = {
     "buy",
     "buy_now",
     "candidate_path",
+    "checksum",
+    "checksum_checked",
+    "checksum_passed",
     "close",
     "close_position",
     "credential",
@@ -177,6 +271,7 @@ def demo_readonly_diagnostics_response(
 ) -> DemoReadonlyDiagnosticsResponse:
     is_reader_summary = _is_reader_summary(summary)
     safety_reasons = _safety_violation_reasons(summary)
+    safety_reasons.extend(_canonical_summary_consistency_reasons(summary))
     source_config_status = _safe_source_config_status(source_config_guard_result)
     source_config_safety_reasons = _source_config_safety_violation_reasons(
         source_config_status
@@ -509,7 +604,217 @@ def _source_config_passed(source_config_status: dict[str, Any]) -> bool:
 
 
 def _is_reader_summary(summary: Any) -> bool:
-    return _str_value(summary, "source_scope", "") in _READER_SUMMARY_SOURCE_SCOPES
+    return _strict_source_scope(summary) in _READER_SUMMARY_SOURCE_SCOPES
+
+
+def _canonical_summary_consistency_reasons(summary: Any) -> list[str]:
+    if _strict_source_scope(summary) != (
+        CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE
+    ):
+        return []
+    if _canonical_summary_is_consistent(summary):
+        return []
+    return [CANONICAL_SUMMARY_ENVELOPE_INVALID_REASON]
+
+
+def _canonical_summary_is_consistent(summary: Any) -> bool:
+    if type(summary) is not dict or set(summary) != _CANONICAL_SUMMARY_KEYS:
+        return False
+    if type(summary["passed"]) is not bool:
+        return False
+    if any(
+        type(summary[field_name]) is not str
+        for field_name in (
+            "status_code",
+            "source_scope",
+            "validation_stage",
+            "fixture_source",
+        )
+    ):
+        return False
+    if any(
+        not _is_strict_string_list(summary[field_name])
+        for field_name in (
+            "block_reasons",
+            "warning_reasons",
+            "readiness_notes",
+            "next_allowed_stage",
+            "next_blocked_stage",
+        )
+    ):
+        return False
+    if any(
+        type(summary[field_name]) is not bool
+        or summary[field_name] is not expected_value
+        for field_name, expected_value in {
+            **_REQUIRED_SUMMARY_SAFETY_FIELDS,
+            **_OPTIONAL_FALSE_SUMMARY_SAFETY_FIELDS,
+        }.items()
+    ):
+        return False
+    if (
+        summary["source_scope"]
+        != CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE
+        or summary["validation_stage"] != _CANONICAL_SUMMARY_VALIDATION_STAGE
+        or summary["fixture_source"] != _CANONICAL_SUMMARY_FIXTURE_SOURCE
+    ):
+        return False
+
+    passed = summary["passed"]
+    block_reasons = summary["block_reasons"]
+    warning_reasons = summary["warning_reasons"]
+    if not _canonical_summary_status_is_consistent(
+        passed=passed,
+        status_code=summary["status_code"],
+        block_reasons=block_reasons,
+        warning_reasons=warning_reasons,
+    ):
+        return False
+    if not _canonical_summary_stages_are_consistent(summary, passed=passed):
+        return False
+    if not _canonical_status_is_consistent(
+        summary["bundle_validation_status"],
+        passed=passed,
+        summary_status_code=summary["status_code"],
+        block_reasons=block_reasons,
+        warning_reasons=warning_reasons,
+    ):
+        return False
+
+    component_statuses = summary["component_statuses"]
+    return (
+        type(component_statuses) is dict
+        and set(component_statuses) == {"canonical_data_quality_gate"}
+        and component_statuses["canonical_data_quality_gate"]
+        == summary["bundle_validation_status"]
+        and _canonical_status_is_consistent(
+            component_statuses["canonical_data_quality_gate"],
+            passed=passed,
+            summary_status_code=summary["status_code"],
+            block_reasons=block_reasons,
+            warning_reasons=warning_reasons,
+        )
+    )
+
+
+def _canonical_summary_status_is_consistent(
+    *,
+    passed: bool,
+    status_code: str,
+    block_reasons: list[str],
+    warning_reasons: list[str],
+) -> bool:
+    if any(
+        warning not in _CANONICAL_SUMMARY_WARNING_CODES
+        for warning in warning_reasons
+    ):
+        return False
+    if status_code == _CANONICAL_SUMMARY_READY:
+        return passed and not block_reasons and not warning_reasons
+    if status_code == _CANONICAL_SUMMARY_READY_WITH_WARNINGS:
+        return passed and not block_reasons and bool(warning_reasons)
+    if status_code == _CANONICAL_SUMMARY_BLOCKED:
+        return not passed and bool(block_reasons)
+    if status_code == _CANONICAL_SUMMARY_INPUT_INVALID:
+        return (
+            not passed
+            and block_reasons == ["CANONICAL_DATA_QUALITY_RESULT_INVALID"]
+            and not warning_reasons
+        )
+    if status_code == _CANONICAL_SUMMARY_SAFE_FAILURE:
+        return (
+            not passed
+            and block_reasons
+            == ["CANONICAL_DIAGNOSTICS_ADAPTER_EXCEPTION_SANITIZED"]
+            and not warning_reasons
+        )
+    return False
+
+
+def _canonical_summary_stages_are_consistent(
+    summary: dict[str, Any],
+    *,
+    passed: bool,
+) -> bool:
+    if passed:
+        return (
+            summary["next_allowed_stage"]
+            == _CANONICAL_SUCCESS_NEXT_ALLOWED_STAGE
+            and summary["next_blocked_stage"]
+            == _CANONICAL_SUCCESS_NEXT_BLOCKED_STAGE
+        )
+    return (
+        summary["next_allowed_stage"] == []
+        and summary["next_blocked_stage"]
+        == _CANONICAL_BLOCKED_NEXT_BLOCKED_STAGE
+    )
+
+
+def _canonical_status_is_consistent(
+    status: Any,
+    *,
+    passed: bool,
+    summary_status_code: str,
+    block_reasons: list[str],
+    warning_reasons: list[str],
+) -> bool:
+    if type(status) is not dict or set(status) != _CANONICAL_STATUS_KEYS:
+        return False
+    if type(status["passed"]) is not bool or status["passed"] is not passed:
+        return False
+    if (
+        type(status["status_code"]) is not str
+        or not _canonical_source_status_is_consistent(
+            summary_status_code=summary_status_code,
+            source_status_code=status["status_code"],
+        )
+    ):
+        return False
+    if (
+        not _is_strict_string_list(status["block_reasons"])
+        or status["block_reasons"] != block_reasons
+        or not _is_strict_string_list(status["warning_reasons"])
+        or status["warning_reasons"] != warning_reasons
+    ):
+        return False
+    return all(
+        type(status[field_name]) is bool
+        and status[field_name] is expected_value
+        for field_name, expected_value in {
+            "read_only": True,
+            "demo_only": True,
+            "is_tradable": False,
+            "can_execute": False,
+        }.items()
+    )
+
+
+def _canonical_source_status_is_consistent(
+    *,
+    summary_status_code: str,
+    source_status_code: str,
+) -> bool:
+    if summary_status_code == _CANONICAL_SUMMARY_READY:
+        return source_status_code == _CANONICAL_DATA_QUALITY_PASSED
+    if summary_status_code == _CANONICAL_SUMMARY_READY_WITH_WARNINGS:
+        return source_status_code == _CANONICAL_DATA_QUALITY_PASSED_WITH_WARNINGS
+    if summary_status_code == _CANONICAL_SUMMARY_BLOCKED:
+        return source_status_code in _CANONICAL_DATA_QUALITY_BLOCKED_STATUS_CODES
+    if summary_status_code in {
+        _CANONICAL_SUMMARY_INPUT_INVALID,
+        _CANONICAL_SUMMARY_SAFE_FAILURE,
+    }:
+        return source_status_code == _CANONICAL_DATA_QUALITY_STATUS_UNAVAILABLE
+    return False
+
+
+def _is_strict_string_list(value: Any) -> bool:
+    return type(value) is list and all(type(item) is str for item in value)
+
+
+def _strict_source_scope(summary: Any) -> str:
+    source_scope = _value(summary, "source_scope", "")
+    return source_scope if type(source_scope) is str else ""
 
 
 def _summary_source_consistency_reasons(
