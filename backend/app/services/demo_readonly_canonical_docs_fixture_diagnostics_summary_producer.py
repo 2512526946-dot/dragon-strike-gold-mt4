@@ -177,13 +177,13 @@ def build_demo_readonly_canonical_docs_fixture_diagnostics_summary() -> dict[
             bundle_dir=_FIXTURE_BUNDLE_DIR,
             now_utc=_FIXTURE_REFERENCE_TIME,
         )
+        return result if _is_safe_summary(result) else {}
     except Exception:
         return {}
-    return result if _is_safe_summary(result) else {}
 
 
 def _is_safe_summary(value_to_parse: object) -> bool:
-    if type(value_to_parse) is not dict or set(value_to_parse) != _SUMMARY_KEYS:
+    if not _has_exact_plain_dict_keys(value_to_parse, _SUMMARY_KEYS):
         return False
     if type(value_to_parse["passed"]) is not bool:
         return False
@@ -216,8 +216,10 @@ def _is_safe_summary(value_to_parse: object) -> bool:
     components = value_to_parse["component_statuses"]
     if (
         bundle_status is None
-        or type(components) is not dict
-        or set(components) != {"canonical_data_quality_gate"}
+        or not _has_exact_plain_dict_keys(
+            components,
+            frozenset({"canonical_data_quality_gate"}),
+        )
     ):
         return False
     component_status = _parse_status(components["canonical_data_quality_gate"])
@@ -249,7 +251,7 @@ def _is_safe_summary(value_to_parse: object) -> bool:
 def _parse_status(
     value_to_parse: object,
 ) -> tuple[bool, str, tuple[str, ...], tuple[str, ...]] | None:
-    if type(value_to_parse) is not dict or set(value_to_parse) != _STATUS_KEYS:
+    if not _has_exact_plain_dict_keys(value_to_parse, _STATUS_KEYS):
         return None
     if type(value_to_parse["passed"]) is not bool:
         return None
@@ -270,6 +272,18 @@ def _parse_status(
         block_reasons,
         warning_reasons,
     )
+
+
+def _has_exact_plain_dict_keys(
+    value_to_parse: object,
+    expected_keys: frozenset[str],
+) -> bool:
+    if type(value_to_parse) is not dict:
+        return False
+    keys = tuple(value_to_parse)
+    if any(type(key) is not str for key in keys):
+        return False
+    return frozenset(keys) == expected_keys
 
 
 def _strict_string_list(value_to_parse: object) -> tuple[str, ...] | None:

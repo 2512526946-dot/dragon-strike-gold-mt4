@@ -193,6 +193,10 @@ class _DictSubclass(dict[str, Any]):
     pass
 
 
+class _StringSubclass(str):
+    pass
+
+
 @pytest.mark.parametrize("invalid_result", [None, [], _DictSubclass()])
 def test_non_plain_dict_dependency_results_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
@@ -249,6 +253,16 @@ def test_non_plain_dict_dependency_results_fail_closed(
             block_reason="UPSTREAM_WARNINGS_REJECTED_BY_POLICY",
             warning_reasons=[],
         ),
+        lambda value: _replace_key(value, "passed"),
+        lambda value: _replace_key(value["bundle_validation_status"], "passed"),
+        lambda value: _replace_key(
+            value["component_statuses"],
+            "canonical_data_quality_gate",
+        ),
+        lambda value: _replace_key(
+            value["component_statuses"]["canonical_data_quality_gate"],
+            "passed",
+        ),
     ],
     ids=(
         "missing-key",
@@ -266,6 +280,10 @@ def test_non_plain_dict_dependency_results_fail_closed(
         "blocked-status-reason-mismatch",
         "input-invalid-with-warning",
         "rejected-without-warning",
+        "top-level-key-subclass",
+        "bundle-status-key-subclass",
+        "component-container-key-subclass",
+        "component-status-key-subclass",
     ),
 )
 def test_malformed_or_contaminated_dependency_results_fail_closed_without_mutation(
@@ -288,6 +306,35 @@ def test_malformed_or_contaminated_dependency_results_fail_closed_without_mutati
     assert candidate == before
     assert type(result) is dict
     assert result == {}
+
+
+def test_validation_exception_returns_fresh_empty_dict_without_mutating_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = (
+        producer.build_demo_readonly_canonical_docs_fixture_diagnostics_summary()
+    )
+    before = deepcopy(candidate)
+
+    def explode(_: object) -> bool:
+        raise RuntimeError("private validation exception")
+
+    monkeypatch.setattr(
+        producer,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        lambda **_: candidate,
+    )
+    monkeypatch.setattr(producer, "_is_safe_summary", explode)
+
+    first = producer.build_demo_readonly_canonical_docs_fixture_diagnostics_summary()
+    second = producer.build_demo_readonly_canonical_docs_fixture_diagnostics_summary()
+
+    assert type(first) is dict
+    assert type(second) is dict
+    assert first == {}
+    assert second == {}
+    assert first is not second
+    assert candidate == before
 
 
 def test_safe_dependency_result_is_not_copied_or_rewritten(
@@ -350,6 +397,11 @@ def _assert_ready_summary(result: dict[str, Any]) -> None:
     assert str(FIXTURE_ROOT).casefold() not in serialized
     assert str(FIXTURE_BUNDLE_DIR).casefold() not in serialized
     assert FIXTURE_REFERENCE_TIME.isoformat().casefold() not in serialized
+
+
+def _replace_key(value: dict[str, Any], key: str) -> None:
+    field_value = value.pop(key)
+    value[_StringSubclass(key)] = field_value
 
 
 def _set_blocked_status(
