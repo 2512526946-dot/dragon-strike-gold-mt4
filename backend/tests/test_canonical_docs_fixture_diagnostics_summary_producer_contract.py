@@ -1,8 +1,8 @@
-"""Contract vectors for the future canonical docs-fixture producer.
+"""Contract vectors and committed assets for the future docs-fixture producer.
 
-These tests read only approved repository examples and immutable contract
-vectors. They do not import or call a future producer, reader, Gate, pipeline,
-adapter, API, or filesystem writer.
+These tests compare approved authoring examples with immutable canonical fixture
+assets. One asset acceptance test calls the existing G153 pipeline directly; no
+future producer, compatibility adapter, API, or filesystem writer is involved.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from app.services.canonical_mt4_demo_readonly_bundle_v1_value_validator import (
     CanonicalMt4DemoReadonlyBundleV1ReadPolicy,
 )
 from app.services import demo_readonly_canonical_diagnostics_pipeline as pipeline
+from app.services import demo_readonly_canonical_diagnostics_summary_adapter as adapter
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -114,6 +115,30 @@ SAFE_FLAGS = MappingProxyType(
         "allowed_to_modify_risk": False,
     }
 )
+FORBIDDEN_OUTPUT_KEYS = frozenset(
+    {
+        "source_reader_status_code",
+        "source_upstream_value_status_code",
+        "raw_payload",
+        "path",
+        "traceback",
+        "checksum",
+        "checksum_checked",
+        "checksum_passed",
+        "bridge_dir",
+        "base_dir",
+        "candidate_path",
+        "can_trade",
+        "allow_trade",
+        "should_buy",
+        "should_sell",
+        "suggested_lot",
+        "order",
+        "signal",
+        "action",
+        "ea_command",
+    }
+)
 FAIL_CLOSED_CASES = (
     MappingProxyType({"case": "fixture_root_missing", "result": "blocked"}),
     MappingProxyType({"case": "fixture_bundle_missing", "result": "blocked"}),
@@ -175,6 +200,20 @@ def test_source_layout_uses_canonical_filenames_and_separates_authoring_examples
     )
     assert all(filename.endswith(".example.json") for filename in AUTHORING_FILENAMES)
     assert set(CANONICAL_FILENAMES).isdisjoint(AUTHORING_FILENAMES)
+
+    entries = tuple(sorted(CANONICAL_FIXTURE_DIR.iterdir()))
+    assert [entry.name for entry in entries] == sorted(CANONICAL_FILENAMES)
+    assert all(entry.is_file() for entry in entries)
+    assert all(not entry.is_symlink() for entry in entries)
+
+
+def test_canonical_fixture_assets_match_approved_authoring_examples() -> None:
+    for canonical_name, authoring_name in zip(
+        CANONICAL_FILENAMES,
+        AUTHORING_FILENAMES,
+        strict=True,
+    ):
+        assert _read_fixture_json(canonical_name) == _read_example_json(authoring_name)
 
 
 def test_authoring_manifest_declares_the_canonical_required_files() -> None:
@@ -252,6 +291,40 @@ def test_g151_output_contract_is_exact_and_readonly() -> None:
     assert SAFE_FLAGS["can_execute"] is False
 
 
+def test_committed_fixture_runs_real_g153_to_exact_safe_g151_ready_summary() -> None:
+    before = _fixture_state()
+
+    result = pipeline.build_demo_readonly_canonical_diagnostics_summary(
+        allowed_root=CANONICAL_FIXTURE_DIR.parent,
+        bundle_dir=CANONICAL_FIXTURE_DIR,
+        now_utc=FIXTURE_REFERENCE_TIME,
+    )
+
+    assert _fixture_state() == before
+    assert set(result) == G151_SUMMARY_KEYS
+    assert result["passed"] is True
+    assert result["status_code"] == adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY
+    assert result["source_scope"] == adapter.SOURCE_SCOPE
+    assert result["validation_stage"] == adapter.VALIDATION_STAGE
+    assert result["fixture_source"] == adapter.FIXTURE_SOURCE
+    assert result["block_reasons"] == []
+    assert result["warning_reasons"] == []
+    assert result["next_allowed_stage"] == [
+        "demo_readonly_diagnostics_response_integration"
+    ]
+    assert result["next_blocked_stage"] == [
+        "api_reader_activation",
+        "execution_chain",
+    ]
+    for field_name, expected in SAFE_FLAGS.items():
+        assert result[field_name] is expected
+    _assert_forbidden_output_keys_absent(result)
+
+    serialized = json.dumps(result, sort_keys=True).casefold()
+    assert str(CANONICAL_FIXTURE_DIR).casefold() not in serialized
+    assert FIXTURE_REFERENCE_TIME.isoformat().casefold() not in serialized
+
+
 def test_fail_closed_cases_are_explicit_and_immutable() -> None:
     assert type(FAIL_CLOSED_CASES) is tuple
     assert {case["case"] for case in FAIL_CLOSED_CASES} == {
@@ -295,8 +368,8 @@ def test_existing_g153_module_is_not_api_activation_code() -> None:
     assert "mt4_demo_readonly_source_summary_from_dir" not in source
 
 
-def test_contract_vectors_do_not_claim_runtime_implementation() -> None:
-    assert not CANONICAL_FIXTURE_DIR.exists()
+def test_fixture_assets_do_not_claim_runtime_implementation() -> None:
+    assert CANONICAL_FIXTURE_DIR.is_dir()
     assert "producer_implementation" not in G153_CALL_CONTRACT
     assert "api_activation" not in G153_CALL_CONTRACT
     assert "reader_activation" not in G153_CALL_CONTRACT
@@ -304,6 +377,12 @@ def test_contract_vectors_do_not_claim_runtime_implementation() -> None:
 
 def _read_example_json(filename: str) -> dict[str, object]:
     loaded = json.loads((AUTHORING_EXAMPLE_DIR / filename).read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def _read_fixture_json(filename: str) -> dict[str, object]:
+    loaded = json.loads((CANONICAL_FIXTURE_DIR / filename).read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
 
@@ -322,3 +401,25 @@ def _parse_timestamp(value: object) -> datetime:
 
 def _age_seconds(observed_at: datetime) -> float:
     return (FIXTURE_REFERENCE_TIME - observed_at).total_seconds()
+
+
+def _fixture_state() -> dict[str, tuple[bytes, int]]:
+    return {
+        filename: (
+            (CANONICAL_FIXTURE_DIR / filename).read_bytes(),
+            (CANONICAL_FIXTURE_DIR / filename).stat().st_mtime_ns,
+        )
+        for filename in CANONICAL_FILENAMES
+    }
+
+
+def _assert_forbidden_output_keys_absent(value: object) -> None:
+    if isinstance(value, dict):
+        assert {str(key).casefold() for key in value}.isdisjoint(
+            FORBIDDEN_OUTPUT_KEYS
+        )
+        for child in value.values():
+            _assert_forbidden_output_keys_absent(child)
+    elif isinstance(value, list):
+        for child in value:
+            _assert_forbidden_output_keys_absent(child)

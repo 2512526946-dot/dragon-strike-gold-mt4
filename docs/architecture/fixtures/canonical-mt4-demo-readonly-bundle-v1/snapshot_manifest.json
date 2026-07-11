@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "manifest_type": "mt4_demo_readonly_snapshot_manifest",
+  "bundle_id": "demo-bundle-000000000001",
+  "sequence": 1,
+  "generated_at_utc": "2026-07-10T02:30:00Z",
+  "committed_at_utc": "2026-07-10T02:30:01Z",
+  "writer_heartbeat_at_utc": "2026-07-10T02:30:01Z",
+  "source_id": "trademax_mt4_demo_readonly_bridge",
+  "writer_version": "0.1.0-example",
+  "terminal_id_masked": "trademax-demo-terminal-01",
+  "account_mode": "demo_only",
+  "is_demo_account": true,
+  "is_live_account": false,
+  "canonical_symbol": "XAUUSD",
+  "broker_symbol": "GOLD",
+  "commit_state": "complete",
+  "required_files": [
+    {
+      "filename": "live_tick.json",
+      "file_type": "live_tick",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "latest_bars.json",
+      "file_type": "latest_bars",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "symbol_spec.json",
+      "file_type": "symbol_spec",
+      "schema_version": "1.0",
+      "content_sha256": null
+    },
+    {
+      "filename": "account_snapshot.json",
+      "file_type": "account_snapshot",
+      "schema_version": "1.0",
+      "content_sha256": null
+    }
+  ],
+  "optional_files": [],
+  "compatible_reader_schema_versions": [
+    "1.0"
+  ],
+  "read_only": true,
+  "demo_only": true,
+  "is_tradable": false,
+  "can_execute": false,
+  "is_trading_permission": false,
+  "is_execution_instruction": false,
+  "allowed_to_call_ea": false,
+  "allowed_to_modify_risk": false
+}
