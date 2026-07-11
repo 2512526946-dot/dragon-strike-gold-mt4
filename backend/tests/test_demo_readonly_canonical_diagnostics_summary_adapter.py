@@ -261,6 +261,23 @@ def test_unknown_codes_fail_closed(
     _assert_input_invalid(_adapt(data_quality_result))
 
 
+@pytest.mark.parametrize(
+    "reasons",
+    [[], ["READER_DATA_STALE", "READER_BLOCKED"]],
+)
+def test_blocked_status_requires_exactly_one_reason(
+    tmp_path: Path,
+    reasons: list[str],
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    data_quality_result = _evaluate(
+        _read(root, bundle, now_utc=NOW_UTC + timedelta(days=1))
+    )
+    data_quality_result["reason_codes"] = reasons
+
+    _assert_input_invalid(_adapt(data_quality_result))
+
+
 def test_blocked_status_and_reason_must_match(tmp_path: Path) -> None:
     root, bundle = _create_bundle(tmp_path)
     data_quality_result = _evaluate(

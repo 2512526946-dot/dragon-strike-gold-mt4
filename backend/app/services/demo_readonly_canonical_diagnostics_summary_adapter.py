@@ -346,6 +346,8 @@ def _envelope_is_consistent(envelope: _DataQualityEnvelope) -> bool:
             )
         )
 
+    if len(envelope.reason_codes) != 1:
+        return False
     expected_reasons = _BLOCKED_STATUS_REASON_CODES.get(envelope.status_code)
     if expected_reasons is None or envelope.reason_codes[0] not in expected_reasons:
         return False
