@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
@@ -14,11 +15,11 @@ from app.schemas.demo_readonly_diagnostics import (
 from app.services.demo_readonly_docs_fixture_validation_summary import (
     summarize_demo_readonly_docs_fixture_validation,
 )
+from app.services.demo_readonly_canonical_diagnostics_pipeline import (
+    build_demo_readonly_canonical_diagnostics_summary,
+)
 from app.services.mt4_demo_readonly_source_config_guard import (
     validate_demo_readonly_source_config,
-)
-from app.services.mt4_demo_readonly_reader import (
-    read_mt4_demo_readonly_source_summary_from_dir,
 )
 from app.services.read_only_diagnostics_explainer import (
     READONLY_EXPLANATION_BLOCKED,
@@ -334,10 +335,12 @@ def _demo_readonly_diagnostics_summary(
         return summarize_demo_readonly_docs_fixture_validation()
 
     bridge_dir = server_source_config.get(MT4_DEMO_READONLY_BRIDGE_DIR_CONFIG_KEY)
-    try:
-        return read_mt4_demo_readonly_source_summary_from_dir(bridge_dir)
-    except Exception:
-        return _safe_mt4_demo_readonly_reader_exception_summary()
+    bundle_dir = Path(bridge_dir)
+    return build_demo_readonly_canonical_diagnostics_summary(
+        allowed_root=bundle_dir.parent,
+        bundle_dir=bundle_dir,
+        now_utc=datetime.now(UTC),
+    )
 
 
 def _should_call_mt4_demo_readonly_reader(
@@ -376,49 +379,6 @@ def _server_config_explicitly_selects_reader(
             str,
         )
     )
-
-
-def _safe_mt4_demo_readonly_reader_exception_summary() -> dict[str, Any]:
-    return {
-        "passed": False,
-        "status_code": "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE",
-        "source_mode": MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE,
-        "source_scope": "mt4_demo_readonly_reader_safe_summary_only",
-        "validation_stage": "demo_readonly_diagnostics_reader",
-        "fixture_source": "mt4_demo_readonly_file_bridge",
-        "reader_status": "error_safe",
-        "reader_block_reasons": ["READER_EXCEPTION_SANITIZED"],
-        "reader_warning_reasons": [],
-        "bundle_validation_status": {
-            "passed": False,
-            "status_code": "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE",
-            "block_reasons": ["READER_EXCEPTION_SANITIZED"],
-            "warning_reasons": [],
-            "read_only": True,
-            "demo_only": True,
-            "is_tradable": False,
-            "can_execute": False,
-        },
-        "component_statuses": {},
-        "block_reasons": ["reader exception sanitized"],
-        "warning_reasons": [],
-        "readiness_notes": [
-            "Reader failed safely.",
-            "Diagnostics remain read-only.",
-            "Diagnostics are not trading permission.",
-            "Diagnostics do not generate trading signals.",
-        ],
-        "next_allowed_stage": [],
-        "next_blocked_stage": ["execution_chain"],
-        "read_only": True,
-        "demo_only": True,
-        "is_tradable": False,
-        "can_execute": False,
-        "is_trading_permission": False,
-        "is_execution_instruction": False,
-        "allowed_to_call_ea": False,
-        "allowed_to_modify_risk": False,
-    }
 
 
 def _safe_explanation_response(report: Any) -> dict[str, Any]:

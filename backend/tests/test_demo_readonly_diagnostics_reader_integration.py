@@ -6,6 +6,7 @@ import json
 import os
 import socket
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -20,7 +21,15 @@ from app.schemas.demo_readonly_diagnostics import (
     DEMO_READONLY_DIAGNOSTICS_BLOCKED,
     DEMO_READONLY_DIAGNOSTICS_ENDPOINT,
     DEMO_READONLY_DIAGNOSTICS_READY,
+    DEMO_READONLY_INTERNAL_ERROR,
     DEMO_READONLY_SAFETY_FIELD_VIOLATION,
+)
+from app.services import demo_readonly_canonical_diagnostics_summary_adapter as adapter
+from app.services import mt4_demo_readonly_reader as legacy_reader
+from app.services.data_quality_gate import (
+    CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED,
+    CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED,
+    READER_BLOCKED,
 )
 
 
@@ -88,7 +97,8 @@ def test_default_diagnostics_does_not_call_reader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_safe_summary(monkeypatch)
-    _install_reader_that_must_not_be_called(monkeypatch)
+    _install_pipeline_that_must_not_be_called(monkeypatch)
+    _install_legacy_reader_that_must_not_be_called(monkeypatch)
     client = TestClient(app)
 
     with _external_state_guard_context():
@@ -106,20 +116,20 @@ def test_default_diagnostics_does_not_call_reader(
     _assert_forbidden_text_absent(data)
 
 
-def test_server_config_enabled_diagnostics_calls_reader(
+def test_server_config_enabled_diagnostics_calls_canonical_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[object] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_reader(base_dir: object) -> dict[str, Any]:
-        calls.append(base_dir)
-        return _safe_reader_summary(passed=True)
+    def fake_pipeline(**kwargs: object) -> dict[str, Any]:
+        calls.append(kwargs)
+        return _safe_canonical_summary(passed=True)
 
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        fake_reader,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        fake_pipeline,
         raising=False,
     )
     client = TestClient(app)
@@ -128,7 +138,7 @@ def test_server_config_enabled_diagnostics_calls_reader(
         response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
 
     assert response.status_code == 200
-    assert calls == [SAFE_BRIDGE_DIR]
+    _assert_pipeline_calls(calls)
     data = response.json()
     assert data["passed"] is True
     assert data["status_code"] == DEMO_READONLY_DIAGNOSTICS_READY
@@ -137,7 +147,7 @@ def test_server_config_enabled_diagnostics_calls_reader(
     assert data["source_config_passed"] is True
     assert data["reader_status"] == "ready"
     assert data["reader_passed"] is True
-    assert data["reader_status_code"] == "MT4_DEMO_READONLY_READER_READY"
+    assert data["reader_status_code"] == adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY
     assert data["readiness_notes"]
     _assert_safe_flags(data)
     _assert_forbidden_text_absent(data)
@@ -146,17 +156,17 @@ def test_server_config_enabled_diagnostics_calls_reader(
 def test_request_values_cannot_override_server_reader_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[object] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_reader(base_dir: object) -> dict[str, Any]:
-        calls.append(base_dir)
-        return _safe_reader_summary(passed=True)
+    def fake_pipeline(**kwargs: object) -> dict[str, Any]:
+        calls.append(kwargs)
+        return _safe_canonical_summary(passed=True)
 
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        fake_reader,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        fake_pipeline,
         raising=False,
     )
     client = TestClient(app)
@@ -182,7 +192,7 @@ def test_request_values_cannot_override_server_reader_config(
         )
 
     assert response.status_code == 200
-    assert calls == [SAFE_BRIDGE_DIR]
+    _assert_pipeline_calls(calls)
     data = response.json()
     assert data["source_mode"] == MT4_SOURCE_MODE
     assert data["reader_status"] == "ready"
@@ -190,14 +200,14 @@ def test_request_values_cannot_override_server_reader_config(
     _assert_forbidden_text_absent(data)
 
 
-def test_reader_blocked_summary_is_returned_as_safe_block(
+def test_canonical_pipeline_blocked_summary_is_returned_as_safe_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        lambda _base_dir: _safe_reader_summary(passed=False),
+        "build_demo_readonly_canonical_diagnostics_summary",
+        lambda **_kwargs: _safe_canonical_summary(passed=False),
         raising=False,
     )
     client = TestClient(app)
@@ -212,16 +222,16 @@ def test_reader_blocked_summary_is_returned_as_safe_block(
     assert data["source_mode"] == MT4_SOURCE_MODE
     assert data["reader_status"] == "blocked"
     assert data["reader_passed"] is False
-    assert data["reader_status_code"] == "MT4_DEMO_READONLY_READER_BLOCKED"
-    assert "reader blocked safely" in data["block_reasons"]
+    assert data["reader_status_code"] == adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED
+    assert "READER_BLOCKED" in data["block_reasons"]
     _assert_safe_flags(data)
     _assert_forbidden_text_absent(data)
 
 
-def test_reader_exception_is_sanitized_without_path_or_secret_leak(
+def test_pipeline_exception_is_sanitized_without_path_or_secret_leak(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raising_reader(_base_dir: object) -> dict[str, Any]:
+    def raising_pipeline(**_kwargs: object) -> dict[str, Any]:
         raise RuntimeError(
             r"SECRET_EXCEPTION_SHOULD_NOT_LEAK C:\Users\hidden\password.py"
         )
@@ -229,8 +239,8 @@ def test_reader_exception_is_sanitized_without_path_or_secret_leak(
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        raising_reader,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        raising_pipeline,
         raising=False,
     )
     client = TestClient(app)
@@ -238,13 +248,13 @@ def test_reader_exception_is_sanitized_without_path_or_secret_leak(
     with _external_state_guard_context():
         response = client.get(DEMO_READONLY_DIAGNOSTICS_ENDPOINT)
 
-    assert response.status_code == 200
+    assert response.status_code == 500
     data = response.json()
     assert data["passed"] is False
-    assert data["reader_status"] == "error_safe"
+    assert data["status_code"] == DEMO_READONLY_INTERNAL_ERROR
+    assert data["reader_status"] == "not_called"
     assert data["reader_passed"] is False
-    assert data["reader_status_code"] == "MT4_DEMO_READONLY_READER_EXCEPTION_SAFE"
-    assert "reader exception sanitized" in data["block_reasons"]
+    assert data["reader_status_code"] == "READER_NOT_CALLED"
     _assert_safe_flags(data)
     _assert_forbidden_text_absent(data)
 
@@ -290,19 +300,19 @@ def test_reader_exception_is_sanitized_without_path_or_secret_leak(
         ("allow_trade", True),
     ],
 )
-def test_reader_polluted_output_is_safety_blocked_and_sanitized(
+def test_pipeline_polluted_output_is_safety_blocked_and_sanitized(
     monkeypatch: pytest.MonkeyPatch,
     polluted_key: str,
     polluted_value: Any,
 ) -> None:
-    summary = _safe_reader_summary(passed=True)
+    summary = _safe_canonical_summary(passed=True)
     summary[polluted_key] = polluted_value
 
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        lambda _base_dir: summary,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        lambda **_kwargs: summary,
         raising=False,
     )
     client = TestClient(app)
@@ -335,19 +345,19 @@ def test_reader_polluted_output_is_safety_blocked_and_sanitized(
         ("allowed_to_modify_risk", True),
     ],
 )
-def test_reader_unsafe_safety_flags_are_forced_safe_and_downgraded(
+def test_pipeline_unsafe_safety_flags_are_forced_safe_and_downgraded(
     monkeypatch: pytest.MonkeyPatch,
     field_name: str,
     unsafe_value: bool,
 ) -> None:
-    summary = _safe_reader_summary(passed=True)
+    summary = _safe_canonical_summary(passed=True)
     summary[field_name] = unsafe_value
 
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        lambda _base_dir: summary,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        lambda **_kwargs: summary,
         raising=False,
     )
     client = TestClient(app)
@@ -366,14 +376,14 @@ def test_reader_unsafe_safety_flags_are_forced_safe_and_downgraded(
     _assert_forbidden_text_absent(data)
 
 
-def test_reader_unexpected_structure_does_not_crash_or_leak(
+def test_pipeline_unexpected_structure_does_not_crash_or_leak(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_server_config(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
-        lambda _base_dir: [
+        "build_demo_readonly_canonical_diagnostics_summary",
+        lambda **_kwargs: [
             "raw_payload",
             "PASSWORD_SHOULD_NOT_LEAK",
             r"C:\Users\hidden\traceback.py",
@@ -395,7 +405,7 @@ def test_reader_unexpected_structure_does_not_crash_or_leak(
     _assert_forbidden_text_absent(data)
 
 
-def test_explanation_api_does_not_call_server_config_or_reader(
+def test_explanation_api_does_not_call_server_config_or_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fail_if_called(*_args: object, **_kwargs: object) -> None:
@@ -409,7 +419,7 @@ def test_explanation_api_does_not_call_server_config_or_reader(
     )
     monkeypatch.setattr(
         demo_readonly_api,
-        "read_mt4_demo_readonly_source_summary_from_dir",
+        "build_demo_readonly_canonical_diagnostics_summary",
         fail_if_called,
         raising=False,
     )
@@ -430,6 +440,7 @@ def test_explanation_api_does_not_call_server_config_or_reader(
 
 
 def _install_server_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_legacy_reader_that_must_not_be_called(monkeypatch)
     monkeypatch.setattr(
         demo_readonly_api,
         "_get_demo_readonly_server_source_config",
@@ -443,10 +454,29 @@ def _install_server_config(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _install_reader_that_must_not_be_called(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_pipeline_that_must_not_be_called(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_if_called(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("reader must remain not_called by default")
+        raise AssertionError("canonical pipeline must remain not_called by default")
 
+    monkeypatch.setattr(
+        demo_readonly_api,
+        "build_demo_readonly_canonical_diagnostics_summary",
+        fail_if_called,
+        raising=False,
+    )
+
+
+def _install_legacy_reader_that_must_not_be_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_if_called(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("legacy reader must not be called by canonical diagnostics")
+
+    monkeypatch.setattr(
+        legacy_reader,
+        "read_mt4_demo_readonly_source_summary_from_dir",
+        fail_if_called,
+    )
     monkeypatch.setattr(
         demo_readonly_api,
         "read_mt4_demo_readonly_source_summary_from_dir",
@@ -481,46 +511,67 @@ def _install_safe_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _safe_reader_summary(*, passed: bool) -> dict[str, Any]:
+def _safe_canonical_summary(*, passed: bool) -> dict[str, Any]:
+    source_status_code = (
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED
+        if passed
+        else CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED
+    )
+    block_reasons = [] if passed else [READER_BLOCKED]
+    status = {
+        "passed": passed,
+        "status_code": source_status_code,
+        "block_reasons": list(block_reasons),
+        "warning_reasons": [],
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+    }
     return {
         "passed": passed,
         "status_code": (
-            "MT4_DEMO_READONLY_READER_READY"
+            adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY
             if passed
-            else "MT4_DEMO_READONLY_READER_BLOCKED"
+            else adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED
         ),
-        "source_mode": MT4_SOURCE_MODE,
-        "source_scope": "mt4_demo_readonly_reader_safe_summary_only",
-        "validation_stage": "demo_readonly_diagnostics_reader",
-        "fixture_source": "mt4_demo_readonly_file_bridge",
-        "reader_status": "ready" if passed else "blocked",
-        "reader_block_reasons": [] if passed else ["READER_BLOCKED"],
-        "reader_warning_reasons": [],
-        "bundle_validation_status": _safe_status(passed=passed),
-        "component_statuses": [
-            {
-                "component_name": "account_snapshot",
-                "passed": passed,
-                "status_code": "COMPONENT_READY" if passed else "COMPONENT_BLOCKED",
-                "block_reasons": [] if passed else ["reader blocked safely"],
-                "warning_reasons": [],
-                "read_only": True,
-                "demo_only": True,
-                "is_tradable": False,
-                "can_execute": False,
-            }
-        ],
-        "block_reasons": [] if passed else ["reader blocked safely"],
+        "source_scope": adapter.SOURCE_SCOPE,
+        "validation_stage": adapter.VALIDATION_STAGE,
+        "fixture_source": adapter.FIXTURE_SOURCE,
+        "bundle_validation_status": dict(status),
+        "component_statuses": {"canonical_data_quality_gate": dict(status)},
+        "block_reasons": list(block_reasons),
         "warning_reasons": [],
         "readiness_notes": [
-            "Reader summary is read-only.",
-            "Reader summary is not trading permission.",
-            "Reader summary does not generate trading signals.",
+            "Canonical diagnostics summary is read-only.",
+            "Readiness is not trading permission.",
+            "This summary cannot execute orders.",
         ],
-        "next_allowed_stage": ["read_only_diagnostics_review"] if passed else [],
-        "next_blocked_stage": ["execution_chain"],
+        "next_allowed_stage": (
+            ["demo_readonly_diagnostics_response_integration"] if passed else []
+        ),
+        "next_blocked_stage": (
+            ["api_reader_activation", "execution_chain"]
+            if passed
+            else [
+                "demo_readonly_diagnostics_response_integration",
+                "api_reader_activation",
+                "readonly_analysis",
+                "execution_chain",
+            ]
+        ),
         **SAFE_FLAGS,
     }
+
+
+def _assert_pipeline_calls(calls: list[dict[str, object]]) -> None:
+    assert len(calls) == 1
+    call = calls[0]
+    assert set(call) == {"allowed_root", "bundle_dir", "now_utc"}
+    assert call["allowed_root"] == Path(SAFE_BRIDGE_DIR).parent
+    assert call["bundle_dir"] == Path(SAFE_BRIDGE_DIR)
+    assert isinstance(call["now_utc"], datetime)
+    assert call["now_utc"].tzinfo is UTC
 
 
 def _safe_status(*, passed: bool = True) -> dict[str, Any]:
