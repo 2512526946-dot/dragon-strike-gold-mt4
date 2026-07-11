@@ -381,6 +381,96 @@ def test_component_statuses_must_be_strict_list_of_dicts(
     )
 
 
+@pytest.mark.parametrize("component_count", [8, 10])
+def test_component_statuses_must_have_exact_count(
+    tmp_path: Path,
+    component_count: int,
+) -> None:
+    reader_result = _read_valid_bundle(tmp_path)
+    components = reader_result["component_statuses"]
+    if component_count == 8:
+        reader_result["component_statuses"] = components[:-1]
+    else:
+        reader_result["component_statuses"] = components + [copy.deepcopy(components[-1])]
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID,
+        DATA_QUALITY_COMPONENT_STATUS_INVALID,
+    )
+
+
+def test_component_statuses_must_have_fixed_order(tmp_path: Path) -> None:
+    reader_result = _read_valid_bundle(tmp_path)
+    components = reader_result["component_statuses"]
+    components[0], components[1] = components[1], components[0]
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID,
+        DATA_QUALITY_COMPONENT_STATUS_INVALID,
+    )
+
+
+def test_component_name_must_be_fixed(tmp_path: Path) -> None:
+    reader_result = _read_valid_bundle(tmp_path)
+    reader_result["component_statuses"][0]["component_name"] = "unknown_component"
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID,
+        DATA_QUALITY_COMPONENT_STATUS_INVALID,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("component_name", 1),
+        ("passed", 1),
+        ("status_code", 1),
+        ("reason_codes", ()),
+        ("warning_codes", {}),
+    ],
+)
+def test_component_fields_have_strict_types(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    reader_result = _read_valid_bundle(tmp_path)
+    reader_result["component_statuses"][0][field] = value
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID,
+        DATA_QUALITY_COMPONENT_STATUS_INVALID,
+    )
+
+
+def test_component_dict_subclass_is_rejected(tmp_path: Path) -> None:
+    reader_result = _read_valid_bundle(tmp_path)
+    reader_result["component_statuses"][0] = _ReaderResultSubclass(
+        reader_result["component_statuses"][0]
+    )
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID,
+        DATA_QUALITY_COMPONENT_STATUS_INVALID,
+    )
+
+
 def test_component_with_extra_key_is_blocked(tmp_path: Path) -> None:
     reader_result = _read_valid_bundle(tmp_path)
     reader_result["component_statuses"][0]["secret"] = "hidden"
@@ -420,6 +510,34 @@ def test_top_warning_codes_must_equal_ordered_component_union(tmp_path: Path) ->
         READER_WARNING_CODES_INVALID,
     )
     assert result["warning_codes"] == []
+
+
+@pytest.mark.parametrize(
+    "warning_codes",
+    [
+        ["IDEMPOTENT_REPEAT", "IDEMPOTENT_REPEAT"],
+        ["SEQUENCE_GAP", "IDEMPOTENT_REPEAT"],
+    ],
+)
+def test_top_warning_codes_must_match_deduplicated_ordered_union(
+    tmp_path: Path,
+    warning_codes: list[str],
+) -> None:
+    reader_result = _warning_reader_result(tmp_path)
+    if warning_codes == ["SEQUENCE_GAP", "IDEMPOTENT_REPEAT"]:
+        reader_result["component_statuses"][-1]["warning_codes"] = [
+            "IDEMPOTENT_REPEAT",
+            "SEQUENCE_GAP",
+        ]
+    reader_result["warning_codes"] = warning_codes
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED,
+        READER_WARNING_CODES_INVALID,
+    )
 
 
 def test_unknown_uppercase_warning_is_blocked(tmp_path: Path) -> None:
@@ -509,6 +627,42 @@ def test_warning_status_combination_must_be_consistent(tmp_path: Path) -> None:
     reader_result["upstream_value_status_code"] = (
         CANONICAL_MT4_BUNDLE_V1_VALUE_VALID
     )
+
+    result = _evaluate(reader_result)
+
+    _assert_blocked(
+        result,
+        CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED,
+        READER_RESULT_INCONSISTENT,
+    )
+
+
+@pytest.mark.parametrize(
+    ("status_code", "warning_codes", "upstream_status"),
+    [
+        (
+            CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID,
+            ["IDEMPOTENT_REPEAT"],
+            CANONICAL_MT4_BUNDLE_V1_VALUE_VALID_WITH_WARNINGS,
+        ),
+        (
+            CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID_WITH_WARNINGS,
+            [],
+            CANONICAL_MT4_BUNDLE_V1_VALUE_VALID,
+        ),
+    ],
+)
+def test_success_warning_statuses_cannot_be_mixed(
+    tmp_path: Path,
+    status_code: str,
+    warning_codes: list[str],
+    upstream_status: str,
+) -> None:
+    reader_result = _warning_reader_result(tmp_path)
+    reader_result["status_code"] = status_code
+    reader_result["warning_codes"] = warning_codes
+    reader_result["component_statuses"][-1]["warning_codes"] = list(warning_codes)
+    reader_result["upstream_value_status_code"] = upstream_status
 
     result = _evaluate(reader_result)
 
