@@ -30,6 +30,18 @@ MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE = (
 MT4_DEMO_READONLY_READER_SOURCE_SCOPE = (
     "mt4_demo_readonly_reader_safe_summary_only"
 )
+CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE = (
+    "canonical_mt4_demo_readonly_data_quality_summary_only"
+)
+SUMMARY_SOURCE_CONFIG_MISMATCH_REASON = (
+    "Reader summary does not match safe server source configuration."
+)
+_READER_SUMMARY_SOURCE_SCOPES = frozenset(
+    {
+        MT4_DEMO_READONLY_READER_SOURCE_SCOPE,
+        CANONICAL_MT4_DEMO_READONLY_DATA_QUALITY_SOURCE_SCOPE,
+    }
+)
 READER_STATUS_NOT_CALLED = "not_called"
 READER_STATUS_READY = "ready"
 READER_STATUS_BLOCKED = "blocked"
@@ -163,15 +175,21 @@ def demo_readonly_diagnostics_response(
     summary: Any,
     source_config_guard_result: Any = None,
 ) -> DemoReadonlyDiagnosticsResponse:
+    is_reader_summary = _is_reader_summary(summary)
     safety_reasons = _safety_violation_reasons(summary)
     source_config_status = _safe_source_config_status(source_config_guard_result)
     source_config_safety_reasons = _source_config_safety_violation_reasons(
         source_config_status
     )
     safety_reasons.extend(source_config_safety_reasons)
+    safety_reasons.extend(
+        _summary_source_consistency_reasons(
+            source_config_status=source_config_status,
+            is_reader_summary=is_reader_summary,
+        )
+    )
 
     passed = _bool_value(summary, "passed", default=False)
-    is_reader_summary = _is_reader_summary(summary)
     reader_safety_blocked = is_reader_summary and bool(safety_reasons)
 
     status_code = (
@@ -491,10 +509,17 @@ def _source_config_passed(source_config_status: dict[str, Any]) -> bool:
 
 
 def _is_reader_summary(summary: Any) -> bool:
-    return (
-        _str_value(summary, "source_scope", "")
-        == MT4_DEMO_READONLY_READER_SOURCE_SCOPE
-    )
+    return _str_value(summary, "source_scope", "") in _READER_SUMMARY_SOURCE_SCOPES
+
+
+def _summary_source_consistency_reasons(
+    *,
+    source_config_status: dict[str, Any],
+    is_reader_summary: bool,
+) -> list[str]:
+    if _source_config_selected_reader(source_config_status) is is_reader_summary:
+        return []
+    return [SUMMARY_SOURCE_CONFIG_MISMATCH_REASON]
 
 
 def _reader_status_from_summary(
