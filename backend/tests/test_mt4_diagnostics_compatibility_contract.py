@@ -1,34 +1,52 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import ast
 import inspect
 import json
-from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 import app.api.mt4 as mt4_api
 from app.main import app
-from app.services import demo_readonly_canonical_diagnostics_pipeline as canonical_pipeline
+from app.schemas.mt4_diagnostics import Mt4DiagnosticsResponse
+from app.services import mt4_diagnostics as old_diagnostics
 from app.services.data_quality_gate import DATA_QUALITY_PASSED
-from app.services.mt4_file_reader import INVALID_JSON
-from app.services.mt4_snapshot_reader import (
-    ACCOUNT_SNAPSHOT_FILE,
-    LATEST_BARS_FILE,
-    LIVE_TICK_FILE,
-    SYMBOL_SPEC_FILE,
+
+
+EXPECTED_RESPONSE_KEYS = frozenset(Mt4DiagnosticsResponse.model_fields)
+UNAVAILABLE_DETAIL_KEYS = frozenset({"available", "status", "passed"})
+FORBIDDEN_RESPONSE_KEYS = frozenset(
+    {
+        "account_number",
+        "allow_trade",
+        "base_dir",
+        "bridge_dir",
+        "candidate_path",
+        "can_execute",
+        "can_trade",
+        "checksum",
+        "ea_command",
+        "order",
+        "raw_payload",
+        "signal",
+        "source_reader_status_code",
+        "source_upstream_value_status_code",
+        "suggested_lot",
+        "traceback",
+        "trading_action",
+    }
 )
-
-
-EXPECTED_RESPONSE_KEYS = {
-    "stage",
-    "status_code",
-    "data_quality_passed",
-    "can_proceed_to_read_only_analysis",
-    "is_tradable",
-    "note",
+FORBIDDEN_RESPONSE_TEXT = (
+    "raw_payload",
+    "checksum",
+    "traceback",
+    "bridge_dir",
+    "candidate_path",
+    "source_reader_status_code",
+    "source_upstream_value_status_code",
+)
+DETAIL_FIELDS = (
     "read_summary",
     "metadata_status",
     "freshness_status",
@@ -37,69 +55,14 @@ EXPECTED_RESPONSE_KEYS = {
     "field_types_status",
     "numeric_ranges_status",
     "cross_field_status",
-    "gate_v1_result",
-}
-FORBIDDEN_RESPONSE_KEYS = {
-    "account_number",
-    "allow_trade",
-    "api_key",
-    "base_dir",
-    "bridge_dir",
-    "candidate_path",
-    "can_trade",
-    "checksum",
-    "checksum_checked",
-    "checksum_passed",
-    "credential",
-    "ea_command",
-    "execute_trade",
-    "final_lot",
-    "login",
-    "lot",
-    "order",
-    "order_close",
-    "order_delete",
-    "order_id",
-    "order_modify",
-    "order_send",
-    "password",
-    "position",
-    "raw_payload",
-    "secret",
-    "signal",
-    "should_buy",
-    "should_sell",
-    "stack_trace",
-    "suggested_lot",
-    "ticket",
-    "token",
-    "traceback",
-    "trade_signal",
-    "trading_action",
-}
-FORBIDDEN_RESPONSE_TEXT = {
-    "raw_payload",
-    "password",
-    "credential",
-    "token",
-    "secret",
-    "traceback",
-    "stack trace",
-    "checksum_checked",
-    "checksum_passed",
-}
+)
 
 
-def test_legacy_endpoint_preserves_compatible_read_only_response(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-    _write_snapshot_files(tmp_path)
-
+def test_legacy_endpoint_preserves_exact_read_only_response_contract() -> None:
     data = _get_diagnostics()
 
     assert set(data) == EXPECTED_RESPONSE_KEYS
+    assert len(EXPECTED_RESPONSE_KEYS) == 15
     assert data["stage"] == "mt4_diagnostics_v1"
     assert data["status_code"] == DATA_QUALITY_PASSED
     assert data["data_quality_passed"] is True
@@ -108,65 +71,34 @@ def test_legacy_endpoint_preserves_compatible_read_only_response(
     assert "Diagnostics are read-only." in data["note"]
     assert "Diagnostics are not trading permission." in data["note"]
     assert "Diagnostics do not generate trading signals." in data["note"]
-    assert "demo_only" not in _collect_keys(data)
-    _assert_safe_response(data, tmp_path)
+    _assert_safe_response(data)
 
 
-def test_legacy_endpoint_blocks_missing_files_without_execution_semantics(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-
+def test_unavailable_legacy_details_are_not_fabricated_as_success() -> None:
     data = _get_diagnostics()
 
-    assert data["data_quality_passed"] is False
-    assert data["can_proceed_to_read_only_analysis"] is False
-    assert data["is_tradable"] is False
-    assert set(data["read_summary"]["missing_files"]) == {
-        LIVE_TICK_FILE,
-        LATEST_BARS_FILE,
-        SYMBOL_SPEC_FILE,
-        ACCOUNT_SNAPSHOT_FILE,
+    for field in DETAIL_FIELDS:
+        assert set(data[field]) == UNAVAILABLE_DETAIL_KEYS
+        assert data[field] == {
+            "available": False,
+            "status": "unavailable",
+            "passed": False,
+        }
+    assert data["gate_v1_result"] == {
+        "available": False,
+        "status": "unavailable",
+        "passed": False,
+        "warning_reasons": [],
     }
-    _assert_safe_response(data, tmp_path)
 
 
-def test_legacy_endpoint_reports_invalid_json_without_raw_content_leak(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-    _write_snapshot_files(tmp_path, omit={LIVE_TICK_FILE})
-    (tmp_path / LIVE_TICK_FILE).write_text(
-        "{bad json SECRET_INVALID_PAYLOAD",
-        encoding="utf-8",
-    )
-
-    data = _get_diagnostics()
-    serialized = json.dumps(data, ensure_ascii=False)
-
-    assert data["data_quality_passed"] is False
-    assert data["can_proceed_to_read_only_analysis"] is False
-    assert data["read_summary"]["invalid_json_files"] == [LIVE_TICK_FILE]
-    assert INVALID_JSON in serialized
-    assert "SECRET_INVALID_PAYLOAD" not in serialized
-    _assert_safe_response(data, tmp_path)
-
-
-def test_client_inputs_do_not_change_legacy_endpoint_safety_semantics(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-    _write_snapshot_files(tmp_path)
+def test_client_inputs_do_not_change_source_or_safety_semantics() -> None:
     client = TestClient(app)
-
     baseline = client.get("/api/mt4/diagnostics")
     client.cookies.update(
         {
             "source_mode": "mt4_demo_readonly_file_bridge_enabled",
-            "bridge_dir": "client-cookie-path",
+            "bridge_dir": "client-cookie-location",
         }
     )
     injected = client.request(
@@ -174,86 +106,62 @@ def test_client_inputs_do_not_change_legacy_endpoint_safety_semantics(
         "/api/mt4/diagnostics",
         params={
             "source_mode": "mt4_demo_readonly_file_bridge_enabled",
-            "bridge_dir": "client-query-path",
-            "base_dir": "client-base-path",
-            "candidate_path": "client-candidate-path",
+            "bridge_dir": "client-query-location",
+            "base_dir": "client-base-location",
+            "candidate_path": "client-candidate-location",
         },
         headers={
             "X-Source-Mode": "mt4_demo_readonly_file_bridge_enabled",
-            "X-Bridge-Dir": "client-header-path",
+            "X-Bridge-Dir": "client-header-location",
         },
         json={
             "source_mode": "mt4_demo_readonly_file_bridge_enabled",
-            "bridge_dir": "client-body-path",
+            "bridge_dir": "client-body-location",
             "raw_payload": {"password": "client-secret"},
         },
     )
 
     assert baseline.status_code == injected.status_code == 200
-    baseline_data = baseline.json()
-    injected_data = injected.json()
-    assert set(baseline_data) == set(injected_data) == EXPECTED_RESPONSE_KEYS
-    for key in (
-        "stage",
-        "status_code",
-        "data_quality_passed",
-        "can_proceed_to_read_only_analysis",
-        "is_tradable",
-        "note",
-    ):
-        assert injected_data[key] == baseline_data[key]
-    _assert_safe_response(injected_data, tmp_path)
-    assert "source_mode" not in _collect_keys(injected_data)
+    assert baseline.json() == injected.json()
+    assert set(injected.json()) == EXPECTED_RESPONSE_KEYS
+    _assert_safe_response(injected.json())
 
 
-def test_legacy_endpoint_does_not_call_canonical_pipeline(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-    _write_snapshot_files(tmp_path)
-
+def test_legacy_endpoint_never_calls_old_diagnostics_chain(monkeypatch) -> None:
     def fail_if_called(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("legacy endpoint must not call canonical pipeline")
+        raise AssertionError("legacy diagnostics chain must remain disconnected")
 
-    monkeypatch.setattr(
-        canonical_pipeline,
-        "build_demo_readonly_canonical_diagnostics_summary",
-        fail_if_called,
-    )
-
-    data = _get_diagnostics()
-
-    assert data["stage"] == "mt4_diagnostics_v1"
-    assert data["is_tradable"] is False
-    assert "canonical_diagnostics" not in inspect.getsource(mt4_api)
-    _assert_safe_response(data, tmp_path)
-
-
-def test_legacy_endpoint_contract_does_not_use_environment_or_real_data_path(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _use_temp_settings(tmp_path, monkeypatch)
-    _write_snapshot_files(tmp_path)
+    monkeypatch.setattr(old_diagnostics, "build_mt4_diagnostics", fail_if_called)
 
     data = _get_diagnostics()
     source = inspect.getsource(mt4_api)
+    tree = ast.parse(source)
+    schema_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.schemas.mt4_diagnostics"
+        for alias in node.names
+    }
 
-    assert str(tmp_path) not in json.dumps(data, ensure_ascii=False)
+    assert data["data_quality_passed"] is True
+    assert "build_mt4_diagnostics" not in source
+    assert "mt4_diagnostics_response" not in schema_imports
+    assert "get_settings" not in source
+    assert "mt4_data_path" not in source
+    _assert_safe_response(data)
+
+
+def test_legacy_endpoint_has_no_runtime_source_or_reader_configuration() -> None:
+    source = inspect.getsource(mt4_api)
+
+    assert "validate_demo_readonly_source_config({})" in source
     assert "os.environ" not in source
     assert "os.getenv" not in source
     assert "MT4_DATA_DIR" not in source
     assert "data/mt4" not in source.replace("\\", "/")
-    _assert_safe_response(data, tmp_path)
-
-
-def _use_temp_settings(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        mt4_api,
-        "get_settings",
-        lambda: SimpleNamespace(mt4_data_path=tmp_path),
-    )
+    assert "MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE" not in source
+    assert "build_demo_readonly_canonical_diagnostics_summary" not in source
 
 
 def _get_diagnostics() -> dict[str, Any]:
@@ -262,82 +170,10 @@ def _get_diagnostics() -> dict[str, Any]:
     return response.json()
 
 
-def _write_snapshot_files(
-    base_dir: Path,
-    *,
-    omit: set[str] | None = None,
-) -> None:
-    omitted_files = omit or set()
-    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    payloads = {
-        LIVE_TICK_FILE: {
-            "schema_version": "1.0",
-            "file_type": "live_tick",
-            "source": "mt4_file_bridge",
-            "generated_at": generated_at,
-            "symbol": "XAUUSD",
-            "bid": 2030.12,
-            "ask": 2030.42,
-            "spread": 0.30,
-            "is_tradable": False,
-        },
-        LATEST_BARS_FILE: {
-            "schema_version": "1.0",
-            "file_type": "latest_bars",
-            "source": "mt4_file_bridge",
-            "generated_at": generated_at,
-            "symbol": "XAUUSD",
-            "timeframes": {"M15": {}, "H1": {}, "H4": {}, "D1": {}},
-            "is_tradable": False,
-        },
-        SYMBOL_SPEC_FILE: {
-            "schema_version": "1.0",
-            "file_type": "symbol_spec",
-            "source": "mt4_file_bridge",
-            "generated_at": generated_at,
-            "symbol": "XAUUSD",
-            "tick_size": 0.01,
-            "tick_value": 1.0,
-            "lot_size": 100,
-            "min_lot": 0.01,
-            "lot_step": 0.01,
-            "max_lot": 50,
-            "is_tradable": False,
-        },
-        ACCOUNT_SNAPSHOT_FILE: {
-            "schema_version": "1.0",
-            "file_type": "account_snapshot",
-            "source": "mt4_file_bridge",
-            "generated_at": generated_at,
-            "account_currency": "USD",
-            "balance": 10000,
-            "equity": 10000,
-            "free_margin": 9000,
-            "daily_loss_pct": 0,
-            "risk_limits": {
-                "max_single_trade_loss_pct": 1.0,
-                "max_daily_loss_pct": 3.0,
-                "no_overnight": True,
-            },
-            "is_tradable": False,
-        },
-    }
-    for file_name, payload in payloads.items():
-        if file_name in omitted_files:
-            continue
-        (base_dir / file_name).write_text(
-            json.dumps(payload),
-            encoding="utf-8",
-        )
-
-
-def _assert_safe_response(data: dict[str, Any], tmp_path: Path) -> None:
-    keys = _collect_keys(data)
-    assert not (keys & FORBIDDEN_RESPONSE_KEYS)
+def _assert_safe_response(data: dict[str, Any]) -> None:
+    assert not (_collect_keys(data) & FORBIDDEN_RESPONSE_KEYS)
     serialized = json.dumps(data, ensure_ascii=False).casefold()
-    assert str(tmp_path).casefold() not in serialized
-    for forbidden_text in FORBIDDEN_RESPONSE_TEXT:
-        assert forbidden_text.casefold() not in serialized
+    assert all(marker not in serialized for marker in FORBIDDEN_RESPONSE_TEXT)
 
 
 def _collect_keys(value: Any) -> set[str]:

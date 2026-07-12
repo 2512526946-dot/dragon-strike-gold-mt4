@@ -1,7 +1,7 @@
-"""Contract tests for the future legacy diagnostics API activation boundary.
+"""Contract and integration tests for the legacy diagnostics API boundary.
 
-This module locks source authority and the G151-to-G158 handoff without
-activating the legacy endpoint. It uses only controlled in-memory vectors.
+The default route uses the checked-in canonical docs fixture only. Canonical
+reader activation and real MT4 access remain outside this boundary.
 """
 
 from __future__ import annotations
@@ -13,8 +13,10 @@ import json
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 import app.api.mt4 as legacy_api
+from app.main import app
 from app.schemas.mt4_diagnostics import Mt4DiagnosticsResponse
 from app.services import data_quality_gate as gate
 from app.services import demo_readonly_docs_fixture_validation_summary as docs_summary
@@ -260,12 +262,68 @@ def test_input_summary_is_not_mutated() -> None:
     assert summary == before
 
 
-def test_current_legacy_endpoint_is_not_claimed_as_activated() -> None:
+def test_default_endpoint_uses_real_g153_g151_and_g158_chain_once(
+    monkeypatch,
+) -> None:
+    real_guard = legacy_api.validate_demo_readonly_source_config
+    real_producer = (
+        legacy_api.build_demo_readonly_canonical_docs_fixture_diagnostics_summary
+    )
+    real_adapter = (
+        legacy_api.adapt_canonical_summary_to_legacy_mt4_diagnostics_response
+    )
+    calls: dict[str, int] = {"guard": 0, "producer": 0, "adapter": 0}
+    captured: dict[str, object] = {}
+
+    def guard_spy(config: object) -> dict[str, Any]:
+        calls["guard"] += 1
+        captured["config"] = copy.deepcopy(config)
+        return real_guard(config)
+
+    def producer_spy() -> dict[str, Any]:
+        calls["producer"] += 1
+        result = real_producer()
+        captured["summary"] = result
+        return result
+
+    def adapter_spy(*, canonical_summary: object) -> dict[str, Any]:
+        calls["adapter"] += 1
+        assert canonical_summary is captured["summary"]
+        return real_adapter(canonical_summary=canonical_summary)
+
+    monkeypatch.setattr(
+        legacy_api,
+        "validate_demo_readonly_source_config",
+        guard_spy,
+    )
+    monkeypatch.setattr(
+        legacy_api,
+        "build_demo_readonly_canonical_docs_fixture_diagnostics_summary",
+        producer_spy,
+    )
+    monkeypatch.setattr(
+        legacy_api,
+        "adapt_canonical_summary_to_legacy_mt4_diagnostics_response",
+        adapter_spy,
+    )
+
+    response = TestClient(app).get("/api/mt4/diagnostics")
+    data = response.json()
     source = inspect.getsource(legacy_api)
 
-    assert "adapt_canonical_summary_to_legacy_mt4_diagnostics_response" not in source
-    assert "build_mt4_diagnostics" in source
-    assert "GET /api/mt4/diagnostics" not in source
+    assert response.status_code == 200
+    assert calls == {"guard": 1, "producer": 1, "adapter": 1}
+    assert captured["config"] == {}
+    assert set(captured["summary"]) == G151_SUMMARY_KEYS
+    assert captured["summary"]["passed"] is True
+    assert set(data) == LEGACY_RESPONSE_KEYS
+    assert data["data_quality_passed"] is True
+    assert data["can_proceed_to_read_only_analysis"] is True
+    assert data["is_tradable"] is False
+    assert "build_mt4_diagnostics" not in source
+    assert "get_settings" not in source
+    assert "mt4_data_path" not in source
+    _assert_legacy_shape_and_safety(data)
 
 
 def _docs_fixture_summary() -> docs_summary.DemoReadOnlyDocsFixtureValidationSummary:
