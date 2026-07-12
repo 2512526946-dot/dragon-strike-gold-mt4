@@ -20,6 +20,7 @@ from app.services.task_size_gate import (
     OVERSIZED,
     PRO_MODEL_REQUIRED,
     PRO_REQUIRED,
+    REQUIRED_CHECK_CATEGORIES,
     SINGLE_WORK_ORDER_ALLOWED,
     SIZE_UNCLASSIFIABLE,
     SPLIT_REQUIRED,
@@ -39,9 +40,9 @@ def _evidence(**overrides: object) -> TaskSizeGateEvidence:
         "objective": "Implement one pure TaskSizeGate evaluator",
         "objective_count": 1,
         "wbs_package_ids": ("W0",),
-        "current_maturity": "TESTS_ONLY",
-        "target_maturity": "IMPLEMENTED",
-        "maturity_reason": "Implement the approved pure evaluator",
+        "current_maturity": "CONTRACT_ONLY",
+        "target_maturity": "TESTS_ONLY",
+        "maturity_reason": "Add the approved contract tests",
         "base_branch": "main",
         "base_main_commit": BASE_COMMIT,
         "work_branch": "work/g166-task-size-gate-pure-evaluator",
@@ -59,7 +60,15 @@ def _evidence(**overrides: object) -> TaskSizeGateEvidence:
         "capability_layers": ("TESTS",),
         "subsystem_boundaries": ("repository_workflow",),
         "affected_surfaces": ("pure_python_evaluator",),
-        "required_checks": ("targeted", "full_backend", "diff", "grep"),
+        "required_checks": (
+            "targeted",
+            "regression",
+            "full_suite",
+            "build:not_applicable",
+            "grep",
+            "diff",
+            "scope",
+        ),
         "known_dependencies": ("WF-4B", "WF-4C"),
         "dependency_evidence_known": True,
         "risk_and_policy_impacts": ("no_policy_change",),
@@ -83,6 +92,16 @@ def _result(**overrides: object) -> TaskSizeGateResult:
     }
     values.update(overrides)
     return TaskSizeGateResult(**values)  # type: ignore[arg-type]
+
+
+def _assert_known_size_input_invalid(
+    result: TaskSizeGateResult, *, expected_task_size: str = "S"
+) -> None:
+    assert result.task_size == expected_task_size
+    assert result.task_decision == STOP_UNCERTAIN
+    assert result.model_gate == STOP_UNCERTAIN
+    assert result.supervisor_eligibility == NOT_ELIGIBLE
+    assert result.reason_codes == (INPUT_INVALID,)
 
 
 def test_public_evidence_and_result_shapes_are_frozen_and_exact() -> None:
@@ -200,11 +219,20 @@ def test_file_boundaries_are_exact(count: int, expected: str) -> None:
 def test_layer_boundaries_and_adjacency_are_exact(
     layers: tuple[str, ...], expected: str
 ) -> None:
+    transition_by_target_layer = {
+        "TESTS": ("CONTRACT_ONLY", "TESTS_ONLY"),
+        "IMPLEMENTATION": ("TESTS_ONLY", "IMPLEMENTED"),
+        "INTEGRATION": ("IMPLEMENTED", "INTEGRATED"),
+    }
+    current_maturity, target_maturity = transition_by_target_layer[layers[-1]]
     evidence = _evidence(
         estimated_engineering_hours_lower=1,
         estimated_engineering_hours_upper=1,
         allowed_files=("one.py",),
         capability_layers=layers,
+        current_maturity=current_maturity,
+        target_maturity=target_maturity,
+        maturity_reason="one adjacent maturity transition",
     )
 
     assert evaluate_task_size_gate(evidence=evidence).task_size == expected
@@ -231,6 +259,9 @@ def test_two_non_adjacent_layers_force_l_and_split() -> None:
             allowed_files=("one.py",),
             estimated_engineering_hours_lower=1,
             estimated_engineering_hours_upper=1,
+            current_maturity="TESTS_ONLY",
+            target_maturity="IMPLEMENTED",
+            maturity_reason="one adjacent maturity transition",
         )
     )
 
@@ -340,6 +371,9 @@ def test_m_task_is_not_supervisor_eligible_even_when_allowed() -> None:
         evidence=_evidence(
             estimated_engineering_hours_upper=9,
             capability_layers=("TESTS", "IMPLEMENTATION"),
+            current_maturity="TESTS_ONLY",
+            target_maturity="IMPLEMENTED",
+            maturity_reason="one adjacent maturity transition",
         )
     )
 
@@ -375,6 +409,121 @@ def test_maturity_preserving_change_without_reason_fails_closed() -> None:
         supervisor_eligibility=NOT_ELIGIBLE,
         reason_codes=(INPUT_INVALID,),
     )
+
+
+@pytest.mark.parametrize(
+    ("current_maturity", "target_maturity", "capability_layers"),
+    (
+        ("VERIFIED", "TESTS_ONLY", ("TESTS",)),
+        ("CONTRACT_ONLY", "VERIFIED", ("VERIFICATION",)),
+        ("CONTRACT_ONLY", "TESTS_ONLY", ("IMPLEMENTATION",)),
+        ("NOT_STARTED", "NOT_STARTED", ("POLICY",)),
+    ),
+)
+def test_invalid_maturity_transitions_fail_closed(
+    current_maturity: str,
+    target_maturity: str,
+    capability_layers: tuple[str, ...],
+) -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            current_maturity=current_maturity,
+            target_maturity=target_maturity,
+            maturity_reason="maturity-preserving hardening",
+            capability_layers=capability_layers,
+        )
+    )
+
+    _assert_known_size_input_invalid(result)
+
+
+def test_required_check_categories_are_exact_and_complete() -> None:
+    assert REQUIRED_CHECK_CATEGORIES == (
+        "targeted",
+        "regression",
+        "full_suite",
+        "build",
+        "grep",
+        "diff",
+        "scope",
+    )
+    assert evaluate_task_size_gate(evidence=_evidence()).task_decision == (
+        ALLOW_SINGLE_WORK_ORDER
+    )
+
+
+@pytest.mark.parametrize("missing_category", REQUIRED_CHECK_CATEGORIES)
+def test_missing_required_check_category_fails_closed(
+    missing_category: str,
+) -> None:
+    checks = tuple(
+        check
+        for check in _evidence().required_checks
+        if check.partition(":")[0] != missing_category
+    )
+    result = evaluate_task_size_gate(
+        evidence=_evidence(required_checks=checks)
+    )
+
+    _assert_known_size_input_invalid(result)
+
+
+def test_duplicate_or_unknown_check_categories_fail_closed() -> None:
+    duplicate = _evidence().required_checks + ("targeted:second",)
+    unknown = _evidence().required_checks + ("custom",)
+
+    _assert_known_size_input_invalid(
+        evaluate_task_size_gate(evidence=_evidence(required_checks=duplicate))
+    )
+    _assert_known_size_input_invalid(
+        evaluate_task_size_gate(evidence=_evidence(required_checks=unknown))
+    )
+
+
+def test_allowed_and_prohibited_file_overlap_fails_closed() -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            prohibited_files=("backend/app/services/task_size_gate.py",)
+        )
+    )
+
+    _assert_known_size_input_invalid(result)
+
+
+def test_case_variant_file_scope_overlap_fails_closed() -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            prohibited_files=("BACKEND/APP/SERVICES/TASK_SIZE_GATE.PY",)
+        )
+    )
+
+    _assert_known_size_input_invalid(result)
+
+
+@pytest.mark.parametrize(
+    "work_branch",
+    (
+        "work/../main",
+        "work//branch",
+        "work/*",
+        "work/.hidden",
+        "work/name.lock",
+        "work/trailing/",
+        "work/space name",
+    ),
+)
+def test_invalid_work_branch_fails_closed_without_leaking_input(
+    work_branch: str,
+) -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            work_branch=work_branch,
+            push_destination=f"origin/{work_branch}",
+        )
+    )
+
+    _assert_known_size_input_invalid(result)
+    assert work_branch not in repr(result)
 
 
 @pytest.mark.parametrize(
@@ -429,6 +578,7 @@ def test_wrong_field_types_or_values_fail_closed(
         "/absolute.py",
         "C:/absolute.py",
         "backend/**/*.py",
+        "backend\\app\\service.py",
     ),
 )
 def test_non_exact_file_scope_fails_closed(bad_path: str) -> None:

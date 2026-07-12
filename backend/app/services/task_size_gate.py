@@ -36,6 +36,15 @@ CAPABILITY_LAYERS: Final = (
     "ACTIVATION",
     "VERIFICATION",
 )
+REQUIRED_CHECK_CATEGORIES: Final = (
+    "targeted",
+    "regression",
+    "full_suite",
+    "build",
+    "grep",
+    "diff",
+    "scope",
+)
 
 ALLOW_SINGLE_WORK_ORDER = "ALLOW_SINGLE_WORK_ORDER"
 SPLIT_REQUIRED = "SPLIT_REQUIRED"
@@ -61,7 +70,20 @@ PRO_MODEL_REQUIRED = "TASK_SIZE_GATE_PRO_REQUIRED"
 
 _TASK_SIZE_ORDER = {value: index for index, value in enumerate(TASK_SIZES)}
 _LAYER_ORDER = {value: index for index, value in enumerate(CAPABILITY_LAYERS)}
+_MATURITY_ORDER = {
+    value: index for index, value in enumerate(CAPABILITY_MATURITIES)
+}
+_TARGET_LAYER_FOR_MATURITY = {
+    "POLICY_ONLY": "POLICY",
+    "CONTRACT_ONLY": "CONTRACT",
+    "TESTS_ONLY": "TESTS",
+    "IMPLEMENTED": "IMPLEMENTATION",
+    "INTEGRATED": "INTEGRATION",
+    "ACTIVATED": "ACTIVATION",
+    "VERIFIED": "VERIFICATION",
+}
 _HEX_COMMIT = re.compile(r"[0-9a-f]{40}")
+_WORK_BRANCH = re.compile(r"work/[A-Za-z0-9][A-Za-z0-9._/-]*")
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,7 +300,7 @@ def _non_size_evidence_is_valid(evidence: TaskSizeGateEvidence) -> bool:
         return False
     if evidence.target_maturity not in CAPABILITY_MATURITIES:
         return False
-    if not _valid_maturity_reason(evidence):
+    if not _valid_maturity_transition(evidence):
         return False
     if type(evidence.base_branch) is not str or evidence.base_branch != "main":
         return False
@@ -286,9 +308,7 @@ def _non_size_evidence_is_valid(evidence: TaskSizeGateEvidence) -> bool:
         return False
     if _HEX_COMMIT.fullmatch(evidence.base_main_commit) is None:
         return False
-    if not _plain_nonempty_string(evidence.work_branch):
-        return False
-    if not evidence.work_branch.startswith("work/"):
+    if not _valid_work_branch(evidence.work_branch):
         return False
     if not _plain_nonempty_string(evidence.commit_message):
         return False
@@ -300,11 +320,16 @@ def _non_size_evidence_is_valid(evidence: TaskSizeGateEvidence) -> bool:
         return False
     if not _safe_relative_file_tuple(evidence.prohibited_files, allow_empty=True):
         return False
+    allowed_scope = {_file_scope_key(value) for value in evidence.allowed_files}
+    prohibited_scope = {_file_scope_key(value) for value in evidence.prohibited_files}
+    if not allowed_scope.isdisjoint(prohibited_scope):
+        return False
+    if not _required_checks_are_complete(evidence.required_checks):
+        return False
     required_tuples = (
         evidence.prohibited_capabilities,
         evidence.subsystem_boundaries,
         evidence.affected_surfaces,
-        evidence.required_checks,
         evidence.risk_and_policy_impacts,
         evidence.model_gate_evidence,
     )
@@ -325,13 +350,57 @@ def _non_size_evidence_is_valid(evidence: TaskSizeGateEvidence) -> bool:
     return True
 
 
-def _valid_maturity_reason(evidence: TaskSizeGateEvidence) -> bool:
+def _valid_maturity_transition(evidence: TaskSizeGateEvidence) -> bool:
     if not _plain_nonempty_string(evidence.maturity_reason):
         return False
-    if evidence.current_maturity != evidence.target_maturity:
-        return True
-    normalized = evidence.maturity_reason.casefold()
-    return "hardening" in normalized or "maintenance" in normalized
+    if evidence.current_maturity == evidence.target_maturity:
+        if evidence.current_maturity == "NOT_STARTED":
+            return False
+        normalized = evidence.maturity_reason.casefold()
+        return "hardening" in normalized or "maintenance" in normalized
+
+    if _MATURITY_ORDER[evidence.target_maturity] != (
+        _MATURITY_ORDER[evidence.current_maturity] + 1
+    ):
+        return False
+    target_layer = _TARGET_LAYER_FOR_MATURITY[evidence.target_maturity]
+    if target_layer not in evidence.capability_layers:
+        return False
+    highest_layer = max(evidence.capability_layers, key=_LAYER_ORDER.__getitem__)
+    return highest_layer == target_layer
+
+
+def _required_checks_are_complete(value: object) -> bool:
+    if not _strict_string_tuple(value, allow_empty=False):
+        return False
+    categories: list[str] = []
+    for item in value:
+        category, separator, detail = item.partition(":")
+        if category not in REQUIRED_CHECK_CATEGORIES:
+            return False
+        if separator and not detail.strip():
+            return False
+        categories.append(category)
+    return len(categories) == len(set(categories)) and set(categories) == set(
+        REQUIRED_CHECK_CATEGORIES
+    )
+
+
+def _valid_work_branch(value: object) -> bool:
+    if type(value) is not str or _WORK_BRANCH.fullmatch(value) is None:
+        return False
+    if any(token in value for token in ("..", "//", "@{")):
+        return False
+    if value.endswith(("/", ".")):
+        return False
+    components = value.split("/")[1:]
+    return all(
+        component
+        and not component.startswith(".")
+        and component != "@"
+        and not component.casefold().endswith(".lock")
+        for component in components
+    )
 
 
 def _decision_reason_codes(
@@ -389,11 +458,15 @@ def _safe_relative_file_tuple(value: object, *, allow_empty: bool) -> bool:
 
 
 def _safe_relative_file(value: str) -> bool:
-    if value.startswith(("/", "\\")) or ":" in value:
+    if value.startswith("/") or "\\" in value or ":" in value:
         return False
     if any(token in value for token in ("*", "?", "[", "]")):
         return False
-    return ".." not in value.replace("\\", "/").split("/")
+    return ".." not in value.split("/")
+
+
+def _file_scope_key(value: str) -> str:
+    return value.casefold()
 
 
 def _plain_nonempty_string(value: object) -> bool:
