@@ -1,8 +1,9 @@
 """Static contract vectors for the TaskSizeGate pre-write checkpoint.
 
-These vectors lock the WF-4G boundary and its jl-develop Skill integration.
+These vectors lock the WF-4G boundary and its jl-develop and jl-supervisor
+Skill integrations.
 They deliberately do not import or call the TaskSizeGate evaluator, so they
-do not claim Supervisor, review, CI, activation, or end-to-end verification.
+do not claim review, CI, activation, or end-to-end verification.
 """
 
 from __future__ import annotations
@@ -23,6 +24,9 @@ CONTRACT_PATH = (
 )
 EVALUATOR_PATH = REPOSITORY_ROOT / "backend" / "app" / "services" / "task_size_gate.py"
 JL_DEVELOP_SKILL_PATH = REPOSITORY_ROOT / ".agents" / "skills" / "jl-develop" / "SKILL.md"
+JL_SUPERVISOR_SKILL_PATH = (
+    REPOSITORY_ROOT / ".agents" / "skills" / "jl-supervisor" / "SKILL.md"
+)
 
 
 EVIDENCE_FIELD_SOURCE_RULES = MappingProxyType(
@@ -341,6 +345,71 @@ def test_jl_develop_prewrite_stop_routing_is_always_none() -> None:
     assert "TaskSizeGate pre-write 的 `STOP_UNCERTAIN`、任一前置失败、post-call 失败或 checkpoint 异常时，`下一 Skill` 必须写 `无`" in skill
     assert "不得建议或自动路由到 `$jlgo`" in skill
     assert "或在需要重新规划时写 `$jlgo`" not in skill
+
+
+def test_jl_supervisor_integrates_the_exact_production_interface_and_29_fields() -> None:
+    skill = _read(JL_SUPERVISOR_SKILL_PATH)
+
+    assert _marked_fields(skill) == EVIDENCE_FIELDS
+    assert "In the `backend` Python runtime" in skill
+    assert "TaskSizeGateEvidence" in skill
+    assert "TaskSizeGateResult" in skill
+    assert skill.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert all(name in skill for name in (
+        "INPUT_INVALID",
+        "SIZE_UNCLASSIFIABLE",
+        "UNKNOWN_EVIDENCE",
+        "MODEL_STOP_UNCERTAIN",
+        "CROSS_PACKAGE_ACTIVATION",
+        "MULTIPLE_OBJECTIVES",
+        "NON_ADJACENT_LAYERS",
+        "OVERSIZED",
+        "SINGLE_WORK_ORDER_ALLOWED",
+        "PRO_MODEL_REQUIRED",
+    ))
+
+
+def test_jl_supervisor_checks_new_revision_and_recovery_before_writes() -> None:
+    skill = _normalized(_read(JL_SUPERVISOR_SKILL_PATH))
+
+    assert "For new work, run the checkpoint while still on clean synchronized `main`" in skill
+    assert "target branch must exist neither locally nor remotely" in skill
+    assert "For an approved revision, run the checkpoint on the frozen work branch before the first revision write" in skill
+    assert "cumulative scope must be exact" in skill
+    assert "must not advance the frozen base-main `current_maturity`" in skill
+    assert "For Git recovery, use only current Git evidence and the frozen order" in skill
+    assert "within the remaining revision limit" in skill
+    assert "Do not create a state file, progress JSON, database, daemon, or persistent runtime log" in skill
+
+
+def test_jl_supervisor_prewrite_call_order_is_zero_or_exactly_one() -> None:
+    skill = _normalized(_read(JL_SUPERVISOR_SKILL_PATH))
+
+    assert "uses zero evaluator calls" in skill
+    assert "Only after every Git, frozen-order, dependency, evidence, Pro-authority, and pre-evaluator drift check passes may Supervisor call exactly once" in skill
+    assert "Do not monkeypatch, retry, fallback, call a second time" in skill
+    assert "stops after the one permitted call" in skill
+    assert "These workflow categories must never enter `TaskSizeGateResult.reason_codes`" in skill
+
+
+def test_jl_supervisor_requires_exact_result_and_current_pro_authority() -> None:
+    skill = _normalized(_read(JL_SUPERVISOR_SKILL_PATH))
+
+    assert "complete equality with the frozen planning result" in skill
+    assert "ordered, unique public `reason_codes`" in skill
+    assert "`STOP_UNCERTAIN`, `SPLIT_REQUIRED`, or `NOT_ELIGIBLE` always stops" in skill
+    assert "`CONDITIONAL_PRO_RESUME` plus explicit current Codex Pro authorization" in skill
+    assert "`PRO_REQUIRED` must never be downgraded" in skill
+    assert "The frozen order, evidence, planning result, and Git checkpoint must remain unchanged" in skill
+
+
+def test_jl_supervisor_prewrite_stop_routing_is_always_none() -> None:
+    skill = _normalized(_read(JL_SUPERVISOR_SKILL_PATH))
+
+    assert "the next Skill must be `无`" in skill
+    assert "do not recommend or automatically route to `$jlgo` or any other Skill" in skill
+    assert "The checkpoint itself does not create or switch a branch, write a file, invoke another Skill" in skill
+    assert "This section does not implement the `jl-review` checkpoint, test tooling, CI" in skill
 
 
 def test_vectors_are_immutable_and_do_not_call_the_runtime_evaluator() -> None:

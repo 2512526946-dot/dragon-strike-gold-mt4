@@ -131,7 +131,145 @@ Proceed only for a precise low-risk order with clean synchronized main, no
 active unmerged work, exact file scope, known tests and commit requirements,
 and no high-risk capability or policy change.
 
-## 7. Development and verification
+## 7. TaskSizeGate pre-write checkpoint
+
+This checkpoint applies to one already approved and frozen work order. It
+reuses
+`docs/implementation_plans/task_size_gate_pre_write_integration_contract.md`
+and the existing production evaluator. It must not create a second TaskSize,
+ModelGate, reason-code, or Supervisor-eligibility classifier.
+
+In the `backend` Python runtime, import the public interface and reason
+constants directly:
+
+```python
+from app.services.task_size_gate import (
+    CROSS_PACKAGE_ACTIVATION,
+    INPUT_INVALID,
+    MODEL_STOP_UNCERTAIN,
+    MULTIPLE_OBJECTIVES,
+    NON_ADJACENT_LAYERS,
+    OVERSIZED,
+    PRO_MODEL_REQUIRED,
+    SINGLE_WORK_ORDER_ALLOWED,
+    SIZE_UNCLASSIFIABLE,
+    TaskSizeGateEvidence,
+    TaskSizeGateResult,
+    UNKNOWN_EVIDENCE,
+    evaluate_task_size_gate,
+)
+```
+
+### Pre-evaluator order and Git modes
+
+Freeze the complete order, planning `TaskSizeGateResult`, explicit ModelGate
+and Pro authority, stop conditions, and remaining revision allowance before
+re-reading Git and repository evidence. A missing, mutable, ambiguous, or
+drifted frozen artifact is workflow-level `STOP_UNCERTAIN`, uses zero evaluator
+calls, sets the next Skill to `无`, and stops before branch creation, branch
+switching, recovery writes, or file writes.
+
+For new work, run the checkpoint while still on clean synchronized `main`.
+Local `main`, `origin/main`, and the frozen base commit must match; all visible
+work branches must have provable ancestry; no active unmerged work may exist;
+and the frozen target branch must exist neither locally nor remotely.
+
+For an approved revision, run the checkpoint on the frozen work branch before
+the first revision write. The clean local and remote branch heads must equal
+the approved revision head; `main` and `origin/main` must remain at the frozen
+base; ancestry, linear commits, and cumulative scope must be exact.
+`TaskSizeGateEvidence.base_branch` remains strict `main`, and unmerged work must
+not advance the frozen base-main `current_maturity` or change the original
+approved target transition.
+
+For Git recovery, use only current Git evidence and the frozen order. Exactly
+one relevant branch must be unambiguous, clean, synchronized, linearly based on
+the frozen main, inside exact scope, and within the remaining revision limit.
+Recovery must preserve strict `base_branch=main`, frozen base-main maturity,
+the original target transition, and existing user authority. Do not create a
+state file, progress JSON, database, daemon, or persistent runtime log.
+
+### 29 caller-owned evidence fields
+
+Construct every field below in this exact order from the frozen order and fresh
+repository evidence. Do not omit, add, guess, infer from the desired result,
+delete unknowns, or reduce hours, scope, layers, dependencies, or risks to
+obtain allow.
+
+```text
+TASK_SIZE_GATE_PRE_WRITE_EVIDENCE_FIELDS_BEGIN
+objective
+objective_count
+wbs_package_ids
+current_maturity
+target_maturity
+maturity_reason
+base_branch
+base_main_commit
+work_branch
+commit_message
+push_destination
+stop_conditions
+estimated_engineering_hours_lower
+estimated_engineering_hours_upper
+allowed_files
+prohibited_files
+prohibited_capabilities
+capability_layers
+subsystem_boundaries
+affected_surfaces
+required_checks
+known_dependencies
+dependency_evidence_known
+risk_and_policy_impacts
+high_risk_reasons
+model_gate
+model_gate_evidence
+unknowns
+cross_package_activation
+TASK_SIZE_GATE_PRE_WRITE_EVIDENCE_FIELDS_END
+```
+
+Each field must follow the caller-owned source rule in section 7 of the shared
+contract. The frozen order, evidence, planning result, and Git checkpoint must
+remain unchanged across evaluation.
+
+### Single call and exact result validation
+
+Only after every Git, frozen-order, dependency, evidence, Pro-authority, and
+pre-evaluator drift check passes may Supervisor call exactly once:
+
+```python
+result = evaluate_task_size_gate(evidence=evidence)
+```
+
+Do not monkeypatch, retry, fallback, call a second time, use a local classifier,
+repair the result, ignore reason codes, or update the frozen order. Require
+exact type `TaskSizeGateResult`; strict fields and enums; ordered, unique public
+`reason_codes`; and complete equality with the frozen planning result.
+
+`STOP_UNCERTAIN`, `SPLIT_REQUIRED`, or `NOT_ELIGIBLE` always stops the bounded
+Supervisor path. `ALLOW_SINGLE_WORK_ORDER` may continue only with `ELIGIBLE`,
+or with `CONDITIONAL_PRO_RESUME` plus explicit current Codex Pro authorization
+for the same frozen order. `PRO_REQUIRED` must never be downgraded.
+
+Unavailable evaluator, exception, invalid or contradictory result, unknown,
+missing, duplicate, extra, or out-of-order reason code, planning/result drift,
+or post-call Git/evidence change stops after the one permitted call. Return
+only one sanitized `PRE_WRITE_*` category from contract section 10. These
+workflow categories must never enter `TaskSizeGateResult.reason_codes`, and
+failure output must not include exception text, traceback, absolute paths,
+environment values, credentials, or raw user content.
+
+A passing checkpoint only permits the next action already authorized inside
+this frozen Supervisor run. The checkpoint itself does not create or switch a
+branch, write a file, invoke another Skill, commit, push, merge, tag, deploy,
+activate anything, access MT4, call an EA, or grant trading permission.
+
+This section does not implement the `jl-review` checkpoint, test tooling, CI,
+MT4, reader, EA, deployment, activation, trading, or a second work order.
+
+## 8. Development and verification
 
 For an allowed frozen order:
 
@@ -147,7 +285,7 @@ For an allowed frozen order:
 Do not amend. Do not force push. Do not weaken safety tests or expand scope to
 obtain a pass.
 
-## 8. Independent reviewer subagent
+## 9. Independent reviewer subagent
 
 After every initial push or revision push, start a new custom subagent named
 jl_supervisor_reviewer. Its sandbox must be read-only.
@@ -168,7 +306,7 @@ PASS WITH FOLLOW-UP, FIX BEFORE MERGE, or NO-GO.
 If the reviewer is unavailable or evidence cannot be inspected, stop. The
 supervisor must not self-assign PASS. Require manual jl-review instead.
 
-## 9. Revision state machine
+## 10. Revision state machine
 
 - PASS: stop and emit the final merge authorization card.
 - PASS WITH FOLLOW-UP: emit the card only if follow-up is explicitly
@@ -183,7 +321,7 @@ never expand scope, never weaken safety tests, and never change approved trading
 or risk policy. If the branch is not mergeable after two rounds, stop for user
 direction.
 
-## 10. Hard boundaries and resource cap
+## 11. Hard boundaries and resource cap
 
 One run is limited to one work order, one work branch, one initial development
 commit, at most two revision commits, one initial reviewer, and at most two new
@@ -195,7 +333,7 @@ activate MT4, automatic Demo execution, live trading, an EA, or any execution
 chain. Never change or loosen approved trading/risk policy. Never enter a second
 work order.
 
-## 11. Required output
+## 12. Required output
 
 During execution report PREFLIGHT, frozen order, ModelGate, branch/commit,
 validation, review outcome, revisions used, safety boundaries, and current stop
@@ -262,3 +400,6 @@ Every terminal outcome must also end with:
 On PASS the next Skill may be $jl-merge, but only after explicit user approval.
 On reviewer failure, exhausted revisions, NO-GO, or STOP_UNCERTAIN, use no
 dangerous merge, release, activation, or second-work-order instruction.
+For every TaskSizeGate pre-write `STOP_UNCERTAIN`, pre-evaluator failure,
+post-call failure, or checkpoint exception, the next Skill must be `无`; do not
+recommend or automatically route to `$jlgo` or any other Skill.
