@@ -66,7 +66,9 @@ conversation summaries.
 Before constructing evidence, future `jlgo` integration must prove:
 
 - the repository root is known;
-- the current branch, `main`, and `origin/main` are readable;
+- for a new development candidate, the current branch is exactly `main`;
+- local `main` and `origin/main` are readable, synchronized, and identify the
+  same immutable commit;
 - the worktree status is readable;
 - visible work branches can be classified by ancestry;
 - the applicable WBS evidence and capability state are readable;
@@ -77,6 +79,13 @@ A dirty worktree, unsynchronized main, active unmerged work, unresolved
 ancestry, occupied target branch, missing dependency, unknown scope, or
 unreadable evidence prevents an allowed planning result. The integration must
 stop before branch creation or file writes.
+
+When the current branch contains active unmerged work, `jlgo` may recommend
+only the applicable review, revision, or merge path. It must not construct a
+new development candidate. When the current branch is neither `main` nor the
+one active work branch being routed, `jlgo` must stop without proposing a new
+development order. A clean retained historical branch is not a substitute for
+being on synchronized `main` when planning new work.
 
 Retained historical branches whose tips are already ancestors of `main` are
 not active work and must not create a false stop.
@@ -161,15 +170,15 @@ rewrite a blocked result.
 
 The evaluator result controls planning disposition but never user authority.
 
-| Evaluator result | JLGO planning behavior |
+| TaskSize and evaluator result | JLGO planning behavior |
 | --- | --- |
-| `STOP_UNCERTAIN` in Task decision or ModelGate | Report the sanitized blocking category, set the next Skill to `none`, and stop. |
-| `SPLIT_REQUIRED` | Return to read-only decomposition, set the next Skill to `none`, and do not create parallel branches. |
-| `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `ELIGIBLE` | JLGO may recommend explicit `jl-supervisor` invocation when all Supervisor preconditions remain true. |
-| `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `NOT_ELIGIBLE` | Recommend explicit `jl-develop`; do not use Supervisor. |
-| `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `CONDITIONAL_PRO_RESUME` | Freeze the order, require the user to state that Codex Pro is active and explicitly authorize the bounded Supervisor resume. |
-| `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `NOT_ELIGIBLE` | Require Codex Pro and explicit `jl-develop` authorization. |
-| Any unknown or contradictory combination | Treat as integration failure, emit `STOP_UNCERTAIN`, set the next Skill to `none`, and stop. |
+| Valid TaskSize or `null` + `STOP_UNCERTAIN` Task decision + `STOP_UNCERTAIN` ModelGate + `NOT_ELIGIBLE` | Report the sanitized blocking category, set the next Skill to `none`, and stop. `null` is accepted only when the production evaluator could not classify size. |
+| `L` or `XL` + `SPLIT_REQUIRED` + `NORMAL_ALLOWED` or `PRO_REQUIRED` + `NOT_ELIGIBLE` | Return to read-only decomposition, set the next Skill to `none`, and do not create parallel branches. |
+| `XS` or `S` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `ELIGIBLE` | JLGO may recommend explicit `jl-supervisor` invocation when all Supervisor preconditions remain true. |
+| `M` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `NOT_ELIGIBLE` | Recommend explicit `jl-develop`; do not use Supervisor. |
+| `XS` or `S` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `CONDITIONAL_PRO_RESUME` | Freeze the order, require the user to state that Codex Pro is active and explicitly authorize the bounded Supervisor resume. |
+| `M` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `NOT_ELIGIBLE` | Require Codex Pro and explicit `jl-develop` authorization. |
+| Any unknown or contradictory TaskSize, Task decision, ModelGate, Supervisor eligibility, or reason-code combination | Treat as integration failure, emit `STOP_UNCERTAIN`, set the next Skill to `none`, and stop without recommending another Skill. |
 
 `none` above is rendered as `无` in the repository next-action card.
 
