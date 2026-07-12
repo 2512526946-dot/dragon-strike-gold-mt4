@@ -67,6 +67,80 @@ REASON_CODE_CONSTANT_NAMES = (
     "SINGLE_WORK_ORDER_ALLOWED",
     "PRO_MODEL_REQUIRED",
 )
+SPLIT_REASON_CODE_VECTOR_KEYS = frozenset(
+    {
+        "case_id",
+        "model_gate",
+        "reason_codes",
+        "expected_disposition",
+        "expected_next_skill",
+    }
+)
+INVALID_SPLIT_REASON_CODE_VECTORS = (
+    MappingProxyType(
+        {
+            "case_id": "missing_mandatory_oversized",
+            "model_gate": "NORMAL_ALLOWED",
+            "reason_codes": ("MULTIPLE_OBJECTIVES",),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "duplicate_oversized",
+            "model_gate": "NORMAL_ALLOWED",
+            "reason_codes": ("OVERSIZED", "OVERSIZED"),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "oversized_out_of_production_order",
+            "model_gate": "NORMAL_ALLOWED",
+            "reason_codes": ("OVERSIZED", "MULTIPLE_OBJECTIVES"),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_extra_reason",
+            "model_gate": "NORMAL_ALLOWED",
+            "reason_codes": ("OVERSIZED", "UNKNOWN_REASON"),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "normal_result_contains_pro_reason",
+            "model_gate": "NORMAL_ALLOWED",
+            "reason_codes": ("OVERSIZED", "PRO_MODEL_REQUIRED"),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "pro_result_missing_pro_reason",
+            "model_gate": "PRO_REQUIRED",
+            "reason_codes": ("OVERSIZED",),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "pro_reason_not_last",
+            "model_gate": "PRO_REQUIRED",
+            "reason_codes": ("PRO_MODEL_REQUIRED", "OVERSIZED"),
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+)
 CALLER_OWNED_SOURCE_RULES = MappingProxyType(
     {
         "objective": "One testable outcome from the frozen candidate order.",
@@ -794,12 +868,43 @@ def test_jlgo_requires_exact_result_reason_codes_and_fail_closed_mapping() -> No
         "blocked result 必须恰好一个 reason",
         "且只能来自 `INPUT_INVALID`、`SIZE_UNCLASSIFIABLE`、`UNKNOWN_EVIDENCE` 或 `MODEL_STOP_UNCERTAIN`",
         "allow result 必须是 `SINGLE_WORK_ORDER_ALLOWED`",
-        "split result 必须至少包含一个 `CROSS_PACKAGE_ACTIVATION`",
+        "split result 的 `reason_codes` 必须精确等于以下生产顺序形成的 tuple",
+        "随后必须恰好包含一个 `OVERSIZED`",
+        "即使前面已经存在",
+        "其他 split reason 也不得省略",
+        "`NORMAL_ALLOWED` 时不得包含它",
+        "缺失、重复或",
+        "顺序错误的 `OVERSIZED`",
+        "未知或额外 reason",
+        "`PRO_MODEL_REQUIRED` 与",
+        "ModelGate 矛盾",
         "workflow-level `STOP_UNCERTAIN`",
         "下一 Skill 为 `无`",
         "失败调用不得 fallback、retry 或推荐另一个 Skill",
     ):
         assert requirement in normalized
+
+
+def test_invalid_split_reason_code_vectors_are_immutable_and_fail_closed() -> None:
+    assert tuple(
+        vector["case_id"] for vector in INVALID_SPLIT_REASON_CODE_VECTORS
+    ) == (
+        "missing_mandatory_oversized",
+        "duplicate_oversized",
+        "oversized_out_of_production_order",
+        "unknown_extra_reason",
+        "normal_result_contains_pro_reason",
+        "pro_result_missing_pro_reason",
+        "pro_reason_not_last",
+    )
+
+    for vector in INVALID_SPLIT_REASON_CODE_VECTORS:
+        assert frozenset(vector) == SPLIT_REASON_CODE_VECTOR_KEYS
+        assert type(vector["reason_codes"]) is tuple
+        assert vector["expected_disposition"] == "STOP_UNCERTAIN"
+        assert vector["expected_next_skill"] == "none"
+        with pytest.raises(TypeError):
+            vector["expected_disposition"] = "READ_ONLY_DECOMPOSITION"
 
 
 def test_jlgo_locks_result_dispositions_and_explicit_user_authority() -> None:

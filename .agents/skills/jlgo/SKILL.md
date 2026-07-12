@@ -128,9 +128,15 @@ reason code 只能通过同一生产模块的公开常量验证，不得在 Skil
 `PRO_MODEL_REQUIRED`。blocked result 必须恰好一个 reason，且只能来自
 `INPUT_INVALID`、`SIZE_UNCLASSIFIABLE`、`UNKNOWN_EVIDENCE` 或
 `MODEL_STOP_UNCERTAIN`；allow result 必须是 `SINGLE_WORK_ORDER_ALLOWED`，并仅
-在 Pro 时按顺序追加 `PRO_MODEL_REQUIRED`；split result 必须至少包含一个
-`CROSS_PACKAGE_ACTIVATION`、`MULTIPLE_OBJECTIVES`、`NON_ADJACENT_LAYERS` 或
-`OVERSIZED`，保持生产顺序，并仅在 Pro 时最后追加 `PRO_MODEL_REQUIRED`。
+在 Pro 时按顺序追加 `PRO_MODEL_REQUIRED`。split result 的 `reason_codes`
+必须精确等于以下生产顺序形成的 tuple：仅在对应 evidence 条件成立时，依次最多一次
+包含 `CROSS_PACKAGE_ACTIVATION`、`MULTIPLE_OBJECTIVES`、
+`NON_ADJACENT_LAYERS`；随后必须恰好包含一个 `OVERSIZED`，即使前面已经存在
+其他 split reason 也不得省略；仅当 ModelGate 为 `PRO_REQUIRED` 时，最后恰好
+追加一个 `PRO_MODEL_REQUIRED`，`NORMAL_ALLOWED` 时不得包含它。缺失、重复或
+顺序错误的 `OVERSIZED`、未知或额外 reason、以及 `PRO_MODEL_REQUIRED` 与
+ModelGate 矛盾，全部视为矛盾结果并固定进入 workflow-level `STOP_UNCERTAIN`，
+下一 Skill 为 `无`。
 
 只接受以下确定性结果映射：
 
