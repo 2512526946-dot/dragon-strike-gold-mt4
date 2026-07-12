@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.api.mt4 as legacy_api
@@ -54,6 +55,10 @@ class _StringSubclass(str):
 
 
 class _DictSubclass(dict):
+    pass
+
+
+class _ListSubclass(list):
     pass
 
 
@@ -134,6 +139,43 @@ def test_polluted_guard_output_does_not_call_producer(monkeypatch) -> None:
     _assert_fixed_blocked_response(_get_diagnostics())
 
 
+@pytest.mark.parametrize(
+    "case",
+    ["missing", "added", "reordered", "replaced", "subclass", "sensitive"],
+)
+def test_guard_notes_drift_does_not_call_producer(case: str, monkeypatch) -> None:
+    drifted = source_guard.validate_demo_readonly_source_config({})
+    notes = list(drifted["notes"])
+    if case == "missing":
+        drifted.pop("notes")
+    elif case == "added":
+        drifted["notes"] = [*notes, "unexpected note"]
+    elif case == "reordered":
+        drifted["notes"] = list(reversed(notes))
+    elif case == "replaced":
+        drifted["notes"] = ["replacement note", notes[1]]
+    elif case == "subclass":
+        drifted["notes"] = _ListSubclass(notes)
+    else:
+        drifted["notes"] = ["raw_payload traceback bridge_dir", notes[1]]
+
+    def fail_if_called() -> None:
+        raise AssertionError("guard notes drift must not call the producer")
+
+    monkeypatch.setattr(
+        legacy_api,
+        "validate_demo_readonly_source_config",
+        lambda _config: drifted,
+    )
+    monkeypatch.setattr(
+        legacy_api,
+        "build_demo_readonly_canonical_docs_fixture_diagnostics_summary",
+        fail_if_called,
+    )
+
+    _assert_fixed_blocked_response(_get_diagnostics())
+
+
 def test_producer_exception_is_sanitized_to_fixed_blocked_response(monkeypatch) -> None:
     def raise_producer_exception() -> None:
         raise RuntimeError("private producer failure")
@@ -142,6 +184,58 @@ def test_producer_exception_is_sanitized_to_fixed_blocked_response(monkeypatch) 
         legacy_api,
         "build_demo_readonly_canonical_docs_fixture_diagnostics_summary",
         raise_producer_exception,
+    )
+
+    _assert_fixed_blocked_response(_get_diagnostics())
+
+
+@pytest.mark.parametrize(
+    "failure_case",
+    ["guard_blocked", "guard_exception", "producer_exception"],
+)
+def test_upstream_failure_rejects_forged_adapter_success(
+    failure_case: str,
+    monkeypatch,
+) -> None:
+    forged_success = _real_success_response()
+
+    if failure_case == "guard_blocked":
+        blocked = source_guard.validate_demo_readonly_source_config(
+            {
+                "source_mode": source_guard.MT4_DEMO_READONLY_FILE_BRIDGE_SOURCE_MODE,
+                "mt4_demo_readonly_file_bridge_enabled": False,
+                "mt4_demo_readonly_bridge_dir": "server-owned-approved-location",
+                "allow_request_override": False,
+            }
+        )
+        monkeypatch.setattr(
+            legacy_api,
+            "validate_demo_readonly_source_config",
+            lambda _config: blocked,
+        )
+    elif failure_case == "guard_exception":
+        def raise_guard_exception(_config: object) -> None:
+            raise RuntimeError("private guard failure")
+
+        monkeypatch.setattr(
+            legacy_api,
+            "validate_demo_readonly_source_config",
+            raise_guard_exception,
+        )
+    else:
+        def raise_producer_exception() -> None:
+            raise RuntimeError("private producer failure")
+
+        monkeypatch.setattr(
+            legacy_api,
+            "build_demo_readonly_canonical_docs_fixture_diagnostics_summary",
+            raise_producer_exception,
+        )
+
+    monkeypatch.setattr(
+        legacy_api,
+        "adapt_canonical_summary_to_legacy_mt4_diagnostics_response",
+        lambda *, canonical_summary: forged_success,
     )
 
     _assert_fixed_blocked_response(_get_diagnostics())
@@ -254,6 +348,15 @@ def _get_diagnostics() -> dict[str, Any]:
     response = TestClient(app).get("/api/mt4/diagnostics")
     assert response.status_code == 200
     return response.json()
+
+
+def _real_success_response() -> dict[str, Any]:
+    summary = (
+        legacy_api.build_demo_readonly_canonical_docs_fixture_diagnostics_summary()
+    )
+    return legacy_api.adapt_canonical_summary_to_legacy_mt4_diagnostics_response(
+        canonical_summary=summary
+    )
 
 
 def _assert_fixed_blocked_response(data: dict[str, Any]) -> None:

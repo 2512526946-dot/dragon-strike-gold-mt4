@@ -56,6 +56,10 @@ _SOURCE_CONFIG_SAFETY_FIELDS = {
     "allowed_to_call_ea": False,
     "allowed_to_modify_risk": False,
 }
+_SOURCE_CONFIG_NOTES = (
+    "source config guard validates caller-provided server-side config only",
+    "source_mode readiness is not a trading permission",
+)
 _LEGACY_RESPONSE_KEYS = frozenset(Mt4DiagnosticsResponse.model_fields)
 _LEGACY_DETAIL_FIELDS = (
     "read_summary",
@@ -77,12 +81,14 @@ _UNAVAILABLE_DETAIL = {
 @router.get("/diagnostics", response_model=Mt4DiagnosticsResponse)
 def get_mt4_diagnostics() -> Mt4DiagnosticsResponse:
     canonical_summary: object = None
+    source_ready = False
     try:
         guard_result = validate_demo_readonly_source_config({})
         if _guard_allows_default_docs_fixture(guard_result):
             canonical_summary = (
                 build_demo_readonly_canonical_docs_fixture_diagnostics_summary()
             )
+            source_ready = True
         else:
             canonical_summary = guard_result
     except Exception:
@@ -92,7 +98,10 @@ def get_mt4_diagnostics() -> Mt4DiagnosticsResponse:
         legacy_result = adapt_canonical_summary_to_legacy_mt4_diagnostics_response(
             canonical_summary=canonical_summary
         )
-        if not _legacy_result_is_safe(legacy_result):
+        if not _legacy_result_is_safe(
+            legacy_result,
+            success_allowed=source_ready,
+        ):
             return _fixed_blocked_response()
         return Mt4DiagnosticsResponse.model_validate(legacy_result)
     except Exception:
@@ -123,6 +132,7 @@ def _guard_allows_default_docs_fixture(result: object) -> bool:
         or type(result["warning_reasons"]) is not list
         or bool(result["warning_reasons"])
         or not _strict_string_list(result["notes"])
+        or tuple(result["notes"]) != _SOURCE_CONFIG_NOTES
     ):
         return False
     return all(
@@ -140,7 +150,11 @@ def _strict_string_list(value: object) -> bool:
     )
 
 
-def _legacy_result_is_safe(result: object) -> bool:
+def _legacy_result_is_safe(
+    result: object,
+    *,
+    success_allowed: bool,
+) -> bool:
     if type(result) is not dict or frozenset(result) != _LEGACY_RESPONSE_KEYS:
         return False
     if any(type(key) is not str for key in result):
@@ -158,6 +172,8 @@ def _legacy_result_is_safe(result: object) -> bool:
         return False
 
     passed = result["data_quality_passed"]
+    if passed and not success_allowed:
+        return False
     if result["can_proceed_to_read_only_analysis"] is not passed:
         return False
     if result["status_code"] != (
