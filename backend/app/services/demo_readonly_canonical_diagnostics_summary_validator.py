@@ -3,41 +3,37 @@ from __future__ import annotations
 import re
 
 
-_SUMMARY_KEYS = frozenset(
-    {
-        "passed",
-        "status_code",
-        "source_scope",
-        "validation_stage",
-        "fixture_source",
-        "bundle_validation_status",
-        "component_statuses",
-        "block_reasons",
-        "warning_reasons",
-        "readiness_notes",
-        "next_allowed_stage",
-        "next_blocked_stage",
-        "read_only",
-        "demo_only",
-        "is_tradable",
-        "can_execute",
-        "is_trading_permission",
-        "is_execution_instruction",
-        "allowed_to_call_ea",
-        "allowed_to_modify_risk",
-    }
+_SUMMARY_KEYS = (
+    "passed",
+    "status_code",
+    "source_scope",
+    "validation_stage",
+    "fixture_source",
+    "bundle_validation_status",
+    "component_statuses",
+    "block_reasons",
+    "warning_reasons",
+    "readiness_notes",
+    "next_allowed_stage",
+    "next_blocked_stage",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
+    "is_trading_permission",
+    "is_execution_instruction",
+    "allowed_to_call_ea",
+    "allowed_to_modify_risk",
 )
-_STATUS_KEYS = frozenset(
-    {
-        "passed",
-        "status_code",
-        "block_reasons",
-        "warning_reasons",
-        "read_only",
-        "demo_only",
-        "is_tradable",
-        "can_execute",
-    }
+_STATUS_KEYS = (
+    "passed",
+    "status_code",
+    "block_reasons",
+    "warning_reasons",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
 )
 _STRING_LIST_FIELDS = (
     "block_reasons",
@@ -205,7 +201,7 @@ def _is_safe_summary(value_to_parse: object) -> bool:
         bundle_status is None
         or not _has_exact_plain_dict_keys(
             components,
-            frozenset({"canonical_data_quality_gate"}),
+            ("canonical_data_quality_gate",),
         )
     ):
         return False
@@ -263,14 +259,14 @@ def _parse_status(
 
 def _has_exact_plain_dict_keys(
     value_to_parse: object,
-    expected_keys: frozenset[str],
+    expected_keys: tuple[str, ...],
 ) -> bool:
     if type(value_to_parse) is not dict:
         return False
     keys = tuple(value_to_parse)
     if any(type(key) is not str for key in keys):
         return False
-    return frozenset(keys) == expected_keys
+    return keys == expected_keys
 
 
 def _strict_string_list(value_to_parse: object) -> tuple[str, ...] | None:

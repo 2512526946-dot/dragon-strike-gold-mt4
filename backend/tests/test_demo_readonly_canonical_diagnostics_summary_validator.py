@@ -24,42 +24,40 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "docs" / "architecture" / "fixtures"
 FIXTURE_BUNDLE_DIR = FIXTURE_ROOT / "canonical-mt4-demo-readonly-bundle-v1"
 REFERENCE_TIME = datetime(2026, 7, 10, 2, 30, 5, tzinfo=UTC)
-SUMMARY_KEYS = frozenset(
-    {
-        "passed",
-        "status_code",
-        "source_scope",
-        "validation_stage",
-        "fixture_source",
-        "bundle_validation_status",
-        "component_statuses",
-        "block_reasons",
-        "warning_reasons",
-        "readiness_notes",
-        "next_allowed_stage",
-        "next_blocked_stage",
-        "read_only",
-        "demo_only",
-        "is_tradable",
-        "can_execute",
-        "is_trading_permission",
-        "is_execution_instruction",
-        "allowed_to_call_ea",
-        "allowed_to_modify_risk",
-    }
+SUMMARY_KEY_ORDER = (
+    "passed",
+    "status_code",
+    "source_scope",
+    "validation_stage",
+    "fixture_source",
+    "bundle_validation_status",
+    "component_statuses",
+    "block_reasons",
+    "warning_reasons",
+    "readiness_notes",
+    "next_allowed_stage",
+    "next_blocked_stage",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
+    "is_trading_permission",
+    "is_execution_instruction",
+    "allowed_to_call_ea",
+    "allowed_to_modify_risk",
 )
-STATUS_KEYS = frozenset(
-    {
-        "passed",
-        "status_code",
-        "block_reasons",
-        "warning_reasons",
-        "read_only",
-        "demo_only",
-        "is_tradable",
-        "can_execute",
-    }
+SUMMARY_KEYS = frozenset(SUMMARY_KEY_ORDER)
+STATUS_KEY_ORDER = (
+    "passed",
+    "status_code",
+    "block_reasons",
+    "warning_reasons",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
 )
+STATUS_KEYS = frozenset(STATUS_KEY_ORDER)
 SAFETY_FLAGS = {
     "read_only": True,
     "demo_only": True,
@@ -156,6 +154,37 @@ def test_non_plain_summary_inputs_fail_closed(invalid_summary: object) -> None:
     assert not validator.is_safe_demo_readonly_canonical_diagnostics_summary(
         canonical_summary=invalid_summary,
     )
+
+
+def test_reordered_real_g151_keys_fail_closed_without_mutation() -> None:
+    fixture_before = _fixture_state()
+    original = _build_summary()
+    original_before = deepcopy(original)
+
+    top_level = dict(reversed(tuple(original.items())))
+    bundle_status = deepcopy(original)
+    bundle_status["bundle_validation_status"] = dict(
+        reversed(tuple(bundle_status["bundle_validation_status"].items()))
+    )
+    component_status = deepcopy(original)
+    component = component_status["component_statuses"][
+        "canonical_data_quality_gate"
+    ]
+    component_status["component_statuses"]["canonical_data_quality_gate"] = dict(
+        reversed(tuple(component.items()))
+    )
+
+    assert tuple(original) == SUMMARY_KEY_ORDER
+    _assert_exact_statuses(original)
+    for candidate in (top_level, bundle_status, component_status):
+        candidate_before = deepcopy(candidate)
+        assert not validator.is_safe_demo_readonly_canonical_diagnostics_summary(
+            canonical_summary=candidate,
+        )
+        assert candidate == candidate_before
+
+    assert original == original_before
+    assert _fixture_state() == fixture_before
 
 
 @pytest.mark.parametrize(
@@ -459,13 +488,23 @@ def _load_json(path: Path) -> dict[str, Any]:
     return loaded
 
 
+def _fixture_state() -> dict[str, tuple[bytes, int]]:
+    return {
+        path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in FIXTURE_BUNDLE_DIR.iterdir()
+        if path.is_file()
+    }
+
+
 def _assert_exact_statuses(summary: dict[str, Any]) -> None:
     assert type(summary["bundle_validation_status"]) is dict
+    assert tuple(summary["bundle_validation_status"]) == STATUS_KEY_ORDER
     assert set(summary["bundle_validation_status"]) == STATUS_KEYS
     assert type(summary["component_statuses"]) is dict
-    assert set(summary["component_statuses"]) == {"canonical_data_quality_gate"}
+    assert tuple(summary["component_statuses"]) == ("canonical_data_quality_gate",)
     component = summary["component_statuses"]["canonical_data_quality_gate"]
     assert type(component) is dict
+    assert tuple(component) == STATUS_KEY_ORDER
     assert set(component) == STATUS_KEYS
     assert component == summary["bundle_validation_status"]
 
