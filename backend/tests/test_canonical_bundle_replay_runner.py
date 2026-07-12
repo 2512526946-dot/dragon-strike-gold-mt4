@@ -275,6 +275,7 @@ def test_case_subclass_and_caller_override_are_rejected() -> None:
 @pytest.mark.parametrize(
     "invalid_registry",
     [
+        (object(),),
         (replace(replay_runner._REGISTRY[0], registry_version="wrong"),),
         (
             replace(
@@ -309,6 +310,32 @@ def test_case_subclass_and_caller_override_are_rejected() -> None:
                     "CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS"
                 ),
                 expected_warning_codes=("UNKNOWN_WARNING",),
+            ),
+        ),
+        (
+            replace(
+                replay_runner._REGISTRY[0],
+                expected_outcome="BLOCKED",
+                expected_status_code="CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED",
+                expected_block_reasons=("DATA_QUALITY_INPUT_NOT_OBJECT",),
+                expected_warning_codes=("IDEMPOTENT_REPEAT",),
+            ),
+        ),
+        (
+            replace(
+                replay_runner._REGISTRY[0],
+                expected_outcome="BLOCKED",
+                expected_status_code="CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED",
+                expected_block_reasons=("DATA_QUALITY_POLICY_INVALID",),
+                expected_warning_codes=("SEQUENCE_GAP",),
+            ),
+        ),
+        (
+            replace(
+                replay_runner._REGISTRY[0],
+                expected_outcome="SAFE_FAILURE",
+                expected_status_code="CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE",
+                expected_block_reasons=("DATA_QUALITY_GATE_EXCEPTION_SANITIZED",),
             ),
         ),
         (
@@ -610,6 +637,10 @@ def test_production_module_has_only_approved_runtime_dependencies() -> None:
     assert "open(" not in source
     assert "getenv" not in source
     assert "environ" not in source
+    assert "_CANONICAL_BLOCK_REASONS" not in source
+    assert "def _oracle_is_consistent" not in source
+    assert "DATA_QUALITY_INPUT_NOT_OBJECT" not in source
+    assert "DATA_QUALITY_POLICY_INVALID" not in source
 
 
 def _ready_case() -> replay_runner.CanonicalBundleReplayCaseV1:

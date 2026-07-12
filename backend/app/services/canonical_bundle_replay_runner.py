@@ -82,49 +82,9 @@ class _CanonicalBundleReplayRegistryRecordV1:
 
 
 _IDENTIFIER_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62})$")
-_PUBLIC_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 _UNAVAILABLE = "unavailable"
 
 _CANONICAL_READY = "CANONICAL_DIAGNOSTICS_SUMMARY_READY"
-_CANONICAL_READY_WITH_WARNINGS = (
-    "CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS"
-)
-_CANONICAL_BLOCKED = "CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED"
-_CANONICAL_INPUT_INVALID = "CANONICAL_DIAGNOSTICS_SUMMARY_INPUT_INVALID"
-_CANONICAL_SAFE_FAILURE = "CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE"
-_CANONICAL_STATUS_BY_OUTCOME = {
-    "READY": _CANONICAL_READY,
-    "READY_WITH_WARNINGS": _CANONICAL_READY_WITH_WARNINGS,
-    "BLOCKED": _CANONICAL_BLOCKED,
-    "INPUT_INVALID": _CANONICAL_INPUT_INVALID,
-    "SAFE_FAILURE": _CANONICAL_SAFE_FAILURE,
-}
-_CANONICAL_INPUT_INVALID_REASON = "CANONICAL_DATA_QUALITY_RESULT_INVALID"
-_CANONICAL_SAFE_FAILURE_REASON = (
-    "CANONICAL_DIAGNOSTICS_ADAPTER_EXCEPTION_SANITIZED"
-)
-_CANONICAL_BLOCK_REASONS = frozenset(
-    {
-        "DATA_QUALITY_INPUT_NOT_OBJECT",
-        "DATA_QUALITY_REQUIRED_READER_KEY_MISSING",
-        "DATA_QUALITY_UNEXPECTED_READER_KEY",
-        "DATA_QUALITY_READER_FIELD_TYPE_INVALID",
-        "DATA_QUALITY_COMPONENT_STATUS_INVALID",
-        "DATA_QUALITY_POLICY_INVALID",
-        "READER_SAFETY_ENVELOPE_INVALID",
-        "READER_RESULT_INCONSISTENT",
-        "READER_WARNING_CODES_INVALID",
-        "READER_MIXED_GENERATION_BLOCKED",
-        "READER_INTEGRITY_INVALID",
-        "READER_DATA_STALE",
-        "READER_STRUCTURE_INVALID",
-        "READER_VALUE_INVALID",
-        "READER_BLOCKED",
-        "UPSTREAM_WARNINGS_REJECTED_BY_POLICY",
-        "DATA_QUALITY_GATE_EXCEPTION_SANITIZED",
-    }
-)
-_CANONICAL_WARNING_ORDER = ("IDEMPOTENT_REPEAT", "SEQUENCE_GAP")
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_ROOT = _REPOSITORY_ROOT / "docs" / "architecture" / "fixtures"
@@ -133,7 +93,7 @@ _FIXTURE_REFERENCE_TIME = datetime(2026, 7, 10, 2, 30, 5, tzinfo=UTC)
 _READY_CASE_ID = "canonical_docs_ready"
 _READY_FIXTURE_ID = "canonical_docs_fixture_v1"
 
-_REGISTRY = (
+_APPROVED_REGISTRY = (
     _CanonicalBundleReplayRegistryRecordV1(
         registry_version=REGISTRY_VERSION,
         fixture_id=_READY_FIXTURE_ID,
@@ -150,6 +110,7 @@ _REGISTRY = (
         expected_warning_codes=(),
     ),
 )
+_REGISTRY = _APPROVED_REGISTRY
 
 
 def run_canonical_bundle_replay_case(
@@ -259,87 +220,45 @@ def _replay_case_is_safe(replay_case: object) -> bool:
 
 
 def _registry_is_safe(registry: object) -> bool:
-    if type(registry) is not tuple or not registry:
-        return False
-    if any(
-        type(record) is not _CanonicalBundleReplayRegistryRecordV1
-        or not _registry_record_is_safe(record)
-        for record in registry
-    ):
-        return False
-    identities = tuple((record.fixture_id, record.case_id) for record in registry)
-    fixture_ids = tuple(record.fixture_id for record in registry)
-    case_ids = tuple(record.case_id for record in registry)
     return (
-        len(identities) == len(set(identities))
-        and len(fixture_ids) == len(set(fixture_ids))
-        and len(case_ids) == len(set(case_ids))
+        type(registry) is tuple
+        and len(registry) == 1
+        and _registry_record_is_safe(registry[0])
+        and registry == _APPROVED_REGISTRY
     )
 
 
 def _registry_record_is_safe(
     record: _CanonicalBundleReplayRegistryRecordV1,
 ) -> bool:
-    if (
-        type(record.registry_version) is not str
-        or record.registry_version != REGISTRY_VERSION
-        or not _identifier_is_safe(record.fixture_id)
-        or not _identifier_is_safe(record.case_id)
-        or type(record.allowed_root) is not type(_FIXTURE_ROOT)
-        or type(record.bundle_dir) is not type(_FIXTURE_BUNDLE_DIR)
-        or record.allowed_root != _FIXTURE_ROOT
-        or record.bundle_dir != _FIXTURE_BUNDLE_DIR
-        or type(record.reference_time_utc) is not datetime
-        or record.reference_time_utc != _FIXTURE_REFERENCE_TIME
-        or record.reference_time_utc.tzinfo is not UTC
-        or record.previous_identity is not None
-        or type(record.pipeline_contract_version) is not str
-        or record.pipeline_contract_version != PIPELINE_CONTRACT_VERSION
-        or type(record.policy_profile_version) is not str
-        or record.policy_profile_version != POLICY_PROFILE_VERSION
-        or type(record.expected_outcome) is not str
-        or record.expected_outcome not in _CANONICAL_STATUS_BY_OUTCOME
-        or type(record.expected_status_code) is not str
-        or record.expected_status_code
-        != _CANONICAL_STATUS_BY_OUTCOME[record.expected_outcome]
-        or not _code_tuple_is_safe(record.expected_block_reasons)
-        or not _code_tuple_is_safe(record.expected_warning_codes)
-        or not _warning_codes_follow_contract_order(record.expected_warning_codes)
-    ):
+    if type(record) is not _CanonicalBundleReplayRegistryRecordV1:
         return False
-    return _oracle_is_consistent(record)
-
-
-def _oracle_is_consistent(
-    record: _CanonicalBundleReplayRegistryRecordV1,
-) -> bool:
-    if record.expected_outcome == "READY":
-        return not record.expected_block_reasons and not record.expected_warning_codes
-    if record.expected_outcome == "READY_WITH_WARNINGS":
-        return (
-            not record.expected_block_reasons
-            and len(record.expected_warning_codes) == 1
-        )
-    if record.expected_outcome == "BLOCKED":
-        if (
-            len(record.expected_block_reasons) != 1
-            or record.expected_block_reasons[0] not in _CANONICAL_BLOCK_REASONS
-        ):
-            return False
-        if record.expected_block_reasons == (
-            "UPSTREAM_WARNINGS_REJECTED_BY_POLICY",
-        ):
-            return bool(record.expected_warning_codes)
-        return True
-    if record.expected_outcome == "INPUT_INVALID":
-        return (
-            record.expected_block_reasons
-            == (_CANONICAL_INPUT_INVALID_REASON,)
-            and not record.expected_warning_codes
-        )
+    string_fields = (
+        record.registry_version,
+        record.fixture_id,
+        record.case_id,
+        record.pipeline_contract_version,
+        record.policy_profile_version,
+        record.expected_outcome,
+        record.expected_status_code,
+    )
     return (
-        record.expected_block_reasons == (_CANONICAL_SAFE_FAILURE_REASON,)
-        and not record.expected_warning_codes
+        all(type(value) is str for value in string_fields)
+        and type(record.allowed_root) is type(_FIXTURE_ROOT)
+        and type(record.bundle_dir) is type(_FIXTURE_BUNDLE_DIR)
+        and type(record.reference_time_utc) is datetime
+        and record.reference_time_utc.tzinfo is UTC
+        and record.previous_identity is None
+        and type(record.expected_block_reasons) is tuple
+        and type(record.expected_warning_codes) is tuple
+        and all(
+            type(code) is str
+            for code in (
+                *record.expected_block_reasons,
+                *record.expected_warning_codes,
+            )
+        )
+        and record == _APPROVED_REGISTRY[0]
     )
 
 
@@ -404,22 +323,6 @@ def _identifier_is_safe(value: object) -> bool:
         type(value) is str
         and _IDENTIFIER_PATTERN.fullmatch(value) is not None
     )
-
-
-def _code_tuple_is_safe(value: object) -> bool:
-    return (
-        type(value) is tuple
-        and len(value) == len(set(value))
-        and all(
-            type(code) is str
-            and _PUBLIC_CODE_PATTERN.fullmatch(code) is not None
-            for code in value
-        )
-    )
-
-
-def _warning_codes_follow_contract_order(codes: tuple[str, ...]) -> bool:
-    return codes == tuple(code for code in _CANONICAL_WARNING_ORDER if code in codes)
 
 
 def _matched_result(
