@@ -394,6 +394,25 @@ def test_maturity_preserving_hardening_is_valid() -> None:
     assert result.task_decision == ALLOW_SINGLE_WORK_ORDER
 
 
+@pytest.mark.parametrize(
+    "capability_layer",
+    ("IMPLEMENTATION", "INTEGRATION", "ACTIVATION", "VERIFICATION"),
+)
+def test_maturity_preserving_revision_cannot_touch_a_higher_layer(
+    capability_layer: str,
+) -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            current_maturity="TESTS_ONLY",
+            target_maturity="TESTS_ONLY",
+            maturity_reason="maturity-preserving test hardening",
+            capability_layers=(capability_layer,),
+        )
+    )
+
+    _assert_known_size_input_invalid(result)
+
+
 def test_maturity_preserving_change_without_reason_fails_closed() -> None:
     result = evaluate_task_size_gate(
         evidence=_evidence(
@@ -579,6 +598,10 @@ def test_wrong_field_types_or_values_fail_closed(
         "C:/absolute.py",
         "backend/**/*.py",
         "backend\\app\\service.py",
+        ".",
+        "backend/./file.py",
+        "backend//file.py",
+        "backend/",
     ),
 )
 def test_non_exact_file_scope_fails_closed(bad_path: str) -> None:
@@ -589,6 +612,29 @@ def test_non_exact_file_scope_fails_closed(bad_path: str) -> None:
     assert result.task_size is None
     assert result.task_decision == STOP_UNCERTAIN
     assert result.reason_codes == (INPUT_INVALID,)
+    assert bad_path not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "allowed_alias",
+    ("backend/./file.py", "backend//file.py"),
+)
+def test_noncanonical_scope_alias_cannot_bypass_overlap_check(
+    allowed_alias: str,
+) -> None:
+    result = evaluate_task_size_gate(
+        evidence=_evidence(
+            allowed_files=(allowed_alias,),
+            prohibited_files=("backend/file.py",),
+        )
+    )
+
+    assert result.task_size is None
+    assert result.task_decision == STOP_UNCERTAIN
+    assert result.model_gate == STOP_UNCERTAIN
+    assert result.supervisor_eligibility == NOT_ELIGIBLE
+    assert result.reason_codes == (INPUT_INVALID,)
+    assert allowed_alias not in repr(result)
 
 
 def test_runtime_module_has_no_io_or_integration_dependencies() -> None:

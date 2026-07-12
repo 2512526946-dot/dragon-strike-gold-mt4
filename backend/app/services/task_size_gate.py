@@ -357,7 +357,13 @@ def _valid_maturity_transition(evidence: TaskSizeGateEvidence) -> bool:
         if evidence.current_maturity == "NOT_STARTED":
             return False
         normalized = evidence.maturity_reason.casefold()
-        return "hardening" in normalized or "maintenance" in normalized
+        if "hardening" not in normalized and "maintenance" not in normalized:
+            return False
+        current_layer = _TARGET_LAYER_FOR_MATURITY[evidence.current_maturity]
+        return all(
+            _LAYER_ORDER[layer] <= _LAYER_ORDER[current_layer]
+            for layer in evidence.capability_layers
+        )
 
     if _MATURITY_ORDER[evidence.target_maturity] != (
         _MATURITY_ORDER[evidence.current_maturity] + 1
@@ -462,7 +468,8 @@ def _safe_relative_file(value: str) -> bool:
         return False
     if any(token in value for token in ("*", "?", "[", "]")):
         return False
-    return ".." not in value.split("/")
+    components = value.split("/")
+    return all(component and component not in {".", ".."} for component in components)
 
 
 def _file_scope_key(value: str) -> str:
