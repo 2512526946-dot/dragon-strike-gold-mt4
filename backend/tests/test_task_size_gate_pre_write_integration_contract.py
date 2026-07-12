@@ -388,7 +388,12 @@ def test_jl_supervisor_prewrite_call_order_is_zero_or_exactly_one() -> None:
     assert "uses zero evaluator calls" in skill
     assert "Only after every Git, frozen-order, dependency, evidence, Pro-authority, and pre-evaluator drift check passes may Supervisor call exactly once" in skill
     assert "Do not monkeypatch, retry, fallback, call a second time" in skill
-    assert "stops after the one permitted call" in skill
+    assert "If the evaluator interface is unavailable before invocation" in skill
+    assert "`PRE_WRITE_EVALUATOR_UNAVAILABLE` with zero evaluator calls" in skill
+    assert "Once the single evaluator call begins" in skill
+    assert "consumes the one permitted call" in skill
+    assert "without retry, fallback, result repair, or a second call" in skill
+    assert "stops after the one permitted call" not in skill
     assert "These workflow categories must never enter `TaskSizeGateResult.reason_codes`" in skill
 
 

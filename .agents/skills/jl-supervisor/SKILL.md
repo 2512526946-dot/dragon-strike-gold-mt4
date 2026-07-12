@@ -253,13 +253,17 @@ Supervisor path. `ALLOW_SINGLE_WORK_ORDER` may continue only with `ELIGIBLE`,
 or with `CONDITIONAL_PRO_RESUME` plus explicit current Codex Pro authorization
 for the same frozen order. `PRO_REQUIRED` must never be downgraded.
 
-Unavailable evaluator, exception, invalid or contradictory result, unknown,
-missing, duplicate, extra, or out-of-order reason code, planning/result drift,
-or post-call Git/evidence change stops after the one permitted call. Return
-only one sanitized `PRE_WRITE_*` category from contract section 10. These
-workflow categories must never enter `TaskSizeGateResult.reason_codes`, and
-failure output must not include exception text, traceback, absolute paths,
-environment values, credentials, or raw user content.
+If the evaluator interface is unavailable before invocation, return sanitized
+`PRE_WRITE_EVALUATOR_UNAVAILABLE` with zero evaluator calls and stop all write
+actions. Once the single evaluator call begins, an exception, invalid or
+contradictory result, unknown, missing, duplicate, extra, or out-of-order reason
+code, planning/result drift, or post-call Git/evidence change consumes the one
+permitted call and stops without retry, fallback, result repair, or a second
+call. Return only one sanitized `PRE_WRITE_*` category from contract section
+10. These workflow categories must never enter
+`TaskSizeGateResult.reason_codes`, and failure output must not include exception
+text, traceback, absolute paths, environment values, credentials, or raw user
+content.
 
 A passing checkpoint only permits the next action already authorized inside
 this frozen Supervisor run. The checkpoint itself does not create or switch a
