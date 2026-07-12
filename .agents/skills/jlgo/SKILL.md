@@ -31,6 +31,134 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 9. 下一开发任务需要 Pro 时，输出模型要求后停止，不在低强度下设计关键架构。
 10. 每次只输出一个下一动作，不修改文件，不创建分支，不 commit、push、merge 或 tag。
 
+## TaskSizeGate planning checkpoint
+
+只有在第 8 步已经证明当前位于 clean synchronized `main`、没有 active
+unmerged work branch，并且一个新开发候选工单已经冻结后，才执行本节。
+active work branch 仍只进入 review、revision 或 merge 路径；其他分支、dirty
+worktree、main mismatch、ancestry unknown 或目标分支被占用时，不得构造
+TaskSizeGate evidence，也不得调用 evaluator。
+
+以
+`docs/implementation_plans/task_size_gate_jlgo_planning_integration_contract.md`
+为 caller-owned evidence 来源契约。在 `backend` Python runtime 中直接复用：
+
+```python
+from app.services.task_size_gate import (
+    CROSS_PACKAGE_ACTIVATION,
+    INPUT_INVALID,
+    MODEL_STOP_UNCERTAIN,
+    MULTIPLE_OBJECTIVES,
+    NON_ADJACENT_LAYERS,
+    OVERSIZED,
+    PRO_MODEL_REQUIRED,
+    SINGLE_WORK_ORDER_ALLOWED,
+    SIZE_UNCLASSIFIABLE,
+    TaskSizeGateEvidence,
+    TaskSizeGateResult,
+    UNKNOWN_EVIDENCE,
+    evaluate_task_size_gate,
+)
+```
+
+必须创建一个 fresh、frozen、strict `TaskSizeGateEvidence`。字段顺序固定如下，
+不得缺失、增加、猜测、从 evaluator result 反推或为了获得 allow 而弱化：
+
+```text
+TASK_SIZE_GATE_EVIDENCE_FIELDS_BEGIN
+objective
+objective_count
+wbs_package_ids
+current_maturity
+target_maturity
+maturity_reason
+base_branch
+base_main_commit
+work_branch
+commit_message
+push_destination
+stop_conditions
+estimated_engineering_hours_lower
+estimated_engineering_hours_upper
+allowed_files
+prohibited_files
+prohibited_capabilities
+capability_layers
+subsystem_boundaries
+affected_surfaces
+required_checks
+known_dependencies
+dependency_evidence_known
+risk_and_policy_impacts
+high_risk_reasons
+model_gate
+model_gate_evidence
+unknowns
+cross_package_activation
+TASK_SIZE_GATE_EVIDENCE_FIELDS_END
+```
+
+证据必须来自本轮重新读取的 Git、WBS、成熟度、精确文件范围、验证、依赖、
+风险和政策事实。用户提供的值只能作为候选，不能替代仓库证据。冻结输入后，
+只允许调用一次：
+
+```python
+result = evaluate_task_size_gate(evidence=evidence)
+```
+
+不得 monkeypatch、retry、创建 fallback classifier、手工覆盖 TaskSize、删除
+unknowns、缩小工时或文件范围，也不得使用临时文件、持久状态、环境变量、网络
+或新的 adapter 传递 evidence。
+
+返回值必须满足全部安全信封要求：
+
+- `type(result) is TaskSizeGateResult`；
+- `task_size` 只能是 strict `str` 的 `XS/S/M/L/XL`，或仅在无法分类时为
+  `None`；
+- `task_decision`、`model_gate`、`supervisor_eligibility` 必须是生产模块的
+  公开枚举值；
+- `reason_codes` 必须是非空、无重复、确定顺序的 strict `tuple[str, ...]`，
+  且每项和组合都必须匹配生产模块公开常量及 WF-4D 第 8 节；
+- evaluator 前后 frozen candidate、evidence 和 Git checkpoint 必须不变。
+
+reason code 只能通过同一生产模块的公开常量验证，不得在 Skill 中另造字符串：
+`INPUT_INVALID`、`SIZE_UNCLASSIFIABLE`、`UNKNOWN_EVIDENCE`、
+`MODEL_STOP_UNCERTAIN`、`CROSS_PACKAGE_ACTIVATION`、`MULTIPLE_OBJECTIVES`、
+`NON_ADJACENT_LAYERS`、`OVERSIZED`、`SINGLE_WORK_ORDER_ALLOWED` 和
+`PRO_MODEL_REQUIRED`。blocked result 必须恰好一个 reason，且只能来自
+`INPUT_INVALID`、`SIZE_UNCLASSIFIABLE`、`UNKNOWN_EVIDENCE` 或
+`MODEL_STOP_UNCERTAIN`；allow result 必须是 `SINGLE_WORK_ORDER_ALLOWED`，并仅
+在 Pro 时按顺序追加 `PRO_MODEL_REQUIRED`；split result 必须至少包含一个
+`CROSS_PACKAGE_ACTIVATION`、`MULTIPLE_OBJECTIVES`、`NON_ADJACENT_LAYERS` 或
+`OVERSIZED`，保持生产顺序，并仅在 Pro 时最后追加 `PRO_MODEL_REQUIRED`。
+
+只接受以下确定性结果映射：
+
+- valid TaskSize 或 `None` + `STOP_UNCERTAIN` + `STOP_UNCERTAIN` +
+  `NOT_ELIGIBLE`：下一 Skill 为 `无` 并停止；`None` 只允许 size 无法分类；
+- `L/XL` + `SPLIT_REQUIRED` + `NORMAL_ALLOWED/PRO_REQUIRED` +
+  `NOT_ELIGIBLE`：只返回只读拆分建议，下一 Skill 为 `无`；
+- `XS/S` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `ELIGIBLE`：
+  可以建议用户显式批准 `jl-supervisor`；
+- `M` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `NOT_ELIGIBLE`：
+  可以建议用户显式批准 `jl-develop`；
+- `XS/S` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` +
+  `CONDITIONAL_PRO_RESUME`：要求用户确认 Codex Pro 并显式批准有界 Supervisor；
+- `M` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `NOT_ELIGIBLE`：
+  要求 Codex Pro 并显式批准 `jl-develop`。
+
+module/public interface 不可用、evidence 构造失败、evaluator exception、返回值
+不是 exact type、字段类型错误、未知枚举、reason code 未知/重复/乱序/矛盾、
+结果组合不在白名单或 Git checkpoint 变化时，统一输出 workflow-level
+`STOP_UNCERTAIN`，下一 Skill 为 `无`。错误输出只报告净化后的阻断类别，不得
+包含 exception message、traceback、绝对路径、raw user payload、环境值或其他
+敏感内容。失败调用不得 fallback、retry 或推荐另一个 Skill。
+
+TaskSizeGate result 只是规划分类，不是用户批准。即使结果为 allow，也不得自动
+创建或切换分支、修改文件、调用 Skill、merge、tag、部署、activation、调用 MT4
+或产生交易动作。本节只完成 JLGO planning-checkpoint integration；不代表
+pre-write/review/CI integration、workflow activation 或 end-to-end verification。
+
 使用固定输出：
 
 ```text
@@ -45,6 +173,10 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 ```
 
 下一步是开发时，额外输出 `【完整候选工单】`。
+
+执行 TaskSizeGate planning checkpoint 时，`【状态判定】` 必须明确报告
+TaskSize、Task decision、ModelGate、Supervisor eligibility 和净化后的 reason
+codes；任何 blocked 或 invalid result 都不得生成写操作工单。
 
 下一 Skill 只能是 `$jl-develop`、`$jl-review`、`$jl-merge`、`$jl-release` 或 `$jl-supervisor`。输出后停止，不自动调用它。
 

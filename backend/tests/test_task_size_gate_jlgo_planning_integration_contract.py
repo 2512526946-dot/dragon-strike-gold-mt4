@@ -1,7 +1,7 @@
-"""Immutable contract vectors for the future JLGO TaskSizeGate checkpoint.
+"""Contract vectors and static requirements for the JLGO TaskSizeGate checkpoint.
 
-These vectors lock the approved planning boundary.  They deliberately do not
-import, call, or claim to prove a runtime JLGO integration.
+These tests lock the approved planning boundary and Skill integration text.
+They deliberately do not call the evaluator or claim end-to-end verification.
 """
 
 from __future__ import annotations
@@ -54,6 +54,18 @@ EVIDENCE_FIELDS = (
     "model_gate_evidence",
     "unknowns",
     "cross_package_activation",
+)
+REASON_CODE_CONSTANT_NAMES = (
+    "INPUT_INVALID",
+    "SIZE_UNCLASSIFIABLE",
+    "UNKNOWN_EVIDENCE",
+    "MODEL_STOP_UNCERTAIN",
+    "CROSS_PACKAGE_ACTIVATION",
+    "MULTIPLE_OBJECTIVES",
+    "NON_ADJACENT_LAYERS",
+    "OVERSIZED",
+    "SINGLE_WORK_ORDER_ALLOWED",
+    "PRO_MODEL_REQUIRED",
 )
 CALLER_OWNED_SOURCE_RULES = MappingProxyType(
     {
@@ -557,6 +569,20 @@ def _import_roots(tree: ast.AST) -> set[str]:
     return roots
 
 
+def _marked_lines(text: str, *, start: str, end: str) -> tuple[str, ...]:
+    assert text.count(start) == 1
+    assert text.count(end) == 1
+    body = text.split(start, 1)[1].split(end, 1)[0]
+    return tuple(line.strip() for line in body.splitlines() if line.strip())
+
+
+def _python_code_blocks(text: str) -> tuple[str, ...]:
+    return tuple(
+        segment.split("```", 1)[0].strip()
+        for segment in text.split("```python")[1:]
+    )
+
+
 def _caller_owned_source_rules(contract: str) -> dict[str, str]:
     rules: dict[str, str] = {}
     for line in contract.splitlines():
@@ -704,15 +730,14 @@ def test_unknown_or_contradictory_result_vectors_always_fail_closed() -> None:
     assert "reason codes are unknown, inconsistent, duplicated, or malformed" in contract
 
 
-def test_contract_keeps_integration_and_authority_out_of_scope() -> None:
+def test_historical_contract_keeps_staging_and_authority_boundaries() -> None:
     contract = CONTRACT_PATH.read_text(encoding="utf-8")
 
     required_boundaries = (
         "not integrate or activate the evaluator in this work order.",
-        "No Skill invokes the production evaluator.",
-        "No TaskSizeGate workflow enforcement is active.",
         "must not construct a\nnew development candidate.",
         "without separate approval.",
+        "No stage may silently combine the next stage",
     )
     for boundary in required_boundaries:
         assert boundary in contract
@@ -720,7 +745,81 @@ def test_contract_keeps_integration_and_authority_out_of_scope() -> None:
     assert "JLGO planning-checkpoint Skill integration and hardening" in contract
 
 
-def test_vectors_are_static_and_do_not_claim_runtime_jlgo_integration() -> None:
+def test_jlgo_constructs_all_fields_and_calls_the_production_evaluator_once() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+    python_blocks = _python_code_blocks(skill)
+
+    assert _marked_lines(
+        skill,
+        start="TASK_SIZE_GATE_EVIDENCE_FIELDS_BEGIN",
+        end="TASK_SIZE_GATE_EVIDENCE_FIELDS_END",
+    ) == EVIDENCE_FIELDS
+    assert len(python_blocks) == 2
+    import_tree = ast.parse(python_blocks[0])
+    import_node = import_tree.body[0]
+    assert isinstance(import_node, ast.ImportFrom)
+    assert import_node.module == "app.services.task_size_gate"
+    assert tuple(alias.name for alias in import_node.names) == (
+        "CROSS_PACKAGE_ACTIVATION",
+        "INPUT_INVALID",
+        "MODEL_STOP_UNCERTAIN",
+        "MULTIPLE_OBJECTIVES",
+        "NON_ADJACENT_LAYERS",
+        "OVERSIZED",
+        "PRO_MODEL_REQUIRED",
+        "SINGLE_WORK_ORDER_ALLOWED",
+        "SIZE_UNCLASSIFIABLE",
+        "TaskSizeGateEvidence",
+        "TaskSizeGateResult",
+        "UNKNOWN_EVIDENCE",
+        "evaluate_task_size_gate",
+    )
+    assert ast.unparse(ast.parse(python_blocks[1])) == (
+        "result = evaluate_task_size_gate(evidence=evidence)"
+    )
+    assert skill.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert "fresh、frozen、strict `TaskSizeGateEvidence`" in skill
+    assert "不得 monkeypatch、retry、创建 fallback classifier" in skill
+
+
+def test_jlgo_requires_exact_result_reason_codes_and_fail_closed_mapping() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+    normalized = " ".join(skill.split())
+
+    assert "type(result) is TaskSizeGateResult" in skill
+    assert all(name in skill for name in REASON_CODE_CONSTANT_NAMES)
+    for requirement in (
+        "strict `tuple[str, ...]`",
+        "非空、无重复、确定顺序",
+        "blocked result 必须恰好一个 reason",
+        "且只能来自 `INPUT_INVALID`、`SIZE_UNCLASSIFIABLE`、`UNKNOWN_EVIDENCE` 或 `MODEL_STOP_UNCERTAIN`",
+        "allow result 必须是 `SINGLE_WORK_ORDER_ALLOWED`",
+        "split result 必须至少包含一个 `CROSS_PACKAGE_ACTIVATION`",
+        "workflow-level `STOP_UNCERTAIN`",
+        "下一 Skill 为 `无`",
+        "失败调用不得 fallback、retry 或推荐另一个 Skill",
+    ):
+        assert requirement in normalized
+
+
+def test_jlgo_locks_result_dispositions_and_explicit_user_authority() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+    normalized = " ".join(skill.split())
+
+    for combination in (
+        "`L/XL` + `SPLIT_REQUIRED` + `NORMAL_ALLOWED/PRO_REQUIRED`",
+        "`XS/S` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `ELIGIBLE`",
+        "`M` + `ALLOW_SINGLE_WORK_ORDER` + `NORMAL_ALLOWED` + `NOT_ELIGIBLE`",
+        "`XS/S` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED`",
+        "`M` + `ALLOW_SINGLE_WORK_ORDER` + `PRO_REQUIRED` + `NOT_ELIGIBLE`",
+    ):
+        assert combination in normalized
+    assert "TaskSizeGate result 只是规划分类，不是用户批准" in normalized
+    assert "创建或切换分支、修改文件、调用 Skill、merge、tag、部署、activation" in normalized
+    assert "显式批准" in normalized
+
+
+def test_static_tests_do_not_call_evaluator_or_claim_end_to_end_verification() -> None:
     source = Path(__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
     skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
@@ -739,4 +838,4 @@ def test_vectors_are_static_and_do_not_claim_runtime_jlgo_integration() -> None:
     assert "must not claim that TaskSizeGate is integrated" in CONTRACT_PATH.read_text(
         encoding="utf-8"
     )
-    assert "evaluate_task_size_gate" not in skill
+    assert "不代表\npre-write/review/CI integration、workflow activation 或 end-to-end verification" in skill
