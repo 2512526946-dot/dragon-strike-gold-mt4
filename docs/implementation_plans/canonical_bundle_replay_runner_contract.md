@@ -55,8 +55,9 @@ source selector, daemon, scheduler, background worker, or automatic workflow.
 
 ## 3. Future public boundary
 
-The future implementation must expose one pure orchestration entry point with
-no ambient source selection:
+The future implementation must expose one bounded deterministic orchestration
+entry point with no ambient source selection. It is not a pure function because
+the approved G153/G148 chain reads checked-in fixture files:
 
 ```python
 def run_canonical_bundle_replay_case(
@@ -75,23 +76,22 @@ class CanonicalBundleReplayCaseV1:
     replay_contract_version: str
     case_id: str
     fixture_id: str
-    expected_outcome: str
-    expected_status_code: str
-    expected_block_reasons: tuple[str, ...]
-    expected_warning_codes: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class CanonicalBundleReplayResultV1:
     replay_contract_version: str
+    registry_version: str
+    pipeline_contract_version: str
+    policy_profile_version: str
     case_id: str
+    fixture_id: str
     passed: bool
     status_code: str
     canonical_summary: dict[str, Any]
     replay_reason_codes: tuple[str, ...]
     canonical_block_reasons: tuple[str, ...]
     canonical_warning_codes: tuple[str, ...]
-    deterministic_observations: tuple[str, ...]
     read_only: bool
     demo_only: bool
     is_tradable: bool
@@ -106,16 +106,39 @@ requests, settings, environment values, payloads, or writer output.
 
 ### 3.1 Strict input types
 
-An accepted case must satisfy all of the following:
+The contract constants and grammars are exact:
+
+```text
+REPLAY_CONTRACT_VERSION = canonical_bundle_replay_v1
+REGISTRY_VERSION = canonical_bundle_replay_registry_v1
+PIPELINE_CONTRACT_VERSION = canonical_diagnostics_pipeline_g153_v1
+POLICY_PROFILE_VERSION = canonical_diagnostics_default_policy_v1
+IDENTIFIER_PATTERN = ^[a-z0-9](?:[a-z0-9_-]{0,62})$
+PUBLIC_CODE_PATTERN = ^[A-Z][A-Z0-9_]{0,127}$
+```
+
+An accepted public case must satisfy all of the following:
 
 - `type(replay_case) is CanonicalBundleReplayCaseV1`;
-- `replay_contract_version == "canonical_bundle_replay_v1"`;
+- every field name and field order exactly match the three-field dataclass;
+- `type(replay_contract_version) is str` and it equals
+  `REPLAY_CONTRACT_VERSION`;
+- `type(case_id) is str`, `type(fixture_id) is str`, and each full-matches
+  `IDENTIFIER_PATTERN`;
 - every string is an exact built-in, non-empty `str`;
-- every code collection is an exact built-in `tuple[str, ...]` with no empty,
-  duplicate, subclass, or unknown values;
-- `case_id` and `fixture_id` match a conservative lowercase identifier grammar;
 - `fixture_id` exists in the server-owned registry;
-- expected outcome, status, reasons, and warnings form one allowed vector.
+- `case_id` is the registry-owned case identifier for that `fixture_id`.
+
+The public case contains no expected outcome, status, reason, warning, path,
+clock, policy, dependency, or identity-version field. Missing, extra,
+subclassed, aliased, or contradictory fields are invalid. The implementation
+must not accept a dict or object that merely resembles the dataclass.
+
+Every registry and result status or reason code must be an exact built-in,
+non-empty `str` that full-matches `PUBLIC_CODE_PATTERN`. Every code collection
+must be an exact built-in `tuple[str, ...]`, contain only allowed public codes,
+contain no duplicates or subclasses, and preserve the registry/G151 contract
+order. Codes must never be sorted, normalized, or inferred from caller text.
 
 Invalid input must not be coerced, normalized, padded, or repaired.
 
@@ -125,20 +148,33 @@ Replay source authority belongs to a fixed registry in future production code.
 Each registry entry owns, as one immutable record:
 
 ```text
+registry_version
 fixture_id
+case_id
 allowed_root
 bundle_dir
 reference_time_utc
 previous_identity
+pipeline_contract_version
+policy_profile_version
 expected_outcome
 expected_status_code
 expected_block_reasons
 expected_warning_codes
 ```
 
-The registry is code-owned and versioned. A public replay case carries only a
-`fixture_id`; it cannot provide or override the paths, reference time, previous
-identity, policies, or expected oracle.
+The registry is code-owned and versioned. Apart from its fixed contract version
+and registry-owned identifiers, a public replay case carries no authority. It
+cannot provide or override paths, reference time, previous identity, pipeline
+version, policy profile, or expected oracle. The runner must resolve the one
+entry whose `fixture_id` and `case_id` both exactly match the public case; any
+mismatch is pre-call input invalid and calls G153 zero times.
+
+Every entry fixes the exact version constants from section 3.1. Registry
+outcome, status, block-reason, and warning fields must form one allowed oracle
+vector before G153 is called. Invalid registry content maps to
+`CANONICAL_BUNDLE_REPLAY_INPUT_INVALID` with
+`REPLAY_CASE_REGISTRY_INVALID`; it must not be repaired from public input.
 
 The initial positive case may reference the existing checked-in bundle:
 
@@ -163,14 +199,23 @@ Every registry entry owns one timezone-aware UTC `reference_time_utc`. The
 runner must not call the wall clock or derive time from the environment,
 filesystem metadata, current working directory, request, manifest, or payload.
 
-`case_id`, `fixture_id`, replay contract version, registry version, bundle
-identity, and policy versions form the replay evidence identity. Internal file
-digests may be used by existing canonical validation, but digest values and
-filesystem paths must not appear in the public replay result.
+`case_id`, `fixture_id`, replay contract version, registry version, pipeline
+contract version, and policy profile version form the complete v1 public replay
+evidence identity. Every value is copied from exact validated constants or the
+matched registry entry into the result; none is copied from arbitrary caller
+text.
 
-Running an unchanged registered case against unchanged code and policy versions
-must produce an equal result. Ordering of stages, reasons, warnings, and
-observations is deterministic and contract-owned.
+Canonical bundle identity remains owned and validated internally by G148/G149.
+G153/G151 does not expose a safe bundle-identity field, so v1 must not invent,
+re-read, or publish one. End-to-end fact, plan, and execution identity remains
+future W17 work. Internal file digests may be used by existing canonical
+validation, but digest values and filesystem paths must not appear in the
+public replay result.
+
+Running an unchanged registered case against unchanged registry, pipeline, and
+policy-profile versions must produce an equal result. Ordering of stages,
+replay reasons, canonical block reasons, and canonical warnings is deterministic
+and contract-owned. V1 has no free-text observation field.
 
 ## 6. G153 is the only v1 orchestration dependency
 
@@ -229,7 +274,7 @@ equal to the validated G151 result. Neither object may be mutated during replay.
 
 ## 8. Replay outcome mapping
 
-Allowed `expected_outcome` values are:
+The registry-owned `expected_outcome` allows exactly:
 
 ```text
 READY
@@ -272,12 +317,23 @@ A matched replay has `replay_reason_codes == ()`. Its ordered
 `canonical_block_reasons` and `canonical_warning_codes` must exactly equal the
 validated G151 summary and the registered oracle.
 
-A replay-boundary failure has an empty `canonical_summary`, empty
+For a matched replay, every identity field must exactly equal the validated
+case and registry constants. `canonical_summary` is the detached safe G151
+snapshot.
+
+Every non-matched replay status has an empty `canonical_summary`, empty
 `canonical_block_reasons`, empty `canonical_warning_codes`, and exactly one
-fixed `replay_reason_codes` item matching its replay status. The two reason
-namespaces must never be combined. Unknown or sensitive text must produce
-`CANONICAL_BUNDLE_REPLAY_RESULT_INVALID` with the fixed replay reason
-`REPLAY_CASE_RESULT_INVALID` and must not be copied into any result field.
+fixed `replay_reason_codes` item matching its status. If no complete registry
+entry was matched before failure, `registry_version`,
+`pipeline_contract_version`, `policy_profile_version`, `case_id`, and
+`fixture_id` all use the fixed safe sentinel `"unavailable"`; no caller value is
+echoed. If a complete entry was matched and G153 was called, those identity
+fields retain the validated registry values.
+
+The replay and canonical reason namespaces must never be combined. Unknown or
+sensitive text must produce `CANONICAL_BUNDLE_REPLAY_RESULT_INVALID` with the
+fixed replay reason `REPLAY_CASE_RESULT_INVALID` and must not be copied into any
+result field.
 
 ## 9. Golden contract vectors
 
@@ -291,12 +347,20 @@ A later tests-only task must define immutable vectors for at least:
 6. INPUT_INVALID;
 7. SAFE_FAILURE;
 8. unknown fixture id;
-9. missing, extra, duplicate, reordered, or subclassed case evidence;
-10. missing, extra, polluted, contradictory, or subclassed G151 output;
-11. expected/actual status, reason, or warning mismatch;
-12. exception sanitization;
-13. repeated execution equality;
-14. input, registry, fixture, and G153 output immutability.
+9. one-character, 63-character, empty, overlength, uppercase, whitespace, and
+   punctuation identifier boundaries;
+10. missing, extra, reordered, or subclassed public case fields, including any
+    attempt to supply an `expected_*` oracle field;
+11. missing, extra, duplicate, reordered, subclassed, unknown, or overlength
+    registry and result codes;
+12. registry version, pipeline version, policy profile, case, or fixture
+    identity mismatch;
+13. missing, extra, polluted, contradictory, or subclassed G151 output;
+14. expected/actual status, block-reason, or warning mismatch;
+15. exception sanitization and fixed unavailable identity;
+16. repeated execution equality;
+17. input, registry, fixture, and G153 output immutability;
+18. absence of a free-text observations field.
 
 Contract vectors must distinguish a replay match from canonical data readiness.
 They must not use a mock main chain as proof that G153 integration works. At
@@ -384,8 +448,8 @@ separate reviewed evidence task after implementation and integration.
 The future runner must use this order:
 
 1. validate the exact replay case type and fields;
-2. resolve one immutable registry entry by `fixture_id`;
-3. validate registry consistency and expected oracle;
+2. resolve one immutable registry entry by exact `case_id` and `fixture_id`;
+3. validate registry versions, policy profile, consistency, and expected oracle;
 4. snapshot immutable input and fixture evidence;
 5. call G153 exactly once with registry-owned values;
 6. validate the genuine G151 envelope without rewriting it;
@@ -422,6 +486,11 @@ G168 is complete only when this document:
 - fixes typed case and result fields;
 - assigns all source, fixture, clock, identity, and oracle authority to the
   server-owned registry;
+- defines exact identifier and public-code grammars, lengths, strict types,
+  uniqueness, and ordering;
+- removes all caller-provided oracle fields and free-text result fields;
+- makes replay, registry, fixture, pipeline, and policy-profile identity
+  explicit without inventing W17 identity;
 - makes G153 the only orchestration dependency and fixes zero/one call rules;
 - defines strict G151 validation without a parallel reader, Gate, or envelope;
 - defines replay outcome mapping and safe public reasons;
