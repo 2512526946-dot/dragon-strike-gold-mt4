@@ -344,4 +344,3 @@ Independent review must confirm that this document alone:
   MT4, reader, EA, execution, or trading capability; and
 - caps further governance work at the minimal review checkpoint before return
   to the Demo MVP product critical path.
-
