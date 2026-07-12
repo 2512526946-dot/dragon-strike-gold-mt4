@@ -64,7 +64,10 @@ The review caller owns and freezes these artifacts before any evaluator call:
 - immutable base branch `main` and base commit;
 - exact work branch and reviewed head;
 - local and remote work-branch heads;
-- ordered ordinary commit list between base and head;
+- ordered ordinary commit list between base and head, including each commit
+  hash and exact subject;
+- an immutable ordered commit-authority list that pairs every commit with its
+  role and authority source without adding a TaskSizeGate evidence field;
 - frozen objective, WBS package, maturity transition, scope, checks, commit,
   push destination, ModelGate, risks, policy impacts, and stop conditions;
 - exact frozen planning `TaskSizeGateResult`;
@@ -77,6 +80,24 @@ The reviewer must obtain Git and diff facts itself. A developer report,
 Supervisor self-assessment, commit message, test count, file name, or claimed
 capability state is not proof. Missing, mutable, inaccessible, or contradictory
 artifacts fail closed before evaluation.
+
+The commit-authority list exists only in the immutable review packet for the
+current task. It is not a repository file, state file, progress record,
+database, or thirtieth `TaskSizeGateEvidence` field. Its entries are ordered
+exactly like the Git commit list and use only these authority sources:
+
+- the initial commit subject is the original frozen work-order
+  `commit_message`;
+- a manually approved revision subject is the exact message in that approved
+  revision order; and
+- a bounded Supervisor automatic revision subject is frozen before the first
+  write of that revision inside the same authorized task and remaining
+  revision allowance. The original bounded Supervisor authorization covers
+  that in-scope revision, so no additional per-round user approval is implied.
+
+The reviewer must prove the source for every entry from the current task's
+immutable work-order or revision evidence. It must not infer authority from a
+commit subject, developer report, branch history, or desired conclusion.
 
 ## 4. Git and branch preconditions
 
@@ -145,7 +166,7 @@ has one review-owned source and revalidation rule.
 | `base_branch` | Strict `main`; the reviewed work branch is never substituted here. |
 | `base_main_commit` | Fresh equality of local main, remote main, and the frozen base commit. |
 | `work_branch` | Exact frozen branch whose local and remote tips equal the reviewed head. |
-| `commit_message` | Exact frozen ordinary commit message; extra revision commits must match separately approved revision messages. |
+| `commit_message` | Exact original frozen work-order message used at planning; it remains unchanged for the entire review and is never replaced by a manual or Supervisor revision message. Actual commit subjects and their authority are validated separately through the ordered commit-authority list. |
 | `push_destination` | Exact `origin/<work_branch>` destination and never `main`. |
 | `stop_conditions` | Exact frozen stop conditions; no deletion, weakening, or post hoc rewrite. |
 | `estimated_engineering_hours_lower` | Frozen approved lower estimate; review must not reduce it to obtain an allow result. |
@@ -172,12 +193,20 @@ it must not silently rewrite the approved order. A smaller or larger actual
 classification, changed reason sequence, or changed eligibility is result
 drift rather than permission to replace the frozen planning result.
 
+The initial Git commit subject must equal the evidence `commit_message`.
+Every later subject must equal its corresponding immutable manual-revision or
+Supervisor-revision message. Missing, extra, reordered, duplicated, or
+unprovable commits, subjects, roles, or authority entries are frozen-order
+failure. They must not change `commit_message`, add an evidence field, or be
+converted into evaluator input.
+
 ## 7. Zero-call and one-call ordering
 
 The call accounting is deterministic:
 
-- Git, frozen-order, authority, dependency, scope, test-evidence, interface, or
-  evidence-construction failure before invocation makes zero evaluator calls;
+- Git, frozen-order, commit-subject authority, dependency, scope,
+  test-evidence, interface, or evidence-construction failure before invocation
+  makes zero evaluator calls;
 - an unavailable evaluator or public interface detected before invocation
   makes zero evaluator calls;
 - only after every precondition and pre-evaluator drift check passes may the
@@ -230,6 +259,8 @@ authorization.
 Review drift includes, without limitation:
 
 - changed base, head, remote state, ancestry, commit graph, or worktree;
+- missing, extra, reordered, duplicated, or unprovable commit subjects or
+  commit-authority entries;
 - extra, aliased, noncanonical, renamed, generated, or prohibited files;
 - changed objective count, WBS ownership, maturity, hours, layer, subsystem,
   interface, dependency, affected surface, check, risk, policy, ModelGate,
@@ -328,6 +359,10 @@ Independent review must confirm that this document alone:
 - preserves the independent correctness and test-quality review;
 - freezes base, head, commits, work order, planning result, and pre-write
   result;
+- keeps evidence `commit_message` equal to the original frozen work-order
+  value while validating every actual commit subject and authority separately;
+- distinguishes initial, manually approved revision, and bounded Supervisor
+  automatic-revision authority without a thirtieth field or persistent state;
 - defines all 29 evidence fields and their review-owned sources;
 - uniquely reuses `TaskSizeGateEvidence`, `TaskSizeGateResult`, public reason
   constants, and `evaluate_task_size_gate`;
