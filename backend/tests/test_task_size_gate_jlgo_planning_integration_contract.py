@@ -55,6 +55,94 @@ EVIDENCE_FIELDS = (
     "unknowns",
     "cross_package_activation",
 )
+CALLER_OWNED_SOURCE_RULES = MappingProxyType(
+    {
+        "objective": "One testable outcome from the frozen candidate order.",
+        "objective_count": (
+            "Count independently deliverable objectives; never force it to one to "
+            "obtain an allow result."
+        ),
+        "wbs_package_ids": (
+            "Exact current WBS package identifiers supported by repository evidence."
+        ),
+        "current_maturity": (
+            "Current narrow capability maturity proven from policy, contract, tests, "
+            "implementation, integration, activation, and verification evidence."
+        ),
+        "target_maturity": (
+            "One adjacent forward maturity, or the same maturity for an explicit "
+            "hardening/maintenance revision."
+        ),
+        "maturity_reason": (
+            "Concrete transition or maturity-preserving reason; not a generic label."
+        ),
+        "base_branch": "The verified base branch; normal new work uses `main`.",
+        "base_main_commit": "Full immutable commit from verified local and remote main.",
+        "work_branch": "One unoccupied canonical `work/...` branch.",
+        "commit_message": "Exact ordinary commit message for this work order.",
+        "push_destination": (
+            "Exact `origin/<work_branch>` destination; never `main`."
+        ),
+        "stop_conditions": (
+            "Frozen conditions that end the order without scope expansion."
+        ),
+        "estimated_engineering_hours_lower": (
+            "Defensible lower equivalent-engineer-hour estimate."
+        ),
+        "estimated_engineering_hours_upper": (
+            "Defensible upper estimate including development, tests, review-fix "
+            "allowance, and required documentation."
+        ),
+        "allowed_files": (
+            "Exact canonical relative file paths; no wildcard or directory placeholder."
+        ),
+        "prohibited_files": (
+            "Exact canonical relative file paths that must not change."
+        ),
+        "prohibited_capabilities": (
+            "Explicit forbidden behavior, including merge, tag, deployment, and "
+            "activation when applicable."
+        ),
+        "capability_layers": "Ordered distinct layers actually touched by this order.",
+        "subsystem_boundaries": (
+            "Exact repository subsystems whose ownership boundary is affected."
+        ),
+        "affected_surfaces": (
+            "Public interfaces, schemas, protocols, settings, filesystem, external "
+            "systems, or workflow surfaces affected."
+        ),
+        "required_checks": (
+            "Exact targeted, regression, full-suite, build or explicit N/A, grep, "
+            "diff, and scope checks."
+        ),
+        "known_dependencies": "Dependencies whose repository evidence was inspected.",
+        "dependency_evidence_known": (
+            "Strict boolean; false when any dependency evidence is unavailable."
+        ),
+        "risk_and_policy_impacts": (
+            "Explicit safety, authority, data, workflow, and trading-policy impacts."
+        ),
+        "high_risk_reasons": (
+            "Exact reasons that require Pro; empty only when evidence proves no "
+            "high-risk category applies."
+        ),
+        "model_gate": (
+            "Caller classification using only `NORMAL_ALLOWED`, `PRO_REQUIRED`, or "
+            "`STOP_UNCERTAIN`."
+        ),
+        "model_gate_evidence": (
+            "Repository and policy evidence supporting the caller classification."
+        ),
+        "unknowns": (
+            "Every unresolved fact that could change size, scope, checks, "
+            "dependencies, risk, or authority."
+        ),
+        "cross_package_activation": (
+            "Strict boolean; true only for an order that crosses packages while "
+            "activating a capability."
+        ),
+    }
+)
 
 PREFLIGHT_VECTOR_KEYS = frozenset(
     {
@@ -469,6 +557,27 @@ def _import_roots(tree: ast.AST) -> set[str]:
     return roots
 
 
+def _caller_owned_source_rules(contract: str) -> dict[str, str]:
+    rules: dict[str, str] = {}
+    for line in contract.splitlines():
+        cells = line.split("|")
+        if len(cells) != 4:
+            continue
+        field = cells[1].strip()
+        if not (field.startswith("`") and field.endswith("`")):
+            continue
+        field = field.removeprefix("`").removesuffix("`")
+        if field in EVIDENCE_FIELDS:
+            rules[field] = cells[2].strip()
+    return rules
+
+
+def _assert_exact_caller_owned_source_rules(contract: str) -> None:
+    for field in EVIDENCE_FIELDS:
+        assert contract.count(f"| `{field}` |") == 1
+    assert _caller_owned_source_rules(contract) == dict(CALLER_OWNED_SOURCE_RULES)
+
+
 def test_contract_has_exactly_twenty_nine_caller_owned_evidence_fields() -> None:
     contract = CONTRACT_PATH.read_text(encoding="utf-8")
     evaluator = EVALUATOR_PATH.read_text(encoding="utf-8")
@@ -476,10 +585,36 @@ def test_contract_has_exactly_twenty_nine_caller_owned_evidence_fields() -> None
     assert len(EVIDENCE_FIELDS) == 29
     assert len(set(EVIDENCE_FIELDS)) == 29
     assert _dataclass_fields(evaluator, "TaskSizeGateEvidence") == EVIDENCE_FIELDS
-    for field in EVIDENCE_FIELDS:
-        assert contract.count(f"| `{field}` |") == 1
+    assert type(CALLER_OWNED_SOURCE_RULES) is MappingProxyType
+    assert tuple(CALLER_OWNED_SOURCE_RULES) == EVIDENCE_FIELDS
+    assert len(CALLER_OWNED_SOURCE_RULES) == 29
+    with pytest.raises(TypeError):
+        CALLER_OWNED_SOURCE_RULES["objective"] = "rewritten"  # type: ignore[index]
+    _assert_exact_caller_owned_source_rules(contract)
     assert "All fields are caller-owned." in contract
     assert "must build a fresh frozen\n`TaskSizeGateEvidence`" in contract
+
+
+def test_caller_owned_source_rules_reject_missing_empty_and_mismatched_rows() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    objective_row = (
+        "| `objective` | "
+        f"{CALLER_OWNED_SOURCE_RULES['objective']} |"
+    )
+
+    assert objective_row in contract
+    invalid_contracts = (
+        contract.replace(objective_row, "", 1),
+        contract.replace(objective_row, "| `objective` |  |", 1),
+        contract.replace(
+            objective_row,
+            "| `objective` | Exact ordinary commit message for this work order. |",
+            1,
+        ),
+    )
+    for invalid_contract in invalid_contracts:
+        with pytest.raises(AssertionError):
+            _assert_exact_caller_owned_source_rules(invalid_contract)
 
 
 def test_preflight_vectors_are_immutable_and_lock_main_only_planning() -> None:
