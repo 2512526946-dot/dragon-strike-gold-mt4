@@ -66,10 +66,18 @@ The only permitted evaluation call is:
 result = evaluate_task_size_gate(evidence=evidence)
 ```
 
-For one pre-write attempt, the caller must construct one fresh, frozen, exact
-`TaskSizeGateEvidence` and call `evaluate_task_size_gate` exactly once. It must
-not monkeypatch, retry, fall back to a local classifier, overwrite a result,
-remove unknowns, reduce scope, or create an adapter around the evaluator.
+The caller must first finish the mode-specific Git checks, validate every
+frozen planning artifact, derive all caller-owned fields, and compare all
+pre-evaluator drift evidence. If any of those steps fails, it must return
+workflow-level `STOP_UNCERTAIN` with zero evaluator calls.
+
+Only after every pre-evaluator check passes may the caller construct one fresh,
+frozen, exact `TaskSizeGateEvidence` and call
+`evaluate_task_size_gate(evidence=evidence)` exactly once. An evaluator
+exception, invalid result, or planning/result mismatch stops after that one
+call. It must not monkeypatch, retry, call again, fall back to a local
+classifier, overwrite a result, remove unknowns, reduce scope, or create an
+adapter around the evaluator.
 
 The evaluator remains pure and must not read Git, files, environment variables,
 network state, WBS documents, or persistent workflow state. Those facts remain
@@ -125,14 +133,24 @@ All conditions are required:
 - worktree and index are clean and conflict-free;
 - local and remote work-branch heads equal the approved revision head;
 - `main` and `origin/main` still equal the frozen base commit;
+- `TaskSizeGateEvidence.base_branch` remains strict `main`; the current work
+  branch is represented only by the Git precondition and `work_branch`;
 - base ancestry and the exact linear commit list are provable;
 - cumulative diff remains inside the frozen allowed files;
+- for an unmerged revision, `current_maturity` remains the maturity proven at
+  frozen base main, while `target_maturity` and `maturity_reason` remain the
+  original approved transition;
+- the initial work-branch implementation is not treated as proof that target
+  maturity has already been reached; and
 - the reviewer-requested revision is one objective and does not add a new
   maturity transition, subsystem, capability layer, dependency, or policy
   effect.
 
 An unapproved branch, local-only commit, remote-only commit, dirty revision, or
-expanded review request is `STOP_UNCERTAIN`.
+expanded review request is `STOP_UNCERTAIN`. A standalone
+maturity-preserving hardening or maintenance order must receive its own
+planning result and explicit user approval; it is not inferred from an
+unmerged revision branch.
 
 ### 6.3 Supervisor recovery before another write
 
@@ -142,6 +160,10 @@ persistent runtime log may be introduced. Before any recovery write:
 - exactly one relevant active branch is unambiguous;
 - its base, head, remote head, ancestry, commits, and diff are provable;
 - the worktree is clean;
+- `TaskSizeGateEvidence.base_branch` remains strict `main`, while the recovery
+  branch is represented only by the Git precondition and `work_branch`;
+- an unmerged recovery revision preserves the frozen base-main maturity and
+  original approved target transition;
 - the branch remains inside the original frozen work order;
 - the authorized revision-round limit has not been exhausted; and
 - the next recovery action is already authorized by the bounded Supervisor
@@ -160,10 +182,10 @@ fact can change between planning and pre-write.
 | `objective` | Exact single outcome from the approved frozen order; unchanged. |
 | `objective_count` | Recount independently deliverable outcomes; any increase is drift. |
 | `wbs_package_ids` | Current WBS evidence for the approved scope; no added package. |
-| `current_maturity` | Current narrow capability evidence from repository state. |
-| `target_maturity` | Approved adjacent target, or approved maturity-preserving revision target. |
-| `maturity_reason` | Exact transition or hardening/maintenance reason. |
-| `base_branch` | Fresh Git evidence; new work requires `main`. |
+| `current_maturity` | Narrow capability maturity proven at frozen base main; an unmerged work-branch implementation does not advance it. |
+| `target_maturity` | Original approved adjacent target; only a separately planned order may use a maturity-preserving revision target. |
+| `maturity_reason` | Exact original approved transition reason, or the reason from a separately planned hardening/maintenance order. |
+| `base_branch` | Strict `main` in new, revision, and recovery modes; current branch state is not stored in this field. |
 | `base_main_commit` | Fresh equality of local and remote main to the frozen commit. |
 | `work_branch` | Exact approved branch and mode-specific existence rule. |
 | `commit_message` | Exact approved ordinary commit message. |
@@ -189,6 +211,8 @@ fact can change between planning and pre-write.
 
 The fresh evidence object, the frozen planning artifacts, and the Git
 checkpoint must remain unchanged before and after the single evaluator call.
+Current work-branch identity is checked separately and must never replace
+`base_branch`.
 
 ## 8. Drift rules
 
@@ -209,7 +233,9 @@ approved planning evidence, including:
 The caller must not update the frozen order in place. Drift returns
 workflow-level `STOP_UNCERTAIN`, names only a sanitized drift category, sets
 the next Skill to `none`, and stops before branch creation or file writes. A new
-planning decision and explicit user approval are required.
+planning decision and explicit user approval are required. Drift detected
+before a valid evidence object and evaluator invocation causes zero evaluator
+calls.
 
 ## 9. Result validation and planning equality
 
@@ -233,7 +259,8 @@ planning result and remains compatible with the explicitly approved caller:
 Unknown enums, non-exact types, missing, extra, duplicated, or out-of-order
 reason codes, impossible combinations, or any planning/pre-write result
 difference are `STOP_UNCERTAIN`. There is no retry, alternate evaluator, or
-manual result repair.
+manual result repair. These post-call failures consume the one permitted
+evaluator call and must not trigger another call.
 
 ## 10. Fixed fail-closed behavior
 
@@ -256,6 +283,13 @@ PRE_WRITE_UNEXPECTED_FAILURE
 These are workflow-level sanitized categories, not new TaskSizeGate production
 reason constants. They must not be passed into or returned from
 `TaskSizeGateResult`.
+
+`PRE_WRITE_GIT_INVALID`, `PRE_WRITE_BRANCH_STATE_INVALID`,
+`PRE_WRITE_FROZEN_ORDER_INVALID`, `PRE_WRITE_DEPENDENCY_INVALID`, and any other
+failure discovered before exact evidence construction stop with zero evaluator
+calls. Once all pre-evaluator checks pass, exactly one call is permitted;
+`PRE_WRITE_EVALUATOR_UNAVAILABLE`, `PRE_WRITE_EVALUATOR_RESULT_INVALID`, or
+`PRE_WRITE_UNEXPECTED_FAILURE` must not cause retry or fallback.
 
 Failure output must not contain exception text, traceback, absolute paths,
 environment values, credentials, raw user content, or other sensitive data.
@@ -313,7 +347,13 @@ Review must confirm:
 - one shared contract governs both pre-write owners;
 - new work, approved revision, and Supervisor recovery are deterministic;
 - all 29 evidence fields have exact caller-owned revalidation rules;
-- the production evaluator is the only classifier and is called once;
+- `base_branch` remains strict `main` in every mode and work-branch identity is
+  checked separately;
+- unmerged revision and recovery modes preserve frozen base-main maturity and
+  the original approved transition;
+- pre-evaluator failure makes zero calls, while a valid attempt calls the
+  production evaluator exactly once;
+- the production evaluator is the only classifier and is never retried;
 - frozen inputs and Git remain unchanged across evaluation;
 - planning/pre-write drift always fails closed without updating the order;
 - result equality, caller eligibility, and Pro authority are strict;
