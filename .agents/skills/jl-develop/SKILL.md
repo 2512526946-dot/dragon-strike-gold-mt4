@@ -8,7 +8,7 @@ description: Execute exactly one explicitly approved 巨龙出击 development or
 1. 先读取仓库根目录 `AGENTS.md`。
 2. 确认用户已明确批准唯一工单。
 3. 确认工单至少包含任务名称、main checkpoint、目标分支、允许修改文件、禁止范围、验证命令和提交要求。
-4. 工单不完整时停止并指向 `$jlgo`。
+4. 工单不完整时停止；在 TaskSizeGate pre-write 上下文中，下一 Skill 固定为 `无`，不得建议或自动路由到 `$jlgo`。
 5. 判断工单要求从 `main` 新建分支，还是继续现有修订分支。
 6. 修订工单明确继续原分支时，不得因为分支存在而停止。
 7. 在创建新工作分支或首次文件写入前，严格执行下方 TaskSizeGate pre-write checkpoint。
@@ -165,7 +165,8 @@ MT4、reader、EA、交易或执行能力。
 映射规则：
 
 - 开发成功、commit 并 push 工作分支后，`下一 Skill` 写 `$jl-review`。
-- checkpoint 异常、工作区不干净、测试失败、commit 失败或 push 失败时，`下一 Skill` 写 `无`，或在需要重新规划时写 `$jlgo`。
+- TaskSizeGate pre-write 的 `STOP_UNCERTAIN`、任一前置失败、post-call 失败或 checkpoint 异常时，`下一 Skill` 必须写 `无`，不得建议或自动路由到 `$jlgo`。
+- 工作区不干净、测试失败、commit 失败或 push 失败时，`下一 Skill` 写 `无`。
 - 完整指令必须要求只读验收，不得要求 merge、tag 或进入下一业务工单。
 - 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
 - 不得通过操作卡自动调用 `$jl-review`；必须等待用户显式批准。

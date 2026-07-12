@@ -334,6 +334,15 @@ def test_jl_develop_requires_exact_planning_result_and_preserves_authority() -> 
     assert "本节不实现 `jl-supervisor` recovery、`jl-review` checkpoint、test tooling、CI" in skill
 
 
+def test_jl_develop_prewrite_stop_routing_is_always_none() -> None:
+    skill = _normalized(_read(JL_DEVELOP_SKILL_PATH))
+
+    assert "工单不完整时停止；在 TaskSizeGate pre-write 上下文中，下一 Skill 固定为 `无`" in skill
+    assert "TaskSizeGate pre-write 的 `STOP_UNCERTAIN`、任一前置失败、post-call 失败或 checkpoint 异常时，`下一 Skill` 必须写 `无`" in skill
+    assert "不得建议或自动路由到 `$jlgo`" in skill
+    assert "或在需要重新规划时写 `$jlgo`" not in skill
+
+
 def test_vectors_are_immutable_and_do_not_call_the_runtime_evaluator() -> None:
     with pytest.raises(TypeError):
         PRE_WRITE_MODE_VECTORS["new_work"]["base_branch"] = "work/not-main"
