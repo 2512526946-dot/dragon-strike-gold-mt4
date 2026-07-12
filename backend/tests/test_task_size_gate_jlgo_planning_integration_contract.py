@@ -1,0 +1,607 @@
+"""Immutable contract vectors for the future JLGO TaskSizeGate checkpoint.
+
+These vectors lock the approved planning boundary.  They deliberately do not
+import, call, or claim to prove a runtime JLGO integration.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+from types import MappingProxyType
+
+import pytest
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+CONTRACT_PATH = (
+    REPOSITORY_ROOT
+    / "docs"
+    / "implementation_plans"
+    / "task_size_gate_jlgo_planning_integration_contract.md"
+)
+EVALUATOR_PATH = REPOSITORY_ROOT / "backend" / "app" / "services" / "task_size_gate.py"
+JLGO_SKILL_PATH = REPOSITORY_ROOT / ".agents" / "skills" / "jlgo" / "SKILL.md"
+
+
+EVIDENCE_FIELDS = (
+    "objective",
+    "objective_count",
+    "wbs_package_ids",
+    "current_maturity",
+    "target_maturity",
+    "maturity_reason",
+    "base_branch",
+    "base_main_commit",
+    "work_branch",
+    "commit_message",
+    "push_destination",
+    "stop_conditions",
+    "estimated_engineering_hours_lower",
+    "estimated_engineering_hours_upper",
+    "allowed_files",
+    "prohibited_files",
+    "prohibited_capabilities",
+    "capability_layers",
+    "subsystem_boundaries",
+    "affected_surfaces",
+    "required_checks",
+    "known_dependencies",
+    "dependency_evidence_known",
+    "risk_and_policy_impacts",
+    "high_risk_reasons",
+    "model_gate",
+    "model_gate_evidence",
+    "unknowns",
+    "cross_package_activation",
+)
+
+PREFLIGHT_VECTOR_KEYS = frozenset(
+    {
+        "case_id",
+        "current_branch",
+        "main_and_origin_synchronized",
+        "worktree_clean",
+        "active_unmerged_work_branch",
+        "ancestry_known",
+        "target_branch_available",
+        "expected_disposition",
+        "expected_next_skill",
+    }
+)
+PREFLIGHT_VECTORS = (
+    MappingProxyType(
+        {
+            "case_id": "clean_synchronized_main",
+            "current_branch": "main",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": True,
+            "target_branch_available": True,
+            "expected_disposition": "CONSTRUCT_EVIDENCE",
+            "expected_next_skill": "none_until_evaluator_mapping",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "active_work_branch_routes_existing_work_only",
+            "current_branch": "work/example",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": True,
+            "ancestry_known": True,
+            "target_branch_available": True,
+            "expected_disposition": "ROUTE_REVIEW_REVISION_OR_MERGE",
+            "expected_next_skill": "existing_work_path_only",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "dirty_worktree_stops",
+            "current_branch": "main",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": False,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": True,
+            "target_branch_available": True,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "main_mismatch_stops",
+            "current_branch": "main",
+            "main_and_origin_synchronized": False,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": True,
+            "target_branch_available": True,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "non_main_without_active_work_stops",
+            "current_branch": "archive/old-work",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": True,
+            "target_branch_available": True,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_ancestry_stops",
+            "current_branch": "main",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": False,
+            "target_branch_available": True,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "occupied_target_branch_stops",
+            "current_branch": "main",
+            "main_and_origin_synchronized": True,
+            "worktree_clean": True,
+            "active_unmerged_work_branch": False,
+            "ancestry_known": True,
+            "target_branch_available": False,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+)
+
+RESULT_VECTOR_KEYS = frozenset(
+    {
+        "case_id",
+        "task_size",
+        "task_decision",
+        "model_gate",
+        "supervisor_eligibility",
+        "reason_codes_state",
+        "expected_disposition",
+        "expected_next_skill",
+    }
+)
+RESULT_VECTORS = (
+    MappingProxyType(
+        {
+            "case_id": "unclassifiable_size_stops",
+            "task_size": None,
+            "task_decision": "STOP_UNCERTAIN",
+            "model_gate": "STOP_UNCERTAIN",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_blocking",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "known_size_blocked_stops",
+            "task_size": "S",
+            "task_decision": "STOP_UNCERTAIN",
+            "model_gate": "STOP_UNCERTAIN",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_blocking",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "large_normal_work_splits",
+            "task_size": "L",
+            "task_decision": "SPLIT_REQUIRED",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_split",
+            "expected_disposition": "READ_ONLY_DECOMPOSITION",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "extra_large_pro_work_splits",
+            "task_size": "XL",
+            "task_decision": "SPLIT_REQUIRED",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_split",
+            "expected_disposition": "READ_ONLY_DECOMPOSITION",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "extra_small_normal_work_is_supervisor_candidate",
+            "task_size": "XS",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_APPROVAL",
+            "expected_next_skill": "jl-supervisor",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "small_normal_work_is_supervisor_candidate",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_APPROVAL",
+            "expected_next_skill": "jl-supervisor",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "medium_normal_work_uses_develop",
+            "task_size": "M",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_APPROVAL",
+            "expected_next_skill": "jl-develop",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "extra_small_pro_work_is_conditional_supervisor_candidate",
+            "task_size": "XS",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "CONDITIONAL_PRO_RESUME",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_EXPLICIT_PRO_APPROVAL",
+            "expected_next_skill": "jl-supervisor",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "small_pro_work_is_conditional_supervisor_candidate",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "CONDITIONAL_PRO_RESUME",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_EXPLICIT_PRO_APPROVAL",
+            "expected_next_skill": "jl-supervisor",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "medium_pro_work_uses_develop",
+            "task_size": "M",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "RECOMMEND_WITH_EXPLICIT_PRO_APPROVAL",
+            "expected_next_skill": "jl-develop",
+        }
+    ),
+)
+
+INVALID_RESULT_VECTORS = (
+    MappingProxyType(
+        {
+            "case_id": "unknown_task_size",
+            "task_size": "UNKNOWN",
+            "task_decision": "STOP_UNCERTAIN",
+            "model_gate": "STOP_UNCERTAIN",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_blocking",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "small_normal_not_eligible_conflict",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "medium_normal_eligible_conflict",
+            "task_size": "M",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "small_pro_not_eligible_conflict",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "medium_pro_conditional_conflict",
+            "task_size": "M",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "PRO_REQUIRED",
+            "supervisor_eligibility": "CONDITIONAL_PRO_RESUME",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "large_allow_conflict",
+            "task_size": "L",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_task_decision",
+            "task_size": "S",
+            "task_decision": "UNKNOWN",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_model_gate",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "UNKNOWN",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_supervisor_eligibility",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "UNKNOWN",
+            "reason_codes_state": "valid_allow",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "inconsistent_reason_code",
+            "task_size": "S",
+            "task_decision": "ALLOW_SINGLE_WORK_ORDER",
+            "model_gate": "NORMAL_ALLOWED",
+            "supervisor_eligibility": "ELIGIBLE",
+            "reason_codes_state": "inconsistent",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "unknown_reason_code",
+            "task_size": "S",
+            "task_decision": "STOP_UNCERTAIN",
+            "model_gate": "STOP_UNCERTAIN",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "unknown",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "duplicate_reason_code",
+            "task_size": "S",
+            "task_decision": "STOP_UNCERTAIN",
+            "model_gate": "STOP_UNCERTAIN",
+            "supervisor_eligibility": "NOT_ELIGIBLE",
+            "reason_codes_state": "duplicated",
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+)
+
+
+def _dataclass_fields(source: str, class_name: str) -> tuple[str, ...]:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            return tuple(
+                child.target.id
+                for child in node.body
+                if isinstance(child, ast.AnnAssign)
+                and isinstance(child.target, ast.Name)
+            )
+    raise AssertionError(f"missing dataclass {class_name}")
+
+
+def _import_roots(tree: ast.AST) -> set[str]:
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            roots.add(node.module.split(".")[0])
+    return roots
+
+
+def test_contract_has_exactly_twenty_nine_caller_owned_evidence_fields() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    evaluator = EVALUATOR_PATH.read_text(encoding="utf-8")
+
+    assert len(EVIDENCE_FIELDS) == 29
+    assert len(set(EVIDENCE_FIELDS)) == 29
+    assert _dataclass_fields(evaluator, "TaskSizeGateEvidence") == EVIDENCE_FIELDS
+    for field in EVIDENCE_FIELDS:
+        assert contract.count(f"| `{field}` |") == 1
+    assert "All fields are caller-owned." in contract
+    assert "must build a fresh frozen\n`TaskSizeGateEvidence`" in contract
+
+
+def test_preflight_vectors_are_immutable_and_lock_main_only_planning() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert {vector["case_id"] for vector in PREFLIGHT_VECTORS} == {
+        "clean_synchronized_main",
+        "active_work_branch_routes_existing_work_only",
+        "dirty_worktree_stops",
+        "main_mismatch_stops",
+        "non_main_without_active_work_stops",
+        "unknown_ancestry_stops",
+        "occupied_target_branch_stops",
+    }
+    for vector in PREFLIGHT_VECTORS:
+        assert type(vector) is MappingProxyType
+        assert frozenset(vector) == PREFLIGHT_VECTOR_KEYS
+    with pytest.raises(TypeError):
+        PREFLIGHT_VECTORS[0]["current_branch"] = "work/not-allowed"  # type: ignore[index]
+
+    assert "current branch is exactly `main`" in contract
+    assert "same immutable commit" in contract
+    assert "active unmerged work" in contract
+    assert "unresolved\nancestry" in contract
+    assert "occupied target branch" in contract
+    assert "only the applicable review, revision, or merge path" in contract
+    assert "must stop without proposing a new\ndevelopment order" in contract
+
+
+def test_result_vectors_lock_legal_mapping_and_explicit_approval_boundary() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert len(RESULT_VECTORS) == 10
+    for vector in RESULT_VECTORS:
+        assert type(vector) is MappingProxyType
+        assert frozenset(vector) == RESULT_VECTOR_KEYS
+
+    allowed_vectors = [
+        vector
+        for vector in RESULT_VECTORS
+        if vector["task_decision"] == "ALLOW_SINGLE_WORK_ORDER"
+    ]
+    assert {
+        (
+            vector["task_size"],
+            vector["model_gate"],
+            vector["supervisor_eligibility"],
+            vector["expected_next_skill"],
+        )
+        for vector in allowed_vectors
+    } == {
+        ("XS", "NORMAL_ALLOWED", "ELIGIBLE", "jl-supervisor"),
+        ("S", "NORMAL_ALLOWED", "ELIGIBLE", "jl-supervisor"),
+        ("M", "NORMAL_ALLOWED", "NOT_ELIGIBLE", "jl-develop"),
+        ("XS", "PRO_REQUIRED", "CONDITIONAL_PRO_RESUME", "jl-supervisor"),
+        ("S", "PRO_REQUIRED", "CONDITIONAL_PRO_RESUME", "jl-supervisor"),
+        ("M", "PRO_REQUIRED", "NOT_ELIGIBLE", "jl-develop"),
+    }
+    split_vectors = [
+        vector
+        for vector in RESULT_VECTORS
+        if vector["task_decision"] == "SPLIT_REQUIRED"
+    ]
+    assert {vector["task_size"] for vector in split_vectors} == {"L", "XL"}
+    assert all(vector["expected_next_skill"] == "none" for vector in split_vectors)
+    assert "planning disposition but never user authority" in contract
+    assert "Every write\noperation still requires explicit user approval" in contract
+
+
+def test_unknown_or_contradictory_result_vectors_always_fail_closed() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert len(INVALID_RESULT_VECTORS) == 12
+    assert len({vector["case_id"] for vector in INVALID_RESULT_VECTORS}) == 12
+    for vector in INVALID_RESULT_VECTORS:
+        assert type(vector) is MappingProxyType
+        assert frozenset(vector) == RESULT_VECTOR_KEYS
+        assert vector["expected_disposition"] == "STOP_UNCERTAIN"
+        assert vector["expected_next_skill"] == "none"
+    with pytest.raises(TypeError):
+        INVALID_RESULT_VECTORS[0]["task_size"] = "S"  # type: ignore[index]
+
+    assert "Any unknown or contradictory TaskSize" in contract
+    assert "reason-code combination" in contract
+    assert "emit `STOP_UNCERTAIN`" in contract
+    assert "no next\nSkill" in contract
+    assert "reason codes are unknown, inconsistent, duplicated, or malformed" in contract
+
+
+def test_contract_keeps_integration_and_authority_out_of_scope() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+
+    required_boundaries = (
+        "not integrate or activate the evaluator in this work order.",
+        "No Skill invokes the production evaluator.",
+        "No TaskSizeGate workflow enforcement is active.",
+        "must not construct a\nnew development candidate.",
+        "without separate approval.",
+    )
+    for boundary in required_boundaries:
+        assert boundary in contract
+    assert "tests-only JLGO planning-integration contract vectors" in contract
+    assert "JLGO planning-checkpoint Skill integration and hardening" in contract
+
+
+def test_vectors_are_static_and_do_not_claim_runtime_jlgo_integration() -> None:
+    source = Path(__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+
+    assert _import_roots(tree) <= {"__future__", "ast", "pathlib", "types", "pytest"}
+    call_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert {
+        "evaluate_task_size_gate",
+        "TaskSizeGateEvidence",
+        "TaskSizeGateResult",
+    }.isdisjoint(call_names)
+    assert "must not claim that TaskSizeGate is integrated" in CONTRACT_PATH.read_text(
+        encoding="utf-8"
+    )
+    assert "evaluate_task_size_gate" not in skill
