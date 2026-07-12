@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
-from dataclasses import FrozenInstanceError, dataclass
+from dataclasses import FrozenInstanceError, dataclass, fields
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -45,6 +45,8 @@ REPLAY_CONTRACT_VERSION = "canonical_bundle_replay_v1"
 REGISTRY_VERSION = "canonical_bundle_replay_registry_v1"
 PIPELINE_CONTRACT_VERSION = "canonical_diagnostics_pipeline_g153_v1"
 POLICY_PROFILE_VERSION = "canonical_diagnostics_default_policy_v1"
+READY_CASE_ID = "canonical_docs_ready"
+READY_FIXTURE_ID = "canonical_docs_fixture_v1"
 IDENTIFIER_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62})$")
 PUBLIC_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 
@@ -163,12 +165,66 @@ class OracleVector:
 
 
 @dataclass(frozen=True, slots=True)
-class FailureVector:
+class ReplayCaseVector:
+    replay_contract_version: str
+    case_id: str
+    fixture_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class RegistryRecordVector:
+    registry_version: str
+    fixture_id: str
+    case_id: str
+    allowed_root: Path
+    bundle_dir: Path
+    reference_time_utc: datetime
+    previous_identity: None
+    pipeline_contract_version: str
+    policy_profile_version: str
+    expected_outcome: str
+    expected_status_code: str
+    expected_block_reasons: tuple[str, ...]
+    expected_warning_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayResultVector:
+    replay_contract_version: str
+    registry_version: str
+    pipeline_contract_version: str
+    policy_profile_version: str
+    case_id: str
+    fixture_id: str
+    passed: bool
+    status_code: str
+    canonical_summary: tuple[tuple[str, object], ...]
+    replay_reason_codes: tuple[str, ...]
+    canonical_block_reasons: tuple[str, ...]
+    canonical_warning_codes: tuple[str, ...]
+    read_only: bool
+    demo_only: bool
+    is_tradable: bool
+    can_execute: bool
+    is_execution_instruction: bool
+    allowed_to_call_ea: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ResultCaseVector:
     name: str
-    replay_status: str
-    replay_reason: str
     expected_g153_calls: int
     identity_available: bool
+    result: ReplayResultVector
+
+
+@dataclass(frozen=True, slots=True)
+class CallerOverrideVector:
+    category: str
+    field_name: str
+    expected_status: str
+    expected_reason: str
+    expected_g153_calls: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +243,246 @@ class InvalidEvidenceVector:
     expected_status: str
     expected_reason: str
     expected_g153_calls: int
+
+
+READY_G151_SUMMARY = (
+    ("passed", True),
+    ("status_code", summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY),
+    ("source_scope", summary_adapter.SOURCE_SCOPE),
+    ("validation_stage", summary_adapter.VALIDATION_STAGE),
+    ("fixture_source", summary_adapter.FIXTURE_SOURCE),
+    (
+        "bundle_validation_status",
+        (
+            ("passed", True),
+            (
+                "status_code",
+                "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED",
+            ),
+            ("block_reasons", ()),
+            ("warning_reasons", ()),
+            ("read_only", True),
+            ("demo_only", True),
+            ("is_tradable", False),
+            ("can_execute", False),
+        ),
+    ),
+    (
+        "component_statuses",
+        (
+            (
+                "canonical_data_quality_gate",
+                (
+                    ("passed", True),
+                    (
+                        "status_code",
+                        "CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED",
+                    ),
+                    ("block_reasons", ()),
+                    ("warning_reasons", ()),
+                    ("read_only", True),
+                    ("demo_only", True),
+                    ("is_tradable", False),
+                    ("can_execute", False),
+                ),
+            ),
+        ),
+    ),
+    ("block_reasons", ()),
+    ("warning_reasons", ()),
+    (
+        "readiness_notes",
+        (
+            "Canonical DataQualityGate passed for read-only diagnostics adaptation.",
+            "Readiness is not trading permission.",
+            "This summary is read-only and cannot execute orders.",
+        ),
+    ),
+    (
+        "next_allowed_stage",
+        ("demo_readonly_diagnostics_response_integration",),
+    ),
+    ("next_blocked_stage", ("api_reader_activation", "execution_chain")),
+    ("read_only", True),
+    ("demo_only", True),
+    ("is_tradable", False),
+    ("can_execute", False),
+    ("is_trading_permission", False),
+    ("is_execution_instruction", False),
+    ("allowed_to_call_ea", False),
+    ("allowed_to_modify_risk", False),
+)
+
+PUBLIC_READY_CASE = ReplayCaseVector(
+    replay_contract_version=REPLAY_CONTRACT_VERSION,
+    case_id=READY_CASE_ID,
+    fixture_id=READY_FIXTURE_ID,
+)
+READY_REGISTRY_RECORD = RegistryRecordVector(
+    registry_version=REGISTRY_VERSION,
+    fixture_id=READY_FIXTURE_ID,
+    case_id=READY_CASE_ID,
+    allowed_root=FIXTURE_DIR.parent,
+    bundle_dir=FIXTURE_DIR,
+    reference_time_utc=REFERENCE_TIME,
+    previous_identity=None,
+    pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+    policy_profile_version=POLICY_PROFILE_VERSION,
+    expected_outcome="READY",
+    expected_status_code=summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY,
+    expected_block_reasons=(),
+    expected_warning_codes=(),
+)
+
+RESULT_CASE_VECTORS = (
+    ResultCaseVector(
+        name="matched_ready",
+        expected_g153_calls=1,
+        identity_available=True,
+        result=ReplayResultVector(
+            replay_contract_version=REPLAY_CONTRACT_VERSION,
+            registry_version=REGISTRY_VERSION,
+            pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+            policy_profile_version=POLICY_PROFILE_VERSION,
+            case_id=READY_CASE_ID,
+            fixture_id=READY_FIXTURE_ID,
+            passed=True,
+            status_code="CANONICAL_BUNDLE_REPLAY_MATCHED",
+            canonical_summary=READY_G151_SUMMARY,
+            replay_reason_codes=(),
+            canonical_block_reasons=(),
+            canonical_warning_codes=(),
+            read_only=True,
+            demo_only=True,
+            is_tradable=False,
+            can_execute=False,
+            is_execution_instruction=False,
+            allowed_to_call_ea=False,
+        ),
+    ),
+    ResultCaseVector(
+        name="input_invalid_before_registry",
+        expected_g153_calls=0,
+        identity_available=False,
+        result=ReplayResultVector(
+            replay_contract_version=REPLAY_CONTRACT_VERSION,
+            registry_version="unavailable",
+            pipeline_contract_version="unavailable",
+            policy_profile_version="unavailable",
+            case_id="unavailable",
+            fixture_id="unavailable",
+            passed=False,
+            status_code="CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
+            canonical_summary=(),
+            replay_reason_codes=("REPLAY_CASE_INPUT_INVALID",),
+            canonical_block_reasons=(),
+            canonical_warning_codes=(),
+            read_only=True,
+            demo_only=True,
+            is_tradable=False,
+            can_execute=False,
+            is_execution_instruction=False,
+            allowed_to_call_ea=False,
+        ),
+    ),
+    ResultCaseVector(
+        name="result_invalid_after_call",
+        expected_g153_calls=1,
+        identity_available=True,
+        result=ReplayResultVector(
+            replay_contract_version=REPLAY_CONTRACT_VERSION,
+            registry_version=REGISTRY_VERSION,
+            pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+            policy_profile_version=POLICY_PROFILE_VERSION,
+            case_id=READY_CASE_ID,
+            fixture_id=READY_FIXTURE_ID,
+            passed=False,
+            status_code="CANONICAL_BUNDLE_REPLAY_RESULT_INVALID",
+            canonical_summary=(),
+            replay_reason_codes=("REPLAY_CASE_RESULT_INVALID",),
+            canonical_block_reasons=(),
+            canonical_warning_codes=(),
+            read_only=True,
+            demo_only=True,
+            is_tradable=False,
+            can_execute=False,
+            is_execution_instruction=False,
+            allowed_to_call_ea=False,
+        ),
+    ),
+    ResultCaseVector(
+        name="expectation_mismatch_after_call",
+        expected_g153_calls=1,
+        identity_available=True,
+        result=ReplayResultVector(
+            replay_contract_version=REPLAY_CONTRACT_VERSION,
+            registry_version=REGISTRY_VERSION,
+            pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+            policy_profile_version=POLICY_PROFILE_VERSION,
+            case_id=READY_CASE_ID,
+            fixture_id=READY_FIXTURE_ID,
+            passed=False,
+            status_code="CANONICAL_BUNDLE_REPLAY_MISMATCH",
+            canonical_summary=(),
+            replay_reason_codes=("REPLAY_CASE_EXPECTATION_MISMATCH",),
+            canonical_block_reasons=(),
+            canonical_warning_codes=(),
+            read_only=True,
+            demo_only=True,
+            is_tradable=False,
+            can_execute=False,
+            is_execution_instruction=False,
+            allowed_to_call_ea=False,
+        ),
+    ),
+    ResultCaseVector(
+        name="exception_sanitized_after_call",
+        expected_g153_calls=1,
+        identity_available=True,
+        result=ReplayResultVector(
+            replay_contract_version=REPLAY_CONTRACT_VERSION,
+            registry_version=REGISTRY_VERSION,
+            pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+            policy_profile_version=POLICY_PROFILE_VERSION,
+            case_id=READY_CASE_ID,
+            fixture_id=READY_FIXTURE_ID,
+            passed=False,
+            status_code="CANONICAL_BUNDLE_REPLAY_SAFE_FAILURE",
+            canonical_summary=(),
+            replay_reason_codes=("REPLAY_CASE_EXCEPTION_SANITIZED",),
+            canonical_block_reasons=(),
+            canonical_warning_codes=(),
+            read_only=True,
+            demo_only=True,
+            is_tradable=False,
+            can_execute=False,
+            is_execution_instruction=False,
+            allowed_to_call_ea=False,
+        ),
+    ),
+)
+
+CALLER_OVERRIDE_VECTORS = tuple(
+    CallerOverrideVector(
+        category=category,
+        field_name=field_name,
+        expected_status="CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
+        expected_reason="REPLAY_CASE_INPUT_INVALID",
+        expected_g153_calls=0,
+    )
+    for category, field_name in (
+        ("path", "allowed_root"),
+        ("path", "bundle_dir"),
+        ("clock", "reference_time_utc"),
+        ("source", "source_mode"),
+        ("policy", "policy_profile_version"),
+        ("dependency", "pipeline_dependency"),
+        ("oracle", "expected_outcome"),
+        ("oracle", "expected_status_code"),
+        ("oracle", "expected_block_reasons"),
+        ("oracle", "expected_warning_codes"),
+    )
+)
 
 
 ORACLE_VECTORS = (
@@ -210,13 +506,6 @@ ORACLE_VECTORS = (
         summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS,
         (),
         ("SEQUENCE_GAP",),
-    ),
-    OracleVector(
-        "warnings_in_contract_order",
-        "READY_WITH_WARNINGS",
-        summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS,
-        (),
-        ("IDEMPOTENT_REPEAT", "SEQUENCE_GAP"),
     ),
     OracleVector(
         "stale_blocked",
@@ -252,44 +541,6 @@ ORACLE_VECTORS = (
         summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE,
         ("DATA_QUALITY_GATE_EXCEPTION_SANITIZED",),
         (),
-    ),
-)
-
-FAILURE_VECTORS = (
-    FailureVector(
-        "public_case_invalid",
-        "CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
-        "REPLAY_CASE_INPUT_INVALID",
-        0,
-        False,
-    ),
-    FailureVector(
-        "registry_invalid",
-        "CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
-        "REPLAY_CASE_REGISTRY_INVALID",
-        0,
-        False,
-    ),
-    FailureVector(
-        "g151_result_invalid",
-        "CANONICAL_BUNDLE_REPLAY_RESULT_INVALID",
-        "REPLAY_CASE_RESULT_INVALID",
-        1,
-        True,
-    ),
-    FailureVector(
-        "oracle_mismatch",
-        "CANONICAL_BUNDLE_REPLAY_MISMATCH",
-        "REPLAY_CASE_EXPECTATION_MISMATCH",
-        1,
-        True,
-    ),
-    FailureVector(
-        "exception_sanitized",
-        "CANONICAL_BUNDLE_REPLAY_SAFE_FAILURE",
-        "REPLAY_CASE_EXCEPTION_SANITIZED",
-        1,
-        True,
     ),
 )
 
@@ -496,6 +747,9 @@ def test_contract_declares_exact_public_and_registry_fields() -> None:
     assert _class_fields(contract, "CanonicalBundleReplayCaseV1") == PUBLIC_CASE_FIELDS
     assert _class_fields(contract, "CanonicalBundleReplayResultV1") == RESULT_FIELDS
     assert _registry_fields(contract) == REGISTRY_FIELDS
+    assert tuple(field.name for field in fields(ReplayCaseVector)) == PUBLIC_CASE_FIELDS
+    assert tuple(field.name for field in fields(ReplayResultVector)) == RESULT_FIELDS
+    assert tuple(field.name for field in fields(RegistryRecordVector)) == REGISTRY_FIELDS
     assert len(PUBLIC_CASE_FIELDS) == 3
     assert len(RESULT_FIELDS) == 18
     assert set(RESULT_FIELDS).isdisjoint(FORBIDDEN_RESULT_FIELDS)
@@ -573,15 +827,153 @@ def test_public_case_shape_vectors_lock_missing_extra_order_and_strict_type() ->
     assert CASE_SHAPE_VECTORS[-1].exact_builtin_type is False
 
 
+def test_public_case_and_registry_vectors_lock_server_owned_authority() -> None:
+    assert PUBLIC_READY_CASE == ReplayCaseVector(
+        replay_contract_version=REPLAY_CONTRACT_VERSION,
+        case_id=READY_CASE_ID,
+        fixture_id=READY_FIXTURE_ID,
+    )
+    assert all(
+        type(getattr(PUBLIC_READY_CASE, field_name)) is str
+        for field_name in PUBLIC_CASE_FIELDS
+    )
+    assert READY_REGISTRY_RECORD == RegistryRecordVector(
+        registry_version=REGISTRY_VERSION,
+        fixture_id=READY_FIXTURE_ID,
+        case_id=READY_CASE_ID,
+        allowed_root=FIXTURE_DIR.parent,
+        bundle_dir=FIXTURE_DIR,
+        reference_time_utc=REFERENCE_TIME,
+        previous_identity=None,
+        pipeline_contract_version=PIPELINE_CONTRACT_VERSION,
+        policy_profile_version=POLICY_PROFILE_VERSION,
+        expected_outcome="READY",
+        expected_status_code=summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY,
+        expected_block_reasons=(),
+        expected_warning_codes=(),
+    )
+    assert type(READY_REGISTRY_RECORD.reference_time_utc) is datetime
+    assert READY_REGISTRY_RECORD.reference_time_utc.tzinfo is UTC
+    assert READY_REGISTRY_RECORD.allowed_root == FIXTURE_DIR.parent
+    assert READY_REGISTRY_RECORD.bundle_dir == FIXTURE_DIR
+    assert READY_REGISTRY_RECORD.previous_identity is None
+    assert READY_REGISTRY_RECORD.pipeline_contract_version == PIPELINE_CONTRACT_VERSION
+    assert READY_REGISTRY_RECORD.policy_profile_version == POLICY_PROFILE_VERSION
+    for field_name in (
+        "registry_version",
+        "fixture_id",
+        "case_id",
+        "pipeline_contract_version",
+        "policy_profile_version",
+        "expected_outcome",
+        "expected_status_code",
+    ):
+        assert type(getattr(READY_REGISTRY_RECORD, field_name)) is str
+    assert type(READY_REGISTRY_RECORD.expected_block_reasons) is tuple
+    assert type(READY_REGISTRY_RECORD.expected_warning_codes) is tuple
+
+
+def test_caller_override_vectors_fail_closed_before_g153() -> None:
+    assert tuple(
+        (vector.category, vector.field_name)
+        for vector in CALLER_OVERRIDE_VECTORS
+    ) == (
+        ("path", "allowed_root"),
+        ("path", "bundle_dir"),
+        ("clock", "reference_time_utc"),
+        ("source", "source_mode"),
+        ("policy", "policy_profile_version"),
+        ("dependency", "pipeline_dependency"),
+        ("oracle", "expected_outcome"),
+        ("oracle", "expected_status_code"),
+        ("oracle", "expected_block_reasons"),
+        ("oracle", "expected_warning_codes"),
+    )
+    assert all(
+        (
+            vector.expected_status,
+            vector.expected_reason,
+            vector.expected_g153_calls,
+        )
+        == (
+            "CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
+            "REPLAY_CASE_INPUT_INVALID",
+            0,
+        )
+        for vector in CALLER_OVERRIDE_VECTORS
+    )
+    assert all(type(vector.field_name) is str for vector in CALLER_OVERRIDE_VECTORS)
+
+
 def test_oracle_vectors_cover_all_canonical_outcomes_and_warning_order() -> None:
-    assert {vector.expected_outcome for vector in ORACLE_VECTORS} == set(
-        EXPECTED_OUTCOMES
+    assert tuple(
+        (
+            vector.name,
+            vector.expected_outcome,
+            vector.canonical_status,
+            vector.block_reasons,
+            vector.warning_codes,
+        )
+        for vector in ORACLE_VECTORS
+    ) == (
+        (
+            "ready",
+            "READY",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY,
+            (),
+            (),
+        ),
+        (
+            "warning_idempotent_repeat",
+            "READY_WITH_WARNINGS",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS,
+            (),
+            ("IDEMPOTENT_REPEAT",),
+        ),
+        (
+            "warning_sequence_gap",
+            "READY_WITH_WARNINGS",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY_WITH_WARNINGS,
+            (),
+            ("SEQUENCE_GAP",),
+        ),
+        (
+            "stale_blocked",
+            "BLOCKED",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED,
+            ("READER_DATA_STALE",),
+            (),
+        ),
+        (
+            "malformed_structure_blocked",
+            "BLOCKED",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED,
+            ("READER_STRUCTURE_INVALID",),
+            (),
+        ),
+        (
+            "mixed_generation_blocked",
+            "BLOCKED",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_BLOCKED,
+            ("READER_MIXED_GENERATION_BLOCKED",),
+            (),
+        ),
+        (
+            "input_invalid",
+            "INPUT_INVALID",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_INPUT_INVALID,
+            ("CANONICAL_DATA_QUALITY_RESULT_INVALID",),
+            (),
+        ),
+        (
+            "safe_failure",
+            "SAFE_FAILURE",
+            summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_SAFE_FAILURE,
+            ("DATA_QUALITY_GATE_EXCEPTION_SANITIZED",),
+            (),
+        ),
     )
-    assert len({vector.name for vector in ORACLE_VECTORS}) == len(ORACLE_VECTORS)
-    assert ORACLE_VECTORS[3].warning_codes == (
-        "IDEMPOTENT_REPEAT",
-        "SEQUENCE_GAP",
-    )
+    assert {vector.expected_outcome for vector in ORACLE_VECTORS} == set(EXPECTED_OUTCOMES)
     for vector in ORACLE_VECTORS:
         assert type(vector.expected_outcome) is str
         assert PUBLIC_CODE_PATTERN.fullmatch(vector.expected_outcome)
@@ -592,22 +984,105 @@ def test_oracle_vectors_cover_all_canonical_outcomes_and_warning_order() -> None
         assert all(type(code) is str for code in vector.warning_codes)
 
 
-def test_failure_vectors_lock_zero_one_call_and_safe_identity_rules() -> None:
-    assert {vector.replay_status for vector in FAILURE_VECTORS} == set(
-        REPLAY_STATUSES[1:]
+def test_full_result_vectors_lock_exact_status_reason_identity_and_calls() -> None:
+    assert tuple(
+        (
+            vector.name,
+            vector.result.status_code,
+            vector.result.replay_reason_codes,
+            vector.result.passed,
+            vector.expected_g153_calls,
+            vector.identity_available,
+        )
+        for vector in RESULT_CASE_VECTORS
+    ) == (
+        ("matched_ready", "CANONICAL_BUNDLE_REPLAY_MATCHED", (), True, 1, True),
+        (
+            "input_invalid_before_registry",
+            "CANONICAL_BUNDLE_REPLAY_INPUT_INVALID",
+            ("REPLAY_CASE_INPUT_INVALID",),
+            False,
+            0,
+            False,
+        ),
+        (
+            "result_invalid_after_call",
+            "CANONICAL_BUNDLE_REPLAY_RESULT_INVALID",
+            ("REPLAY_CASE_RESULT_INVALID",),
+            False,
+            1,
+            True,
+        ),
+        (
+            "expectation_mismatch_after_call",
+            "CANONICAL_BUNDLE_REPLAY_MISMATCH",
+            ("REPLAY_CASE_EXPECTATION_MISMATCH",),
+            False,
+            1,
+            True,
+        ),
+        (
+            "exception_sanitized_after_call",
+            "CANONICAL_BUNDLE_REPLAY_SAFE_FAILURE",
+            ("REPLAY_CASE_EXCEPTION_SANITIZED",),
+            False,
+            1,
+            True,
+        ),
     )
-    assert {vector.replay_reason for vector in FAILURE_VECTORS} == set(REPLAY_REASONS)
-    assert tuple(vector.expected_g153_calls for vector in FAILURE_VECTORS) == (
-        0,
-        0,
-        1,
-        1,
-        1,
-    )
-    assert all(
-        vector.identity_available is (vector.expected_g153_calls == 1)
-        for vector in FAILURE_VECTORS
-    )
+    for vector in RESULT_CASE_VECTORS:
+        result = vector.result
+        assert tuple(field.name for field in fields(result)) == RESULT_FIELDS
+        assert type(result.passed) is bool
+        for field_name in (
+            "replay_contract_version",
+            "registry_version",
+            "pipeline_contract_version",
+            "policy_profile_version",
+            "case_id",
+            "fixture_id",
+            "status_code",
+        ):
+            assert type(getattr(result, field_name)) is str
+        assert type(result.replay_reason_codes) is tuple
+        assert type(result.canonical_summary) is tuple
+        assert type(result.canonical_block_reasons) is tuple
+        assert type(result.canonical_warning_codes) is tuple
+        for codes in (
+            result.replay_reason_codes,
+            result.canonical_block_reasons,
+            result.canonical_warning_codes,
+        ):
+            assert all(type(code) is str for code in codes)
+            assert len(codes) == len(set(codes))
+        for field_name, expected in RESULT_SAFETY_FLAGS.items():
+            assert getattr(result, field_name) is expected
+        if result.status_code == "CANONICAL_BUNDLE_REPLAY_MATCHED":
+            assert result.canonical_summary == READY_G151_SUMMARY
+            assert result.replay_reason_codes == ()
+        else:
+            assert result.canonical_summary == ()
+            assert result.canonical_block_reasons == ()
+            assert result.canonical_warning_codes == ()
+            assert len(result.replay_reason_codes) == 1
+        identity = (
+            result.registry_version,
+            result.pipeline_contract_version,
+            result.policy_profile_version,
+            result.case_id,
+            result.fixture_id,
+        )
+        assert identity == (
+            (
+                REGISTRY_VERSION,
+                PIPELINE_CONTRACT_VERSION,
+                POLICY_PROFILE_VERSION,
+                READY_CASE_ID,
+                READY_FIXTURE_ID,
+            )
+            if vector.identity_available
+            else ("unavailable",) * 5
+        )
 
 
 def test_invalid_evidence_vectors_lock_fail_closed_status_reason_and_calls() -> None:
@@ -703,6 +1178,8 @@ def test_real_fixture_anchor_runs_g153_to_genuine_g151_without_mutation() -> Non
     assert result["status_code"] == summary_adapter.CANONICAL_DIAGNOSTICS_SUMMARY_READY
     assert result["block_reasons"] == []
     assert result["warning_reasons"] == []
+    assert _freeze_contract_value(result) == READY_G151_SUMMARY
+    assert RESULT_CASE_VECTORS[0].result.canonical_summary == READY_G151_SUMMARY
     for field_name, expected in G151_SAFETY_FLAGS.items():
         assert result[field_name] is expected
     _assert_no_forbidden_content(result)
@@ -728,7 +1205,13 @@ def test_contract_vectors_are_frozen_and_do_not_claim_runtime_delivery() -> None
     with pytest.raises(FrozenInstanceError):
         ORACLE_VECTORS[0].expected_outcome = "BLOCKED"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
-        FAILURE_VECTORS[0].expected_g153_calls = 1  # type: ignore[misc]
+        PUBLIC_READY_CASE.case_id = "replacement"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        READY_REGISTRY_RECORD.expected_outcome = "BLOCKED"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        RESULT_CASE_VECTORS[0].result.passed = False  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        CALLER_OVERRIDE_VECTORS[0].expected_g153_calls = 1  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         CASE_SHAPE_VECTORS[0].accepted = False  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
@@ -804,6 +1287,17 @@ def _fixture_state() -> dict[str, tuple[bytes, int]]:
         )
         for filename in FIXTURE_FILENAMES
     }
+
+
+def _freeze_contract_value(value: object) -> object:
+    if type(value) is dict:
+        return tuple(
+            (key, _freeze_contract_value(child))
+            for key, child in value.items()
+        )
+    if type(value) is list:
+        return tuple(_freeze_contract_value(child) for child in value)
+    return value
 
 
 def _assert_no_forbidden_content(value: object) -> None:
