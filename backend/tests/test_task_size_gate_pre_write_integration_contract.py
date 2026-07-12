@@ -1,8 +1,8 @@
 """Static contract vectors for the TaskSizeGate pre-write checkpoint.
 
-These vectors lock the WF-4G boundary.  They deliberately do not import or
-call a future pre-write integration, the TaskSizeGate evaluator, or any
-workflow Skill; therefore they do not claim runtime integration is complete.
+These vectors lock the WF-4G boundary and its jl-develop Skill integration.
+They deliberately do not import or call the TaskSizeGate evaluator, so they
+do not claim Supervisor, review, CI, activation, or end-to-end verification.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ CONTRACT_PATH = (
     / "task_size_gate_pre_write_integration_contract.md"
 )
 EVALUATOR_PATH = REPOSITORY_ROOT / "backend" / "app" / "services" / "task_size_gate.py"
+JL_DEVELOP_SKILL_PATH = REPOSITORY_ROOT / ".agents" / "skills" / "jl-develop" / "SKILL.md"
 
 
 EVIDENCE_FIELD_SOURCE_RULES = MappingProxyType(
@@ -141,6 +142,16 @@ def _contract_table_rules(text: str) -> dict[str, str]:
         field = cells[0].strip("`")
         rules[field] = cells[1]
     return rules
+
+
+def _marked_fields(text: str) -> tuple[str, ...]:
+    start = "TASK_SIZE_GATE_PRE_WRITE_EVIDENCE_FIELDS_BEGIN"
+    end = "TASK_SIZE_GATE_PRE_WRITE_EVIDENCE_FIELDS_END"
+    before, marker, remainder = text.partition(start)
+    assert marker and before
+    body, marker, after = remainder.partition(end)
+    assert marker and after
+    return tuple(line.strip() for line in body.splitlines() if line.strip())
 
 
 def _called_names(tree: ast.AST) -> set[str]:
@@ -263,7 +274,67 @@ def test_contract_uses_the_single_existing_production_evaluator_interface() -> N
     assert "base_branch != \"main\"" in evaluator
 
 
-def test_vectors_are_immutable_and_do_not_claim_runtime_integration() -> None:
+def test_jl_develop_integrates_the_exact_production_interface_and_29_fields() -> None:
+    skill = _read(JL_DEVELOP_SKILL_PATH)
+
+    assert _marked_fields(skill) == EVIDENCE_FIELDS
+    assert "在 `backend` Python runtime 中直接复用" in skill
+    assert "TaskSizeGateEvidence" in skill
+    assert "TaskSizeGateResult" in skill
+    assert skill.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert all(name in skill for name in (
+        "INPUT_INVALID",
+        "SIZE_UNCLASSIFIABLE",
+        "UNKNOWN_EVIDENCE",
+        "MODEL_STOP_UNCERTAIN",
+        "CROSS_PACKAGE_ACTIVATION",
+        "MULTIPLE_OBJECTIVES",
+        "NON_ADJACENT_LAYERS",
+        "OVERSIZED",
+        "SINGLE_WORK_ORDER_ALLOWED",
+        "PRO_MODEL_REQUIRED",
+    ))
+
+
+def test_jl_develop_checks_new_and_revision_git_state_before_writes() -> None:
+    skill = _normalized(_read(JL_DEVELOP_SKILL_PATH))
+
+    assert "new work 必须在当前分支仍为 `main` 时完成 checkpoint" in skill
+    assert "没有 active unmerged branch" in skill
+    assert "目标 work branch 本地和远端均不存在" in skill
+    assert "checkpoint 通过前不得创建或切换目标分支" in skill
+    assert "approved revision 必须在当前分支已经是冻结 revision branch 时完成 checkpoint" in skill
+    assert "本地与远端 work-branch head 等于批准 revision head" in skill
+    assert "累计 diff 均可证明且未越界" in skill
+    assert "未合并实现不得提升 frozen base-main `current_maturity`" in skill
+
+
+def test_jl_develop_prewrite_call_order_is_zero_or_exactly_one_without_retry() -> None:
+    skill = _normalized(_read(JL_DEVELOP_SKILL_PATH))
+
+    assert "调用 evaluator 零次" in skill
+    assert "只有全部 pre-evaluator checks 和 drift checks 通过后，才允许恰好一次" in skill
+    assert "不得 monkeypatch、retry、fallback、调用第二次" in skill
+    assert "evaluator unavailable、exception、invalid result、planning/result drift" in skill
+    assert "pre-write contract 第 10 节的一个固定、净化后 `PRE_WRITE_*` 阻断类别" in skill
+    assert "这些 workflow 类别不得放入 `TaskSizeGateResult.reason_codes`" in skill
+
+
+def test_jl_develop_requires_exact_planning_result_and_preserves_authority() -> None:
+    skill = _normalized(_read(JL_DEVELOP_SKILL_PATH))
+
+    assert "与冻结 planning result 完全相等" in skill
+    assert "frozen order、evidence 和 Git checkpoint 在 evaluator 调用前后必须保持相同" in skill
+    assert "未知、缺失、重复、乱序、额外" in skill
+    assert "`STOP_UNCERTAIN` 或 `SPLIT_REQUIRED` 不得进入写操作" in skill
+    assert "`NOT_ELIGIBLE` 只禁止 Supervisor 自动 闭环，不禁止用户已经显式批准的 `jl-develop` 工单" in skill
+    assert "checkpoint 通过只表示" in skill
+    assert "当前已批准工单可以继续，不是新用户批准" in skill
+    assert "不自动执行 branch、write、Skill、commit、push、merge、tag、部署或 activation" in skill
+    assert "本节不实现 `jl-supervisor` recovery、`jl-review` checkpoint、test tooling、CI" in skill
+
+
+def test_vectors_are_immutable_and_do_not_call_the_runtime_evaluator() -> None:
     with pytest.raises(TypeError):
         PRE_WRITE_MODE_VECTORS["new_work"]["base_branch"] = "work/not-main"
     with pytest.raises(TypeError):
