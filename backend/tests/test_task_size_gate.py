@@ -8,6 +8,7 @@ import pytest
 
 from app.services.task_size_gate import (
     ALLOW_SINGLE_WORK_ORDER,
+    CAPABILITY_MATURITIES,
     CONDITIONAL_PRO_RESUME,
     CROSS_PACKAGE_ACTIVATION,
     ELIGIBLE,
@@ -33,6 +34,35 @@ from app.services.task_size_gate import (
 
 
 BASE_COMMIT = "1ba36a7a3e205e17f03effb9e6812edcd8c52a39"
+NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES = (
+    "offline_verification_evidence",
+)
+NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS = (
+    "verification_does_not_grant_activation",
+    "no_runtime_authority_change",
+    "no_trading_or_execution_authority",
+)
+NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES = (
+    "merge",
+    "push_main",
+    "tag",
+    "deployment",
+    "activation",
+    "runtime_source_change",
+    "mt4_access",
+    "ea_call",
+    "order_execution",
+    "trading",
+    "second_work_order",
+)
+
+
+class _StringSubclass(str):
+    pass
+
+
+class _TupleSubclass(tuple):
+    pass
 
 
 def _evidence(**overrides: object) -> TaskSizeGateEvidence:
@@ -92,6 +122,28 @@ def _result(**overrides: object) -> TaskSizeGateResult:
     }
     values.update(overrides)
     return TaskSizeGateResult(**values)  # type: ignore[arg-type]
+
+
+def _non_activating_verification_evidence(
+    **overrides: object,
+) -> TaskSizeGateEvidence:
+    values: dict[str, object] = {
+        "current_maturity": "INTEGRATED",
+        "target_maturity": "VERIFIED",
+        "maturity_reason": "non-activating verification",
+        "objective_count": 1,
+        "capability_layers": ("VERIFICATION",),
+        "cross_package_activation": False,
+        "affected_surfaces": NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES,
+        "risk_and_policy_impacts": (
+            NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS
+        ),
+        "prohibited_capabilities": (
+            NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES
+        ),
+    }
+    values.update(overrides)
+    return _evidence(**values)
 
 
 def _assert_known_size_input_invalid(
@@ -392,6 +444,208 @@ def test_maturity_preserving_hardening_is_valid() -> None:
     )
 
     assert result.task_decision == ALLOW_SINGLE_WORK_ORDER
+
+
+def test_maturity_vocabulary_remains_exactly_eight_values() -> None:
+    assert CAPABILITY_MATURITIES == (
+        "NOT_STARTED",
+        "POLICY_ONLY",
+        "CONTRACT_ONLY",
+        "TESTS_ONLY",
+        "IMPLEMENTED",
+        "INTEGRATED",
+        "ACTIVATED",
+        "VERIFIED",
+    )
+
+
+def test_exact_non_activating_verification_transition_is_allowed() -> None:
+    evidence = _non_activating_verification_evidence()
+
+    result = evaluate_task_size_gate(evidence=evidence)
+
+    assert result == _result()
+    assert evidence == _non_activating_verification_evidence()
+    assert evidence.cross_package_activation is False
+    assert "ACTIVATION" not in evidence.capability_layers
+
+
+def test_exact_non_activating_verification_transition_preserves_pro_gate() -> None:
+    result = evaluate_task_size_gate(
+        evidence=_non_activating_verification_evidence(
+            model_gate=PRO_REQUIRED,
+            model_gate_evidence=("verification_workflow_architecture",),
+        )
+    )
+
+    assert result == _result(
+        model_gate=PRO_REQUIRED,
+        supervisor_eligibility=CONDITIONAL_PRO_RESUME,
+        reason_codes=(SINGLE_WORK_ORDER_ALLOWED, PRO_MODEL_REQUIRED),
+    )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    (
+        ("current_maturity", _StringSubclass("INTEGRATED")),
+        ("target_maturity", _StringSubclass("VERIFIED")),
+        ("maturity_reason", None),
+        ("maturity_reason", "verification without activation"),
+        ("maturity_reason", _StringSubclass("non-activating verification")),
+        ("objective_count", 0),
+        ("objective_count", 2),
+        ("objective_count", True),
+        ("capability_layers", ("ACTIVATION",)),
+        ("capability_layers", ("VERIFICATION", "ACTIVATION")),
+        ("capability_layers", ["VERIFICATION"]),
+        ("capability_layers", _TupleSubclass(("VERIFICATION",))),
+        ("cross_package_activation", True),
+        ("cross_package_activation", 0),
+    ),
+)
+def test_non_activating_verification_scalar_or_type_drift_fails_closed(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    evidence = _non_activating_verification_evidence()
+    object.__setattr__(evidence, field_name, bad_value)
+
+    result = evaluate_task_size_gate(evidence=evidence)
+
+    assert result.task_decision == STOP_UNCERTAIN
+    assert result.model_gate == STOP_UNCERTAIN
+    assert result.supervisor_eligibility == NOT_ELIGIBLE
+    assert result.reason_codes == (INPUT_INVALID,)
+    assert repr(bad_value) not in repr(result)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    (
+        ("affected_surfaces", None),
+        ("affected_surfaces", ()),
+        (
+            "affected_surfaces",
+            NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES + ("extra",),
+        ),
+        (
+            "affected_surfaces",
+            ("offline_verification_evidence", "offline_verification_evidence"),
+        ),
+        ("affected_surfaces", ("offline_replay_evidence",)),
+        ("affected_surfaces", ("OFFLINE_VERIFICATION_EVIDENCE",)),
+        (
+            "affected_surfaces",
+            (_StringSubclass("offline_verification_evidence"),),
+        ),
+        ("affected_surfaces", ["offline_verification_evidence"]),
+        (
+            "affected_surfaces",
+            _TupleSubclass(("offline_verification_evidence",)),
+        ),
+        ("affected_surfaces", ("something_safe",)),
+        (
+            "risk_and_policy_impacts",
+            NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS[:-1],
+        ),
+        (
+            "risk_and_policy_impacts",
+            NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS + ("extra",),
+        ),
+        (
+            "risk_and_policy_impacts",
+            tuple(reversed(NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS)),
+        ),
+        (
+            "risk_and_policy_impacts",
+            NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS
+            + ("no_runtime_authority_change",),
+        ),
+        (
+            "risk_and_policy_impacts",
+            ("verification_is_not_activation",)
+            + NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS[1:],
+        ),
+        (
+            "risk_and_policy_impacts",
+            ("VERIFICATION_DOES_NOT_GRANT_ACTIVATION",)
+            + NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS[1:],
+        ),
+        (
+            "risk_and_policy_impacts",
+            (_StringSubclass("verification_does_not_grant_activation"),)
+            + NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS[1:],
+        ),
+        (
+            "risk_and_policy_impacts",
+            list(NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS),
+        ),
+        (
+            "risk_and_policy_impacts",
+            _TupleSubclass(
+                NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS
+            ),
+        ),
+        ("risk_and_policy_impacts", ("something_safe",)),
+        (
+            "prohibited_capabilities",
+            NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES[:-1],
+        ),
+        (
+            "prohibited_capabilities",
+            NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES + ("extra",),
+        ),
+        (
+            "prohibited_capabilities",
+            tuple(reversed(NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES)),
+        ),
+        (
+            "prohibited_capabilities",
+            NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES + ("merge",),
+        ),
+        (
+            "prohibited_capabilities",
+            ("merge_to_main",)
+            + NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES[1:],
+        ),
+        (
+            "prohibited_capabilities",
+            ("MERGE",)
+            + NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES[1:],
+        ),
+        (
+            "prohibited_capabilities",
+            (_StringSubclass("merge"),)
+            + NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES[1:],
+        ),
+        (
+            "prohibited_capabilities",
+            list(NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES),
+        ),
+        (
+            "prohibited_capabilities",
+            _TupleSubclass(
+                NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES
+            ),
+        ),
+        ("prohibited_capabilities", ("something_safe",)),
+    ),
+)
+def test_non_activating_verification_exact_tuple_drift_fails_closed(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    evidence = _non_activating_verification_evidence()
+    object.__setattr__(evidence, field_name, bad_value)
+
+    result = evaluate_task_size_gate(evidence=evidence)
+
+    assert result.task_decision == STOP_UNCERTAIN
+    assert result.model_gate == STOP_UNCERTAIN
+    assert result.supervisor_eligibility == NOT_ELIGIBLE
+    assert result.reason_codes == (INPUT_INVALID,)
+    assert repr(bad_value) not in repr(result)
 
 
 @pytest.mark.parametrize(

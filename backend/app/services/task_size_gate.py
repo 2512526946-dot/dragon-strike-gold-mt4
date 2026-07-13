@@ -82,6 +82,28 @@ _TARGET_LAYER_FOR_MATURITY = {
     "ACTIVATED": "ACTIVATION",
     "VERIFIED": "VERIFICATION",
 }
+_NON_ACTIVATING_VERIFICATION_REASON = "non-activating verification"
+_NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES = (
+    "offline_verification_evidence",
+)
+_NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS = (
+    "verification_does_not_grant_activation",
+    "no_runtime_authority_change",
+    "no_trading_or_execution_authority",
+)
+_NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES = (
+    "merge",
+    "push_main",
+    "tag",
+    "deployment",
+    "activation",
+    "runtime_source_change",
+    "mt4_access",
+    "ea_call",
+    "order_execution",
+    "trading",
+    "second_work_order",
+)
 _HEX_COMMIT = re.compile(r"[0-9a-f]{40}")
 _WORK_BRANCH = re.compile(r"work/[A-Za-z0-9][A-Za-z0-9._/-]*")
 
@@ -365,6 +387,12 @@ def _valid_maturity_transition(evidence: TaskSizeGateEvidence) -> bool:
             for layer in evidence.capability_layers
         )
 
+    if (
+        evidence.current_maturity == "INTEGRATED"
+        and evidence.target_maturity == "VERIFIED"
+    ):
+        return _valid_non_activating_verification_transition(evidence)
+
     if _MATURITY_ORDER[evidence.target_maturity] != (
         _MATURITY_ORDER[evidence.current_maturity] + 1
     ):
@@ -374,6 +402,46 @@ def _valid_maturity_transition(evidence: TaskSizeGateEvidence) -> bool:
         return False
     highest_layer = max(evidence.capability_layers, key=_LAYER_ORDER.__getitem__)
     return highest_layer == target_layer
+
+
+def _valid_non_activating_verification_transition(
+    evidence: TaskSizeGateEvidence,
+) -> bool:
+    return (
+        type(evidence.current_maturity) is str
+        and evidence.current_maturity == "INTEGRATED"
+        and type(evidence.target_maturity) is str
+        and evidence.target_maturity == "VERIFIED"
+        and type(evidence.maturity_reason) is str
+        and evidence.maturity_reason == _NON_ACTIVATING_VERIFICATION_REASON
+        and type(evidence.objective_count) is int
+        and evidence.objective_count == 1
+        and _matches_exact_string_tuple(
+            evidence.capability_layers,
+            ("VERIFICATION",),
+        )
+        and type(evidence.cross_package_activation) is bool
+        and evidence.cross_package_activation is False
+        and _matches_exact_string_tuple(
+            evidence.affected_surfaces,
+            _NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES,
+        )
+        and _matches_exact_string_tuple(
+            evidence.risk_and_policy_impacts,
+            _NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS,
+        )
+        and _matches_exact_string_tuple(
+            evidence.prohibited_capabilities,
+            _NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES,
+        )
+    )
+
+
+def _matches_exact_string_tuple(
+    value: object,
+    expected: tuple[str, ...],
+) -> bool:
+    return _strict_string_tuple(value, allow_empty=False) and value == expected
 
 
 def _required_checks_are_complete(value: object) -> bool:
