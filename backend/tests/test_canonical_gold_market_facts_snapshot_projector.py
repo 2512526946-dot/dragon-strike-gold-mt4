@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
+from decimal import InvalidOperation
 from pathlib import Path
 from types import MappingProxyType, UnionType
 from typing import get_args, get_origin, get_type_hints
@@ -591,6 +592,25 @@ def test_strict_types_subclasses_and_containers_fail_closed() -> None:
         )
 
 
+@pytest.mark.parametrize("missing_slot", ("top_level", "nested"))
+def test_missing_source_slots_are_source_shape_failures(missing_slot: str) -> None:
+    source = _source()
+    if missing_slot == "top_level":
+        object.__delattr__(source, "bundle_id")
+    else:
+        object.__delattr__(source.live_tick, "bid")
+
+    result = projector.build_canonical_gold_market_facts_snapshot_v1(
+        validated_source=source
+    )
+
+    _assert_blocked_result(
+        result,
+        status_code="CANONICAL_GOLD_MARKET_FACTS_INPUT_INVALID",
+        reason_code="GOLD_MARKET_FACTS_SOURCE_TYPE_INVALID",
+    )
+
+
 @pytest.mark.parametrize(
     "tick_changes",
     (
@@ -753,6 +773,53 @@ def test_unexpected_exception_is_sanitized_and_does_not_leak(
         reason_code="GOLD_MARKET_FACTS_EXCEPTION_SANITIZED",
     )
     assert sensitive not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "unexpected_exception",
+    (
+        ValueError("unexpected-value-error"),
+        OverflowError("unexpected-overflow-error"),
+        InvalidOperation("unexpected-decimal-error"),
+    ),
+)
+def test_stage_helpers_do_not_misclassify_unexpected_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    unexpected_exception: Exception,
+) -> None:
+    def fail_conversion(*args: object, **kwargs: object) -> object:
+        raise unexpected_exception
+
+    monkeypatch.setattr(projector, "_decimal_from_source", fail_conversion)
+
+    result = projector.build_canonical_gold_market_facts_snapshot_v1(
+        validated_source=_source()
+    )
+
+    _assert_blocked_result(
+        result,
+        status_code="CANONICAL_GOLD_MARKET_FACTS_SAFE_FAILURE",
+        reason_code="GOLD_MARKET_FACTS_EXCEPTION_SANITIZED",
+    )
+    assert str(unexpected_exception) not in repr(result)
+
+
+def test_expected_decimal_conversion_failure_remains_tick_invalid() -> None:
+    source = _source()
+    invalid = replace(
+        source,
+        live_tick=replace(source.live_tick, bid=10**5000),
+    )
+
+    result = projector.build_canonical_gold_market_facts_snapshot_v1(
+        validated_source=invalid
+    )
+
+    _assert_blocked_result(
+        result,
+        status_code="CANONICAL_GOLD_MARKET_FACTS_VALUE_INVALID",
+        reason_code="GOLD_MARKET_FACTS_TICK_INVALID",
+    )
 
 
 def _assert_blocked_result(

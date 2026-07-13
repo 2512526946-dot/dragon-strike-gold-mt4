@@ -304,7 +304,7 @@ def build_canonical_gold_market_facts_snapshot_v1(
 
 
 def _has_exact_source_shape(source: object) -> bool:
-    if type(source) is not CanonicalGoldMarketFactsSourceV1:
+    if not _has_exact_slots(source, CanonicalGoldMarketFactsSourceV1):
         return False
     if not (
         type(source.contract_version) is str
@@ -324,7 +324,7 @@ def _has_exact_source_shape(source: object) -> bool:
         return False
 
     evidence = source.upstream_evidence
-    if not (
+    if not _has_exact_slots(evidence, CanonicalGoldUpstreamEvidenceV1) or not (
         type(evidence.reader_passed) is bool
         and type(evidence.reader_status_code) is str
         and type(evidence.value_status_code) is str
@@ -338,7 +338,7 @@ def _has_exact_source_shape(source: object) -> bool:
         return False
 
     tick = source.live_tick
-    if not (
+    if not _has_exact_slots(tick, CanonicalGoldTickSourceV1) or not (
         _is_exact_number(tick.bid)
         and _is_exact_number(tick.ask)
         and _is_exact_number(tick.spread)
@@ -352,17 +352,15 @@ def _has_exact_source_shape(source: object) -> bool:
     if len(source.timeframes) != len(_TIMEFRAME_PERIODS):
         return False
     for timeframe in source.timeframes:
-        if not (
-            type(timeframe) is CanonicalGoldTimeframeSourceV1
-            and type(timeframe.timeframe) is str
+        if not _has_exact_slots(timeframe, CanonicalGoldTimeframeSourceV1) or not (
+            type(timeframe.timeframe) is str
             and type(timeframe.period_seconds) is int
             and type(timeframe.bars) is tuple
         ):
             return False
         for bar in timeframe.bars:
-            if not (
-                type(bar) is CanonicalGoldBarSourceV1
-                and type(bar.open_time_utc) is str
+            if not _has_exact_slots(bar, CanonicalGoldBarSourceV1) or not (
+                type(bar.open_time_utc) is str
                 and _is_exact_number(bar.open)
                 and _is_exact_number(bar.high)
                 and _is_exact_number(bar.low)
@@ -373,7 +371,7 @@ def _has_exact_source_shape(source: object) -> bool:
                 return False
 
     spec = source.symbol_spec
-    return (
+    return _has_exact_slots(spec, CanonicalGoldSymbolSpecSourceV1) and (
         type(spec.spec_time_utc) is str
         and type(spec.digits) is int
         and _is_exact_number(spec.point)
@@ -469,7 +467,7 @@ def _project_quote(
             point_decimal=_format_price(point, tick.digits),
             tick_time_utc=tick.tick_time_utc,
         )
-    except (_ProjectionInvalid, DecimalException, ValueError, OverflowError):
+    except _ProjectionInvalid:
         return None
 
 
@@ -550,7 +548,7 @@ def _project_timeframes(
                 )
             )
         return tuple(projected_timeframes)
-    except (_ProjectionInvalid, DecimalException, ValueError, OverflowError):
+    except _ProjectionInvalid:
         return None
 
 
@@ -623,7 +621,7 @@ def _project_symbol(
             trade_mode_readonly_label=spec.trade_mode_readonly_label,
             session_status_readonly_label=spec.session_status_readonly_label,
         )
-    except (_ProjectionInvalid, DecimalException, ValueError, OverflowError):
+    except _ProjectionInvalid:
         return None
 
 
@@ -647,7 +645,7 @@ def _project_freshness(
             ),
             symbol_spec_age_microseconds=_age_microseconds(reference_time, symbol_spec_time),
         )
-    except (_ProjectionInvalid, OverflowError):
+    except _ProjectionInvalid:
         return None
 
 
@@ -705,7 +703,10 @@ def _decimal_from_source(value: int | float, context: Context) -> Decimal:
         raise _ProjectionInvalid
     if type(value) is float and not math.isfinite(value):
         raise _ProjectionInvalid
-    decimal_value = Decimal(str(value))
+    try:
+        decimal_value = Decimal(str(value))
+    except (DecimalException, ValueError, OverflowError) as exc:
+        raise _ProjectionInvalid from exc
     if not decimal_value.is_finite() or (
         decimal_value.is_zero() and decimal_value.is_signed()
     ):
@@ -792,6 +793,12 @@ def _age_microseconds(reference_time: datetime, observed_time: datetime) -> int:
 
 def _is_exact_number(value: object) -> bool:
     return type(value) is int or type(value) is float
+
+
+def _has_exact_slots(value: object, expected_type: type[object]) -> bool:
+    return type(value) is expected_type and all(
+        hasattr(value, slot_name) for slot_name in expected_type.__slots__
+    )
 
 
 def _is_safe_label(value: str) -> bool:
