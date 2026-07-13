@@ -73,6 +73,48 @@ worktree/index 干净，本地与远端 work-branch head 等于批准 revision h
 Git 前置状态和 `work_branch` 表达。未合并实现不得提升 frozen base-main
 `current_maturity`，原批准 `target_maturity` 和 `maturity_reason` 不得变化。
 
+### Non-activating verification scope proof
+
+For an approved `INTEGRATED -> VERIFIED` non-activating verification order,
+repeat the WF-4M caller-owned proof for both new work and approved revision
+before constructing `TaskSizeGateEvidence`. Fresh Git, the frozen work order,
+dependencies, exact scope, risk, and policy evidence must prove that every
+allowed file contains offline verification evidence only, every affected
+subsystem already has reviewed `INTEGRATED` evidence at frozen base `main`, and
+the order contains no production code, runtime-authority code, deployment,
+activation, MT4, EA, order, execution, or trading surface. A path name, desired
+result, developer report, or absence of an activation file is not proof.
+
+Missing, ambiguous, stale, contradictory, or drifted scope proof stops before
+evidence construction, uses zero evaluator calls, performs no branch or
+file write, emits workflow-level `STOP_UNCERTAIN`, and sets the next Skill to
+`无`. Do not infer, narrow, repair, or replace the frozen scope.
+
+After that proof passes, construct the existing 29 fields with these exact
+built-in values and order; this adds no thirtieth field:
+
+```text
+TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES_BEGIN
+current_maturity="INTEGRATED"
+target_maturity="VERIFIED"
+maturity_reason="non-activating verification"
+objective_count=1
+capability_layers=("VERIFICATION",)
+cross_package_activation=False
+affected_surfaces=("offline_verification_evidence",)
+risk_and_policy_impacts=("verification_does_not_grant_activation","no_runtime_authority_change","no_trading_or_execution_authority")
+prohibited_capabilities=("merge","push_main","tag","deployment","activation","runtime_source_change","mt4_access","ea_call","order_execution","trading","second_work_order")
+TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES_END
+```
+
+Each scalar and tuple must have the exact built-in type, value, and order from
+WF-4M. Missing, extra, reordered, duplicate, aliased, case-changed,
+subclassed, wrong-container, or meaningless tuple values fail closed before
+the single evaluator call below. A passing result only permits the already
+approved work order to continue; it does not complete verification, grant new
+authority, activate anything, or authorize G174. Review propagation remains a
+separately approved stage.
+
 ### 29 项 caller-owned evidence
 
 字段必须按以下顺序全部构造，不得缺失、增加、猜测、从 result 反推，或为了

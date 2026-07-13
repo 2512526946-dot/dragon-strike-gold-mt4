@@ -64,6 +64,44 @@ EVIDENCE_FIELD_SOURCE_RULES = MappingProxyType(
 )
 EVIDENCE_FIELDS = tuple(EVIDENCE_FIELD_SOURCE_RULES)
 
+NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES = (
+    'current_maturity="INTEGRATED"',
+    'target_maturity="VERIFIED"',
+    'maturity_reason="non-activating verification"',
+    "objective_count=1",
+    'capability_layers=("VERIFICATION",)',
+    "cross_package_activation=False",
+    'affected_surfaces=("offline_verification_evidence",)',
+    'risk_and_policy_impacts=("verification_does_not_grant_activation","no_runtime_authority_change","no_trading_or_execution_authority")',
+    'prohibited_capabilities=("merge","push_main","tag","deployment","activation","runtime_source_change","mt4_access","ea_call","order_execution","trading","second_work_order")',
+)
+
+NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS = MappingProxyType(
+    {
+        case_id: MappingProxyType(
+            {
+                "expected_evaluator_calls": 0,
+                "expected_outcome": "STOP_UNCERTAIN",
+                "next_skill": "none",
+                "writes_allowed": False,
+            }
+        )
+        for case_id in (
+            "allowed_file_not_offline_verification_evidence",
+            "affected_subsystem_not_integrated",
+            "production_code_surface_present",
+            "runtime_authority_surface_present",
+            "activation_surface_present",
+            "mt4_or_ea_surface_present",
+            "order_execution_or_trading_surface_present",
+            "dependency_evidence_missing",
+            "scope_evidence_ambiguous",
+            "risk_or_policy_evidence_stale",
+            "frozen_scope_drifted",
+        )
+    }
+)
+
 PRE_WRITE_MODE_VECTORS = MappingProxyType(
     {
         "new_work": MappingProxyType(
@@ -156,6 +194,25 @@ def _marked_fields(text: str) -> tuple[str, ...]:
     body, marker, after = remainder.partition(end)
     assert marker and after
     return tuple(line.strip() for line in body.splitlines() if line.strip())
+
+
+def _marked_non_activating_values(text: str) -> tuple[str, ...]:
+    start = "TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES_BEGIN"
+    end = "TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES_END"
+    before, marker, remainder = text.partition(start)
+    assert marker and before
+    body, marker, after = remainder.partition(end)
+    assert marker and after
+    return tuple(line.strip() for line in body.splitlines() if line.strip())
+
+
+def _parse_assignments(lines: tuple[str, ...]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for line in lines:
+        name, separator, value = line.partition("=")
+        assert separator and name and name not in values
+        values[name] = ast.literal_eval(value)
+    return values
 
 
 def _called_names(tree: ast.AST) -> set[str]:
@@ -422,6 +479,10 @@ def test_vectors_are_immutable_and_do_not_call_the_runtime_evaluator() -> None:
         PRE_WRITE_MODE_VECTORS["new_work"]["base_branch"] = "work/not-main"
     with pytest.raises(TypeError):
         PRE_EVALUATOR_FAILURE_VECTORS["dirty_worktree"] = "PROCEED"
+    with pytest.raises(TypeError):
+        NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS[
+            "scope_evidence_ambiguous"
+        ]["expected_evaluator_calls"] = 1
 
     source = Path(__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -440,3 +501,71 @@ def test_vectors_are_immutable_and_do_not_call_the_runtime_evaluator() -> None:
     assert imported_modules <= {"__future__", "ast", "pathlib", "types", "pytest"}
     assert "app" not in imported_modules
     assert "evaluate_task_size_gate" not in _called_names(tree)
+
+
+def test_non_activating_verification_values_are_exact_for_both_prewrite_owners() -> None:
+    for skill_path in (JL_DEVELOP_SKILL_PATH, JL_SUPERVISOR_SKILL_PATH):
+        marked_values = _marked_non_activating_values(_read(skill_path))
+        assert marked_values == NON_ACTIVATING_VERIFICATION_PRE_WRITE_VALUES
+
+        assignments = _parse_assignments(marked_values)
+        assert type(assignments["current_maturity"]) is str
+        assert type(assignments["target_maturity"]) is str
+        assert type(assignments["maturity_reason"]) is str
+        assert type(assignments["objective_count"]) is int
+        assert type(assignments["cross_package_activation"]) is bool
+        for name in (
+            "capability_layers",
+            "affected_surfaces",
+            "risk_and_policy_impacts",
+            "prohibited_capabilities",
+        ):
+            assert type(assignments[name]) is tuple
+            assert all(type(value) is str for value in assignments[name])
+
+
+def test_non_activating_scope_failures_stop_before_evaluator_and_writes() -> None:
+    assert set(NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS) == {
+        "allowed_file_not_offline_verification_evidence",
+        "affected_subsystem_not_integrated",
+        "production_code_surface_present",
+        "runtime_authority_surface_present",
+        "activation_surface_present",
+        "mt4_or_ea_surface_present",
+        "order_execution_or_trading_surface_present",
+        "dependency_evidence_missing",
+        "scope_evidence_ambiguous",
+        "risk_or_policy_evidence_stale",
+        "frozen_scope_drifted",
+    }
+    for vector in NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS.values():
+        assert vector == {
+            "expected_evaluator_calls": 0,
+            "expected_outcome": "STOP_UNCERTAIN",
+            "next_skill": "none",
+            "writes_allowed": False,
+        }
+
+    for skill_path in (JL_DEVELOP_SKILL_PATH, JL_SUPERVISOR_SKILL_PATH):
+        skill = _normalized(_read(skill_path))
+        assert "every allowed file contains offline verification evidence only" in skill
+        assert "every affected subsystem already has reviewed `INTEGRATED` evidence" in skill
+        assert "no production code, runtime-authority code, deployment, activation, MT4, EA, order, execution, or trading surface" in skill
+        assert "stops before evidence construction" in skill
+        assert "uses zero evaluator calls" in skill
+        assert "workflow-level `STOP_UNCERTAIN`" in skill
+        assert "sets the next Skill to `无`" in skill
+
+
+def test_non_activating_prewrite_uses_one_existing_call_without_new_authority() -> None:
+    develop = _normalized(_read(JL_DEVELOP_SKILL_PATH))
+    supervisor = _normalized(_read(JL_SUPERVISOR_SKILL_PATH))
+
+    assert develop.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert supervisor.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert "this adds no thirtieth field" in develop
+    assert "this adds no thirtieth field" in supervisor
+    assert "does not complete verification, grant new authority, activate anything, or authorize G174" in develop
+    assert "does not complete verification, grant new authority, activate anything, or authorize G174" in supervisor
+    assert "Review propagation remains a separately approved stage" in develop
+    assert "Review propagation remains a separately approved stage" in supervisor
