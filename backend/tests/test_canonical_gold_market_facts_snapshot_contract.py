@@ -43,15 +43,37 @@ class StatusReasonVector:
 @dataclass(frozen=True, slots=True)
 class NormalizationRuleVector:
     name: str
-    required_text: tuple[str, ...]
-    forbidden_text: tuple[str, ...]
+    exact_step: str
 
 
 @dataclass(frozen=True, slots=True)
-class InvalidShapeVector:
+class InvalidRecordShapeVector:
     name: str
-    mutation: str
+    record_name: str
+    expected_fields: tuple[str, ...]
+    observed_fields: tuple[str, ...]
     accepted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidTypeShapeVector:
+    name: str
+    value_path: str
+    expected_type: type[object] | str
+    observed_type: type[object] | str
+    accepted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidTimeframeShapeVector:
+    name: str
+    expected_timeframes: tuple[str, ...]
+    observed_timeframes: tuple[str, ...]
+    accepted: bool
+
+
+class _StringSubclass(str):
+    pass
 
 
 SOURCE_FIELDS = (
@@ -419,68 +441,177 @@ FAILURE_IDENTITY = MappingProxyType(
 NORMALIZATION_RULES = (
     NormalizationRuleVector(
         "strict_source_type",
-        ("type(value) is int", "type(value) is float"),
-        ("bool", "subclasses", "strings"),
+        "Accept a numeric source value only when `type(value) is int` or "
+        "`type(value) is float`. Reject `bool`, subclasses, strings, all other "
+        "numeric types, and a float for which `math.isfinite(value)` is false.",
     ),
     NormalizationRuleVector(
         "single_decimal_conversion",
-        ("Decimal(str(value))",),
-        ("Decimal(value)", "repr(value)", "binary float arithmetic"),
+        "Convert the value exactly once with `Decimal(str(value))`. Do not use "
+        "`Decimal(value)`, `repr(value)`, prior formatting, binary float "
+        "arithmetic, a locale, or any alternate conversion path. Reject a "
+        "non-finite Decimal and reject signed zero (`decimal_value.is_zero()` "
+        "and `decimal_value.is_signed()`).",
     ),
     NormalizationRuleVector(
         "local_decimal_context",
-        (
-            "prec=64",
-            "rounding=ROUND_HALF_EVEN",
-            "Emin=-999999",
-            "Emax=999999",
-            "capitals=1",
-            "clamp=0",
-        ),
-        ("permission to round",),
+        "Perform Decimal arithmetic in a fresh local context with `prec=64`, "
+        "`rounding=ROUND_HALF_EVEN`, `Emin=-999999`, `Emax=999999`, "
+        "`capitals=1`, and `clamp=0`. Trap `InvalidOperation`, "
+        "`DivisionByZero`, and `Overflow`. Disable every other trap. Clear all "
+        "flags before every arithmetic operation and reject the source if any "
+        "context flag is set afterward. The configured rounding mode never "
+        "grants permission to round: `Inexact` or `Rounded` is always a failure.",
     ),
     NormalizationRuleVector(
         "price_quantum",
-        ("Decimal(1).scaleb(-digits)",),
-        ("being quantized",),
+        "Compute `price_quantum` exactly as `Decimal(1).scaleb(-digits)`. The "
+        "exact converted tick `point` and symbol `point` must both equal this "
+        "quantum, and tick and symbol `digits` must be equal. A price Decimal "
+        "is representable only when its tuple exponent is greater than or equal "
+        "to `-digits`; a value with more fractional places fails rather than "
+        "being quantized.",
     ),
     NormalizationRuleVector(
         "fixed_point_price_output",
-        ('format(decimal_value, f".{digits}f")', "trailing zeroes"),
-        ("exponent", "leading plus sign"),
+        "The price fields are tick `bid`, `ask`, `spread`, and `point`; bar "
+        "`open`, `high`, `low`, and `close`; and symbol `point` and `tick_size`. "
+        "Emit each with `format(decimal_value, f\".{digits}f\")`. The output must "
+        "contain exactly `digits` digits after the decimal point, including "
+        "trailing zeroes, and no exponent or leading plus sign. When `digits` "
+        "is zero, the output contains no decimal point.",
+    ),
+    NormalizationRuleVector(
+        "fixed_point_non_price_output",
+        "For `tick_value`, `contract_size`, `min_lot`, `lot_step`, and "
+        "`max_lot`, first use `format(decimal_value, \"f\")`, remove trailing "
+        "zeroes only from the fractional part, and then remove a trailing "
+        "decimal point. An exact zero is emitted as `0`; every other integral "
+        "value has no decimal point. The output has no exponent, leading plus "
+        "sign, or unnecessary trailing fractional zero. Field positivity and "
+        "ordering rules remain those of Bundle v1.",
     ),
     NormalizationRuleVector(
         "exact_spread_identity",
-        (
-            "spread == ask - bid",
-            "spread == spread_points_decimal * point",
-        ),
-        ("epsilon", "tolerance"),
-    ),
-    NormalizationRuleVector(
-        "signed_zero_rejected",
-        ("reject signed zero",),
-        (),
+        "Convert `spread_points` exactly once with "
+        "`Decimal(str(spread_points))`. In the same exact Decimal context, "
+        "require `spread == ask - bid` and "
+        "`spread == spread_points_decimal * point`. Both comparisons are exact. "
+        "No epsilon, tolerance, binary float operation, or value-changing "
+        "conversion is permitted.",
     ),
     NormalizationRuleVector(
         "ambiguity_fails_closed",
-        ("ambiguity fails closed",),
-        ("round, sort, repair", "retry", "fallback algorithm"),
+        "Any conversion, context, precision, scale, comparison, or formatting "
+        "ambiguity fails closed. The projector must not round, sort, repair, "
+        "substitute, retry, or use a fallback algorithm.",
+    ),
+)
+
+_SOURCE_FIELD_NAMES = tuple(vector.field for vector in SOURCE_FIELDS)
+_RESULT_FIELD_NAMES = tuple(vector.field for vector in RESULT_FIELDS)
+_QUOTE_FIELD_NAMES = tuple(
+    vector.field for vector in NESTED_FIELDS["CanonicalGoldQuoteFactsV1"]
+)
+_BAR_FIELD_NAMES = tuple(
+    vector.field for vector in NESTED_FIELDS["CanonicalGoldBarFactsV1"]
+)
+_TIMEFRAME_NAMES = tuple(vector.timeframe for vector in TIMEFRAMES)
+
+INVALID_RECORD_SHAPE_VECTORS = (
+    InvalidRecordShapeVector(
+        "missing_field",
+        "CanonicalGoldMarketFactsSourceV1",
+        _SOURCE_FIELD_NAMES,
+        _SOURCE_FIELD_NAMES[:-1],
+        False,
+    ),
+    InvalidRecordShapeVector(
+        "extra_field",
+        "CanonicalGoldMarketFactsSnapshotV1",
+        _RESULT_FIELD_NAMES,
+        (*_RESULT_FIELD_NAMES, "unexpected_field"),
+        False,
+    ),
+    InvalidRecordShapeVector(
+        "reordered_field",
+        "CanonicalGoldQuoteFactsV1",
+        _QUOTE_FIELD_NAMES,
+        (_QUOTE_FIELD_NAMES[1], _QUOTE_FIELD_NAMES[0], *_QUOTE_FIELD_NAMES[2:]),
+        False,
+    ),
+    InvalidRecordShapeVector(
+        "duplicate_field",
+        "CanonicalGoldBarFactsV1",
+        _BAR_FIELD_NAMES,
+        (*_BAR_FIELD_NAMES, "spread_points"),
+        False,
+    ),
+    InvalidRecordShapeVector(
+        "aliased_field",
+        "CanonicalGoldMarketFactsSnapshotV1",
+        _RESULT_FIELD_NAMES,
+        tuple(
+            "reference_time" if field == "reference_time_utc" else field
+            for field in _RESULT_FIELD_NAMES
+        ),
+        False,
+    ),
+    InvalidRecordShapeVector(
+        "case_changed_field",
+        "CanonicalGoldMarketFactsSourceV1",
+        _SOURCE_FIELD_NAMES,
+        tuple(
+            "BUNDLE_ID" if field == "bundle_id" else field
+            for field in _SOURCE_FIELD_NAMES
+        ),
+        False,
+    ),
+)
+
+INVALID_TYPE_SHAPE_VECTORS = (
+    InvalidTypeShapeVector(
+        "subclassed_value",
+        "CanonicalGoldTickSourceV1.tick_time_utc",
+        str,
+        _StringSubclass,
+        False,
+    ),
+    InvalidTypeShapeVector(
+        "wrong_container",
+        "CanonicalGoldMarketFactsSnapshotV1.timeframes",
+        tuple,
+        list,
+        False,
+    ),
+    InvalidTypeShapeVector(
+        "wrong_element_type",
+        "CanonicalGoldMarketFactsSnapshotV1.timeframes[*]",
+        "CanonicalGoldTimeframeFactsV1",
+        "CanonicalGoldBarFactsV1",
+        False,
+    ),
+)
+
+INVALID_TIMEFRAME_SHAPE_VECTORS = (
+    InvalidTimeframeShapeVector(
+        "wrong_timeframe_length",
+        _TIMEFRAME_NAMES,
+        _TIMEFRAME_NAMES[:-1],
+        False,
+    ),
+    InvalidTimeframeShapeVector(
+        "wrong_timeframe_order",
+        _TIMEFRAME_NAMES,
+        ("M15", "H4", "H1", "D1"),
+        False,
     ),
 )
 
 INVALID_SHAPE_VECTORS = (
-    InvalidShapeVector("missing_field", "missing", False),
-    InvalidShapeVector("extra_field", "extra", False),
-    InvalidShapeVector("reordered_field", "reordered", False),
-    InvalidShapeVector("duplicate_field", "duplicate", False),
-    InvalidShapeVector("aliased_field", "aliased", False),
-    InvalidShapeVector("case_changed_field", "case-changed", False),
-    InvalidShapeVector("subclassed_value", "subclasses", False),
-    InvalidShapeVector("wrong_container", "wrong tuple", False),
-    InvalidShapeVector("wrong_element_type", "wrong tuple element types", False),
-    InvalidShapeVector("wrong_timeframe_length", "tuple length", False),
-    InvalidShapeVector("wrong_timeframe_order", "timeframe order", False),
+    *INVALID_RECORD_SHAPE_VECTORS,
+    *INVALID_TYPE_SHAPE_VECTORS,
+    *INVALID_TIMEFRAME_SHAPE_VECTORS,
 )
 
 CALLER_FORBIDDEN_OVERRIDES = (
@@ -555,6 +686,32 @@ def _status_rows(text: str) -> tuple[tuple[str, bool, str | None], ...]:
     return tuple(rows)
 
 
+def _numbered_steps_after_heading(
+    text: str,
+    heading: str,
+) -> tuple[str, ...]:
+    lines = text.splitlines()
+    heading_index = lines.index(heading)
+    steps: list[str] = []
+    current: list[str] = []
+    for line in lines[heading_index + 1 :]:
+        if line.startswith("## "):
+            break
+        marker, separator, first_text = line.partition(". ")
+        if separator and marker.isdigit():
+            if current:
+                steps.append(" ".join(current))
+            current = [first_text.strip()]
+        elif current and (line.startswith("   ") or not line):
+            if line.strip():
+                current.append(line.strip())
+        elif current:
+            break
+    if current:
+        steps.append(" ".join(current))
+    return tuple(steps)
+
+
 def test_contract_vectors_are_immutable_and_have_exact_top_level_fields() -> None:
     assert len(SOURCE_FIELDS) == 13
     assert len(RESULT_FIELDS) == 24
@@ -601,6 +758,10 @@ def test_contract_vectors_are_immutable_and_have_exact_top_level_fields() -> Non
     )
     with pytest.raises(FrozenInstanceError):
         setattr(SOURCE_FIELDS[0], "field", "changed")
+    with pytest.raises(FrozenInstanceError):
+        setattr(NORMALIZATION_RULES[0], "exact_step", "changed")
+    with pytest.raises(FrozenInstanceError):
+        setattr(INVALID_SHAPE_VECTORS[0], "accepted", True)
     with pytest.raises(TypeError):
         RESULT_SAFETY_FLAGS["read_only"] = False  # type: ignore[index]
 
@@ -701,15 +862,26 @@ def test_decimal_normalization_rules_are_exact_and_have_no_fallback() -> None:
         "local_decimal_context",
         "price_quantum",
         "fixed_point_price_output",
+        "fixed_point_non_price_output",
         "exact_spread_identity",
-        "signed_zero_rejected",
         "ambiguity_fails_closed",
     )
-    for rule in NORMALIZATION_RULES:
-        for required_text in rule.required_text:
-            assert required_text in text
-        for forbidden_text in rule.forbidden_text:
-            assert forbidden_text in text
+    expected_steps = tuple(rule.exact_step for rule in NORMALIZATION_RULES)
+    assert _numbered_steps_after_heading(
+        text,
+        "## 8. Deterministic Normalization",
+    ) == expected_steps
+
+    semantically_inverted = text.replace(
+        "Do not use\n   `Decimal(value)`",
+        "Use\n   `Decimal(value)`",
+        1,
+    )
+    assert semantically_inverted != text
+    assert _numbered_steps_after_heading(
+        semantically_inverted,
+        "## 8. Deterministic Normalization",
+    ) != expected_steps
     assert "This is the only permitted normalization algorithm." in text
     assert "The projector does not read the clock." in text
 
@@ -760,8 +932,126 @@ def test_invalid_shape_vectors_are_complete_and_fail_closed() -> None:
     assert len(INVALID_SHAPE_VECTORS) == 11
     assert len({vector.name for vector in INVALID_SHAPE_VECTORS}) == 11
     assert all(vector.accepted is False for vector in INVALID_SHAPE_VECTORS)
-    for vector in INVALID_SHAPE_VECTORS:
-        assert vector.mutation in text
+
+    assert tuple(
+        (
+            vector.name,
+            vector.record_name,
+            vector.expected_fields,
+            vector.observed_fields,
+        )
+        for vector in INVALID_RECORD_SHAPE_VECTORS
+    ) == (
+        (
+            "missing_field",
+            "CanonicalGoldMarketFactsSourceV1",
+            _SOURCE_FIELD_NAMES,
+            _SOURCE_FIELD_NAMES[:-1],
+        ),
+        (
+            "extra_field",
+            "CanonicalGoldMarketFactsSnapshotV1",
+            _RESULT_FIELD_NAMES,
+            (*_RESULT_FIELD_NAMES, "unexpected_field"),
+        ),
+        (
+            "reordered_field",
+            "CanonicalGoldQuoteFactsV1",
+            _QUOTE_FIELD_NAMES,
+            (_QUOTE_FIELD_NAMES[1], _QUOTE_FIELD_NAMES[0], *_QUOTE_FIELD_NAMES[2:]),
+        ),
+        (
+            "duplicate_field",
+            "CanonicalGoldBarFactsV1",
+            _BAR_FIELD_NAMES,
+            (*_BAR_FIELD_NAMES, "spread_points"),
+        ),
+        (
+            "aliased_field",
+            "CanonicalGoldMarketFactsSnapshotV1",
+            _RESULT_FIELD_NAMES,
+            tuple(
+                "reference_time" if field == "reference_time_utc" else field
+                for field in _RESULT_FIELD_NAMES
+            ),
+        ),
+        (
+            "case_changed_field",
+            "CanonicalGoldMarketFactsSourceV1",
+            _SOURCE_FIELD_NAMES,
+            tuple(
+                "BUNDLE_ID" if field == "bundle_id" else field
+                for field in _SOURCE_FIELD_NAMES
+            ),
+        ),
+    )
+    assert all(
+        type(vector.expected_fields) is tuple
+        and type(vector.observed_fields) is tuple
+        and vector.expected_fields != vector.observed_fields
+        for vector in INVALID_RECORD_SHAPE_VECTORS
+    )
+
+    assert tuple(
+        (
+            vector.name,
+            vector.value_path,
+            vector.expected_type,
+            vector.observed_type,
+        )
+        for vector in INVALID_TYPE_SHAPE_VECTORS
+    ) == (
+        (
+            "subclassed_value",
+            "CanonicalGoldTickSourceV1.tick_time_utc",
+            str,
+            _StringSubclass,
+        ),
+        (
+            "wrong_container",
+            "CanonicalGoldMarketFactsSnapshotV1.timeframes",
+            tuple,
+            list,
+        ),
+        (
+            "wrong_element_type",
+            "CanonicalGoldMarketFactsSnapshotV1.timeframes[*]",
+            "CanonicalGoldTimeframeFactsV1",
+            "CanonicalGoldBarFactsV1",
+        ),
+    )
+    assert issubclass(_StringSubclass, str) and _StringSubclass is not str
+    assert all(
+        vector.expected_type != vector.observed_type
+        for vector in INVALID_TYPE_SHAPE_VECTORS
+    )
+
+    assert tuple(
+        (
+            vector.name,
+            vector.expected_timeframes,
+            vector.observed_timeframes,
+        )
+        for vector in INVALID_TIMEFRAME_SHAPE_VECTORS
+    ) == (
+        ("wrong_timeframe_length", _TIMEFRAME_NAMES, _TIMEFRAME_NAMES[:-1]),
+        ("wrong_timeframe_order", _TIMEFRAME_NAMES, ("M15", "H4", "H1", "D1")),
+    )
+    assert all(
+        type(vector.expected_timeframes) is tuple
+        and type(vector.observed_timeframes) is tuple
+        and vector.expected_timeframes != vector.observed_timeframes
+        for vector in INVALID_TIMEFRAME_SHAPE_VECTORS
+    )
+
+    normalized_text = " ".join(text.split())
+    assert (
+        "Every nested source and result record named in Sections 6 and 7 must "
+        "be the exact frozen, slotted dataclass type specified by this contract. "
+        "Subclasses, mappings, lists, iterators, wrong tuple element types, and "
+        "records with missing, extra, duplicated, aliased, case-changed, or "
+        "reordered fields fail closed."
+    ) in normalized_text
     assert "Subclasses are invalid. `bool` is not an `int`. Lists are not tuples." in text
     assert "Unknown, additional,\nduplicate, reordered, subclassed, or contradictory" in text
 
