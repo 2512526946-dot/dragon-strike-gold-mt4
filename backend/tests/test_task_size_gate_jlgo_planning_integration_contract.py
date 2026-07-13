@@ -67,6 +67,62 @@ REASON_CODE_CONSTANT_NAMES = (
     "SINGLE_WORK_ORDER_ALLOWED",
     "PRO_MODEL_REQUIRED",
 )
+NON_ACTIVATING_VERIFICATION_PLANNING_VALUES = (
+    'current_maturity="INTEGRATED"',
+    'target_maturity="VERIFIED"',
+    'maturity_reason="non-activating verification"',
+    "objective_count=1",
+    'capability_layers=("VERIFICATION",)',
+    "cross_package_activation=False",
+    'affected_surfaces=("offline_verification_evidence",)',
+    'risk_and_policy_impacts=("verification_does_not_grant_activation",'
+    '"no_runtime_authority_change","no_trading_or_execution_authority")',
+    'prohibited_capabilities=("merge","push_main","tag","deployment",'
+    '"activation","runtime_source_change","mt4_access","ea_call",'
+    '"order_execution","trading","second_work_order")',
+)
+NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS = (
+    MappingProxyType(
+        {
+            "case_id": "allowed_file_is_not_offline_verification_evidence",
+            "failure": "non_verification_scope",
+            "expected_evaluator_calls": 0,
+            "expected_writes": False,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "affected_subsystem_is_not_integrated",
+            "failure": "maturity_evidence_missing",
+            "expected_evaluator_calls": 0,
+            "expected_writes": False,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "runtime_authority_surface_present",
+            "failure": "runtime_or_activation_scope",
+            "expected_evaluator_calls": 0,
+            "expected_writes": False,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "scope_or_dependency_is_unknown",
+            "failure": "unknown_evidence",
+            "expected_evaluator_calls": 0,
+            "expected_writes": False,
+            "expected_disposition": "STOP_UNCERTAIN",
+            "expected_next_skill": "none",
+        }
+    ),
+)
 SPLIT_REASON_CODE_VECTOR_KEYS = frozenset(
     {
         "case_id",
@@ -922,6 +978,107 @@ def test_jlgo_locks_result_dispositions_and_explicit_user_authority() -> None:
     assert "TaskSizeGate result 只是规划分类，不是用户批准" in normalized
     assert "创建或切换分支、修改文件、调用 Skill、merge、tag、部署、activation" in normalized
     assert "显式批准" in normalized
+
+
+def test_jlgo_locks_exact_non_activating_verification_planning_values() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+    marked_values = _marked_lines(
+        skill,
+        start="NON_ACTIVATING_VERIFICATION_PLANNING_VALUES_BEGIN",
+        end="NON_ACTIVATING_VERIFICATION_PLANNING_VALUES_END",
+    )
+
+    assert marked_values == NON_ACTIVATING_VERIFICATION_PLANNING_VALUES
+    parsed = {
+        name: ast.literal_eval(value)
+        for name, value in (line.split("=", 1) for line in marked_values)
+    }
+    assert type(parsed["current_maturity"]) is str
+    assert type(parsed["target_maturity"]) is str
+    assert type(parsed["maturity_reason"]) is str
+    assert type(parsed["objective_count"]) is int
+    assert parsed["objective_count"] == 1
+    assert type(parsed["capability_layers"]) is tuple
+    assert parsed["capability_layers"] == ("VERIFICATION",)
+    assert type(parsed["cross_package_activation"]) is bool
+    assert parsed["cross_package_activation"] is False
+    assert parsed["affected_surfaces"] == (
+        "offline_verification_evidence",
+    )
+    assert parsed["risk_and_policy_impacts"] == (
+        "verification_does_not_grant_activation",
+        "no_runtime_authority_change",
+        "no_trading_or_execution_authority",
+    )
+    assert parsed["prohibited_capabilities"] == (
+        "merge",
+        "push_main",
+        "tag",
+        "deployment",
+        "activation",
+        "runtime_source_change",
+        "mt4_access",
+        "ea_call",
+        "order_execution",
+        "trading",
+        "second_work_order",
+    )
+    assert all(
+        type(item) is str
+        for field in (
+            "capability_layers",
+            "affected_surfaces",
+            "risk_and_policy_impacts",
+            "prohibited_capabilities",
+        )
+        for item in parsed[field]
+    )
+
+
+def test_jlgo_scope_proof_failures_are_immutable_zero_call_stops() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+
+    assert tuple(
+        vector["case_id"]
+        for vector in NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS
+    ) == (
+        "allowed_file_is_not_offline_verification_evidence",
+        "affected_subsystem_is_not_integrated",
+        "runtime_authority_surface_present",
+        "scope_or_dependency_is_unknown",
+    )
+    for vector in NON_ACTIVATING_VERIFICATION_SCOPE_FAILURE_VECTORS:
+        assert type(vector) is MappingProxyType
+        assert vector["expected_evaluator_calls"] == 0
+        assert vector["expected_writes"] is False
+        assert vector["expected_disposition"] == "STOP_UNCERTAIN"
+        assert vector["expected_next_skill"] == "none"
+        with pytest.raises(TypeError):
+            vector["expected_evaluator_calls"] = 1
+
+    for requirement in (
+        "every allowed file contains offline verification evidence only",
+        "every affected subsystem already has reviewed `INTEGRATED` evidence",
+        "no production code, runtime-authority code",
+        "stop before evidence construction, call the evaluator zero",
+        "perform no write, emit workflow-level `STOP_UNCERTAIN`",
+        "set the next\nSkill to none",
+    ):
+        assert requirement in skill
+
+
+def test_jlgo_propagation_preserves_single_call_and_g174_boundary() -> None:
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+
+    assert skill.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    assert "This block adds no thirtieth evidence field" in skill
+    assert "Do not retry, fallback, repair evidence or result" in skill
+    assert "A passing result is planning\nclassification only" in skill
+    assert "does not implement pre-write or review propagation" in skill
+    assert "does not equal user approval" in skill
+    assert "or authorize G174" in skill
+    assert "before G174 can be reconsidered" in skill
+    assert "plan the remaining pre-write and review propagation" in skill
 
 
 def test_static_tests_do_not_call_evaluator_or_claim_end_to_end_verification() -> None:

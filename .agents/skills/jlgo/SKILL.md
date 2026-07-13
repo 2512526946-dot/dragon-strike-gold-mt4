@@ -33,6 +33,62 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 
 ## TaskSizeGate planning checkpoint
 
+### Non-activating verification planning propagation
+
+This JLGO-only rule propagates the production TaskSizeGate exception defined by
+`docs/implementation_plans/task_size_gate_non_activating_verification_transition_contract.md`.
+It does not implement pre-write or review propagation, activate a capability,
+complete verification, or authorize G174.
+
+Before constructing evidence for an `INTEGRATED -> VERIFIED` candidate, JLGO
+must prove from fresh caller-owned Git, frozen scope, dependency, maturity,
+risk, and policy evidence that:
+
+- every allowed file contains offline verification evidence only;
+- every affected subsystem already has reviewed `INTEGRATED` evidence;
+- the candidate contains no production code, runtime-authority code,
+  deployment, activation, MT4, EA, order, execution, or trading surface; and
+- the scope and dependencies are complete, exact, and free of unknowns.
+
+Do not infer these facts from a work-order name, desired result, path name, or
+the absence of an activation file. If any proof is missing, ambiguous, stale,
+or contradictory, stop before evidence construction, call the evaluator zero
+times, perform no write, emit workflow-level `STOP_UNCERTAIN`, and set the next
+Skill to none.
+
+After that proof passes, construct the existing 29 fields with these exact
+built-in values and order. This block adds no thirtieth evidence field:
+
+```text
+NON_ACTIVATING_VERIFICATION_PLANNING_VALUES_BEGIN
+current_maturity="INTEGRATED"
+target_maturity="VERIFIED"
+maturity_reason="non-activating verification"
+objective_count=1
+capability_layers=("VERIFICATION",)
+cross_package_activation=False
+affected_surfaces=("offline_verification_evidence",)
+risk_and_policy_impacts=("verification_does_not_grant_activation","no_runtime_authority_change","no_trading_or_execution_authority")
+prohibited_capabilities=("merge","push_main","tag","deployment","activation","runtime_source_change","mt4_access","ea_call","order_execution","trading","second_work_order")
+NON_ACTIVATING_VERIFICATION_PLANNING_VALUES_END
+```
+
+Each string must have exact built-in `str` type, `objective_count` exact
+built-in `int` type, `cross_package_activation` exact built-in `bool` type,
+and each tuple exact built-in `tuple[str, ...]` type. Missing, extra,
+reordered, duplicate, aliased, case-changed, subclassed, wrong-container, or
+meaningless values are invalid. The three tuple values are evidence
+discriminators, not result reason codes or permissions.
+
+Use the existing single production evaluator call and exact result validation
+below. Do not retry, fallback, repair evidence or result, add a local
+classifier, or call the evaluator a second time. A passing result is planning
+classification only. It does not equal user approval and must not create or
+switch a branch, call a Skill, merge, tag, deploy, activate, access MT4, call
+an EA, execute an order, permit trading, or authorize G174. JLGO must instead
+plan the remaining pre-write and review propagation as separately approved
+stages before G174 can be reconsidered.
+
 只有在第 8 步已经证明当前位于 clean synchronized `main`、没有 active
 unmerged work branch，并且一个新开发候选工单已经冻结后，才执行本节。
 active work branch 仍只进入 review、revision 或 merge 路径；其他分支、dirty
