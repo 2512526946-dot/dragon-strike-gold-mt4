@@ -192,7 +192,7 @@ Critical-path values are:
 | W3 | Canonical docs fixture producer | Deterministic checked-in default source for canonical diagnostics. | `VERIFIED` | Canonical assets, zero-argument producer, strict envelope validation, and fail-closed tests exist. | Connect the approved producer only through the separately reviewed diagnostics migration boundary. | W1 -> W2, W5 | Medium | `PRO_REQUIRED` | CRITICAL | 1-2 | 35-55 / 5-10 | Low | No |
 | W4 | TradeMax MT4 Demo Writer and real Bundle bridge | MT4 Demo publishes atomic canonical bundles through one approved bridge. | `CONTRACT_ONLY` | Read-only bridge and Bundle writer requirements are documented. | MQL4 writer, manifest-last atomic publish, symbol mapping, sandbox integration, and real Demo evidence. | W1 -> W6, W14, W20 | High | `PRO_REQUIRED` | PARALLEL_CRITICAL | 8-12 | 15-25 / 80-140 | High | Yes, estimated 2-4 weeks of broker-terminal observation |
 | W5 | ReplayRunner | Versioned deterministic offline replay infrastructure; v1 covers the canonical diagnostics chain. | `VERIFIED` | Frozen public types and server-owned registry, strict summary validation, bounded production runner, genuine ReplayRunner -> G153 -> G151 integration, and deterministic regression evidence exist for v1. | After W6-W13 are separately implemented and integrated, add separately contracted replay stages for the complete decision chain and W18 linkage. Current v1 grants no activation or runtime execution authority. | W1, W3 -> W6-W13, W18 | High | `PRO_REQUIRED` | CRITICAL | 4-7 | 40-80 / 20-40 | Medium | No |
-| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | The accepted G175 Canonical Gold Market Facts Snapshot v1 contract and G176 immutable static contract vectors establish the server-owned same-attempt authority, exact source/result schemas, Decimal normalization, status/reason mapping, failure identity, and read-only safety flags. | Implement the pure projector and server-owned source adapter; add canonical-fixture integration and deterministic verification; separately contract and deliver session, spread/freshness, volatility/structure, and economic-window facts and features; then add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 8-12 | 25-40 / 55-95 | Medium | No |
+| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | The accepted G175 contract and G176 immutable static vectors establish the snapshot boundary. G177 implements the 12 frozen, slotted source/result production types and their direct type tests, but no projector behavior or runtime authority. | Implement projector validation, Decimal normalization, and status behavior; build the server-owned source adapter; add canonical-fixture integration and deterministic verification; separately contract and deliver session, spread/freshness, volatility/structure, and economic-window facts and features; then add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 7-11 | 35-55 / 50-90 | Medium | No |
 | W7 | Deterministic analysis and opportunity assessment | One explainable, versioned, non-LLM decision path. | `POLICY_ONLY` | Advice authority and explanation boundaries are documented; placeholder observation logic exists. | Strategy contract, deterministic candidate logic, invalidation conditions, reason codes, and replay evidence. | W6 -> W10 | High | `PRO_REQUIRED` | CRITICAL | 6-10 | 10-20 / 50-90 | High | No |
 | W8 | RiskGate | One server-owned fail-closed risk decision. | `CONTRACT_ONLY` | Safety-gate and execution-authority contracts define veto semantics and major prohibitions. | Typed policy, daily loss, consecutive loss, spread, freshness, event, stop-loss, leverage, and no-overnight enforcement. | W10 -> W9, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 10-20 / 45-80 | Medium | No |
 | W9 | PositionSizing | Hard-calculated GOLD lot size within approved loss limits. | `CONTRACT_ONLY` | Position sizing authority and required inputs are documented. | Contract math, broker precision, min/max/step handling, loss caps, invalid contract handling, and regression vectors. | W8, W10 -> W11, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 8-15 / 40-70 | High | No |
@@ -231,34 +231,37 @@ produce reviewed upstream boundaries, plus later W18 linkage. Those upstream
 packages retain their own engineering-hour estimates; their work is not
 double-counted in W5.
 
-### 5.2 W6 post-contract-vector re-estimation
+### 5.2 W6 post-production-type re-estimation
 
-W6 is `TESTS_ONLY`, strictly on the evidence of the accepted G175 Canonical
-Gold Market Facts Snapshot v1 contract and the G176 immutable static contract
-vectors. This maturity does not claim a projector, source adapter, runtime
-integration, ReplayRunner W6 stage, activation, or verification.
+W6 remains `TESTS_ONLY`. G175 and G176 establish the accepted Canonical Gold
+Market Facts Snapshot v1 contract and immutable static vectors. G177 adds the
+12 frozen, slotted source/result production types and direct tests for their
+field order, annotations, nested shapes, immutability, fresh construction, and
+absence of runtime I/O. It does not implement projector behavior, source
+validation, Decimal normalization, a source adapter, runtime integration, a
+ReplayRunner W6 stage, activation, or verification.
 
-The invested range moves from 15-25 to 25-40 equivalent engineering hours.
-The increase reflects the completed authority and identity design, exact
-source/result and nested type contracts, deterministic Decimal normalization,
-status/reason and fail-closed rules, immutable vectors, negative-shape
-coverage, and review hardening. It is an engineering-effort estimate and is
-not derived from work-order, commit, test, file, line, version, or document
+The invested range moves from 25-40 to 35-55 equivalent engineering hours.
+G177's estimated 8-12 hours is evidence of completed production type modeling,
+annotation and immutability work, direct validation, and review. The new range
+is an independent uncertainty estimate, not a mechanical addition. It
+is not derived from work-order, commit, test, file, line, version, or document
 counts.
 
-The remaining range moves from 45-80 to 55-95 hours. G175 made the remaining
-boundaries more explicit: a pure projector, a server-owned same-attempt source
-adapter, canonical-fixture integration, deterministic non-activating
-verification, separate session and spread/freshness facts, separate volatility
-and structure features, economic-window inputs, and a versioned ReplayRunner
-W6 stage before W7. Clarifying this scope increases the remaining denominator;
-it does not imply that any runtime capability was delivered.
+The remaining range moves from 55-95 to 50-90 hours. The type foundation
+reduces some implementation ambiguity, but the estimate deliberately retains
+uncertainty for projector validation and Decimal behavior, the server-owned
+same-attempt source adapter, canonical-fixture integration, deterministic
+non-activating verification, separate session and spread/freshness facts,
+separate volatility and structure features, economic-window inputs, and a
+versioned ReplayRunner W6 stage before W7. This is an independent remaining-
+effort estimate, not a mechanical subtraction of G177's estimated hours.
 
-The estimate of remaining minimal work orders moves from 5-8 to 8-12. The
-range reflects the independent contract, tests, implementation, hardening,
-integration, and verification boundaries that must remain separately reviewed
-where material. It is a planning estimate of remaining engineering stages, not
-a count of repository artifacts already produced.
+The estimate of remaining minimal work orders moves from 8-12 to 7-11. G177
+completed the production type foundation, while projector behavior, adapter,
+integration, verification, later feature slices, and replay-stage work remain
+separate reviewable stages. This is a planning estimate of remaining
+engineering stages, not a count of repository artifacts already produced.
 
 ## 6. Endpoint progress baseline
 
@@ -267,30 +270,30 @@ a count of repository artifacts already produced.
 W0 through W20 sum to:
 
 ```text
-estimated invested hours: 522-856
-estimated remaining hours: 930-1625
-central weighted progress: 35.0%
-mathematical estimate bounds: 24.3%-47.9%
+estimated invested hours: 532-871
+estimated remaining hours: 925-1620
+central weighted progress: 35.5%
+mathematical estimate bounds: 24.7%-48.5%
 reporting range after judgment: approximately 25%-40%
 ```
 
 The reporting range is deliberately wider than a point estimate. The largest
 uncertainty lies in the real TradeMax bridge, EA integration, recovery,
 circuit-breaker behavior, and calendar-based Demo evidence. W5 verification
-and the W6 contract-vector evidence raise invested effort, while the newly
-clarified W6 delivery stages also raise the remaining denominator. Those larger
-execution-chain uncertainties do not justify narrowing or raising the
-reporting range.
+and the W6 contract, vector, and production-type evidence raise invested
+effort. The still-undelivered W6 runtime and feature stages remain in the
+denominator. Those larger execution-chain uncertainties do not justify
+narrowing or raising the reporting range.
 
 ### 6.2 Live Auto-Execution
 
 W0 through W21 sum to:
 
 ```text
-estimated invested hours: 527-866
-estimated remaining hours: 1070-1875
-central engineering progress: 32.1%
-mathematical estimate bounds: 21.9%-44.7%
+estimated invested hours: 537-881
+estimated remaining hours: 1065-1870
+central engineering progress: 32.6%
+mathematical estimate bounds: 22.3%-45.3%
 reporting range after judgment: approximately 20%-40%
 Live activation readiness: 0%
 ```
