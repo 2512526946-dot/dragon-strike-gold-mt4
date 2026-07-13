@@ -1,8 +1,8 @@
-"""Static contract vectors for the future jl-review TaskSizeGate checkpoint.
+"""Static contract vectors for the jl-review TaskSizeGate checkpoint.
 
-These tests lock the WF-4K contract without importing or calling the production
-evaluator, a workflow Skill, or a future runtime integration. They do not prove
-that the jl-review checkpoint is implemented, activated, or verified end to end.
+These tests audit the Skill's declared runtime procedure without importing or
+calling the production evaluator. They do not prove execution of a review,
+activation, or end-to-end verification.
 """
 
 from __future__ import annotations
@@ -251,6 +251,18 @@ NO_AUTOMATIC_ACTIONS = (
     "enable a reader, access real MT4, call an EA, or create an order",
 )
 
+NON_ACTIVATING_VERIFICATION_REVIEW_LINES = (
+    'current_maturity="INTEGRATED"',
+    'target_maturity="VERIFIED"',
+    'maturity_reason="non-activating verification"',
+    "objective_count=1",
+    'capability_layers=("VERIFICATION",)',
+    "cross_package_activation=False",
+    'affected_surfaces=("offline_verification_evidence",)',
+    'risk_and_policy_impacts=("verification_does_not_grant_activation","no_runtime_authority_change","no_trading_or_execution_authority")',
+    'prohibited_capabilities=("merge","push_main","tag","deployment","activation","runtime_source_change","mt4_access","ea_call","order_execution","trading","second_work_order")',
+)
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -258,6 +270,14 @@ def _read(path: Path) -> str:
 
 def _normalized(text: str) -> str:
     return " ".join(text.split())
+
+
+def _between(text: str, begin: str, end: str) -> str:
+    _, separator, tail = text.partition(begin)
+    assert separator
+    body, separator, _ = tail.partition(end)
+    assert separator
+    return body.strip()
 
 
 def _contract_table_rules(text: str) -> dict[str, str]:
@@ -582,13 +602,58 @@ def test_vectors_do_not_import_or_call_runtime_integration() -> None:
     assert "TaskSizeGateResult" not in _called_names(tree)
 
 
-def test_jl_review_runtime_integration_is_still_absent() -> None:
+def test_jl_review_runtime_checkpoint_reuses_the_production_interface_once() -> None:
     skill = _read(JL_REVIEW_SKILL_PATH)
 
-    assert "evaluate_task_size_gate" not in skill
-    assert "TaskSizeGateEvidence" not in skill
-    assert "TaskSizeGateResult" not in skill
-    assert "result = evaluate_task_size_gate(evidence=evidence)" not in skill
+    assert skill.count("result = evaluate_task_size_gate(evidence=evidence)") == 1
+    for name in (
+        "TaskSizeGateEvidence",
+        "TaskSizeGateResult",
+        "ALLOW_SINGLE_WORK_ORDER",
+        "SINGLE_WORK_ORDER_ALLOWED",
+        "PRO_MODEL_REQUIRED",
+        "evaluate_task_size_gate",
+    ):
+        assert name in skill
+    assert "does not create a review-local classifier" in skill
+    assert "Do not retry, fallback, invoke a local" in skill
+
+
+def test_jl_review_runtime_checkpoint_has_exact_evidence_and_fail_closed_routing() -> None:
+    skill = _read(JL_REVIEW_SKILL_PATH)
+    normalized = _normalized(skill)
+    fields = _between(
+        skill,
+        "TASK_SIZE_GATE_REVIEW_EVIDENCE_FIELDS_BEGIN",
+        "TASK_SIZE_GATE_REVIEW_EVIDENCE_FIELDS_END",
+    )
+
+    assert tuple(line for line in fields.splitlines() if line) == EVIDENCE_FIELDS
+    assert "Any Git, frozen-order, commit-authority, dependency, scope, size-or-layer," in skill
+    assert "Every checkpoint failure prevents `PASS` and `PASS WITH FOLLOW-UP`" in skill
+    assert "fixes the formal conclusion to `NO-GO`, and fixes the next Skill to `无`" in normalized
+    assert "TaskSizeGate checkpoint failure 的 `NO-GO`：`下一 Skill` 必须写 `无`" in skill
+    assert "不得建议或自动路由到 `$jlgo`" in skill
+    assert "REVIEW_CHECKPOINT_EVALUATOR_RESULT_INVALID" in skill
+    assert "REVIEW_CHECKPOINT_UNEXPECTED_FAILURE" in skill
+
+
+def test_jl_review_runtime_checkpoint_propagates_non_activating_verification() -> None:
+    skill = _read(JL_REVIEW_SKILL_PATH)
+    values = _between(
+        skill,
+        "TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_REVIEW_VALUES_BEGIN",
+        "TASK_SIZE_GATE_NON_ACTIVATING_VERIFICATION_REVIEW_VALUES_END",
+    )
+
+    assert "every allowed file is offline verification evidence only" in skill
+    assert "every affected subsystem has reviewed `INTEGRATED` evidence at frozen base" in skill
+    assert "no production code, runtime authority, deployment, activation," in skill
+    assert tuple(line for line in values.splitlines() if line) == (
+        NON_ACTIVATING_VERIFICATION_REVIEW_LINES
+    )
+    assert "does not complete verification, grant activation, or authorize G174" in skill
+    assert "makes zero evaluator calls, has no automatic action" in skill
 
 
 def test_contract_vectors_do_not_claim_implementation_or_activation() -> None:
@@ -597,6 +662,6 @@ def test_contract_vectors_do_not_claim_implementation_or_activation() -> None:
 
     assert module_doc is not None
     assert "do not prove" in module_doc
-    assert "implemented, activated, or verified end to end" in module_doc
+    assert "activation, or end-to-end verification" in module_doc
     assert "does not modify a Skill, add tests, implement the checkpoint" in contract
     assert "does not implement or claim runtime integration, activation, verification" in contract
