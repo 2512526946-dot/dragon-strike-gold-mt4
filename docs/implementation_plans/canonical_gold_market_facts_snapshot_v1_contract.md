@@ -202,16 +202,16 @@ positive. `reference_time_utc` and `bars_generated_at_utc` must be strict UTC
 
 `CanonicalGoldUpstreamEvidenceV1` has exactly these fields in this order:
 
-| Order | Field | Exact value or rule |
-| ---: | --- | --- |
-| 1 | `reader_passed` | built-in `bool`, exactly `true` |
-| 2 | `reader_status_code` | `CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID` |
-| 3 | `value_status_code` | `CANONICAL_MT4_BUNDLE_V1_VALUE_VALID` |
-| 4 | `data_quality_passed` | built-in `bool`, exactly `true` |
-| 5 | `data_quality_status_code` | `CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED` |
-| 6 | `ready_for_readonly_analysis` | built-in `bool`, exactly `true` |
-| 7 | `warning_codes` | exact empty built-in tuple |
-| 8 | `same_attempt_identity_bound` | built-in `bool`, exactly `true` |
+| Order | Field | Exact type | Exact value or rule |
+| ---: | --- | --- | --- |
+| 1 | `reader_passed` | built-in `bool` | Exactly `true` |
+| 2 | `reader_status_code` | built-in `str` | `CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID` |
+| 3 | `value_status_code` | built-in `str` | `CANONICAL_MT4_BUNDLE_V1_VALUE_VALID` |
+| 4 | `data_quality_passed` | built-in `bool` | Exactly `true` |
+| 5 | `data_quality_status_code` | built-in `str` | `CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED` |
+| 6 | `ready_for_readonly_analysis` | built-in `bool` | Exactly `true` |
+| 7 | `warning_codes` | exact built-in `tuple[str, ...]` | Exactly empty |
+| 8 | `same_attempt_identity_bound` | built-in `bool` | Exactly `true` |
 
 V1 deliberately rejects passed-with-warning upstream evidence. A later policy
 may define specific warning handling through a separate contract. It must not
@@ -219,47 +219,50 @@ be inferred in the first implementation.
 
 ### 6.2 Tick source
 
-`CanonicalGoldTickSourceV1` contains, in order:
+`CanonicalGoldTickSourceV1` has exactly these fields in this order:
 
-```text
-bid
-ask
-spread
-spread_points
-digits
-point
-tick_time_utc
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `bid` | built-in `int` or built-in `float` |
+| 2 | `ask` | built-in `int` or built-in `float` |
+| 3 | `spread` | built-in `int` or built-in `float` |
+| 4 | `spread_points` | built-in `int` |
+| 5 | `digits` | built-in `int` |
+| 6 | `point` | built-in `int` or built-in `float` |
+| 7 | `tick_time_utc` | built-in `str` |
 
-The values retain the canonical JSON numeric and timestamp meaning. Numeric
-values must be finite exact built-in `int` or `float` values, excluding
-`bool`. Integer fields must be exact built-in `int`. Cross-field rules from the
-canonical contract remain mandatory.
+The numeric values retain the canonical JSON meaning and must be finite.
+`bool` and every numeric subclass are invalid. `tick_time_utc` is a strict UTC
+`Z` timestamp. Cross-field rules from the canonical contract remain
+mandatory.
 
 ### 6.3 Timeframe and bar source
 
-`timeframes` contains exactly `M15`, `H1`, `H4`, and `D1` in that order. Each
-`CanonicalGoldTimeframeSourceV1` contains, in order:
+`timeframes` is an exact built-in tuple containing exactly four
+`CanonicalGoldTimeframeSourceV1` records. Their `timeframe` values are `M15`,
+`H1`, `H4`, and `D1` in that order. Each record has exactly these fields in
+this order:
 
-```text
-timeframe
-period_seconds
-bars
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `timeframe` | built-in `str` |
+| 2 | `period_seconds` | built-in `int` |
+| 3 | `bars` | exact built-in `tuple[CanonicalGoldBarSourceV1, ...]` |
 
 The fixed period mapping remains `900`, `3600`, `14400`, and `86400` seconds.
-Each `bars` value is a non-empty built-in tuple of no more than 500
-`CanonicalGoldBarSourceV1` records. Each bar contains, in order:
+Each `bars` value is non-empty and contains no more than 500 exact
+`CanonicalGoldBarSourceV1` records. Each bar has exactly these fields in this
+order:
 
-```text
-open_time_utc
-open
-high
-low
-close
-tick_volume
-spread_points
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `open_time_utc` | built-in `str` |
+| 2 | `open` | built-in `int` or built-in `float` |
+| 3 | `high` | built-in `int` or built-in `float` |
+| 4 | `low` | built-in `int` or built-in `float` |
+| 5 | `close` | built-in `int` or built-in `float` |
+| 6 | `tick_volume` | built-in `int` |
+| 7 | `spread_points` | built-in `int` |
 
 Bars must be completed, strictly ascending, unique, finite, and internally
 consistent under the canonical Bundle v1 rules. Lists, mappings, iterators, and
@@ -267,28 +270,30 @@ subclassed containers are invalid source records.
 
 ### 6.4 Symbol source
 
-`CanonicalGoldSymbolSpecSourceV1` contains, in order:
+`CanonicalGoldSymbolSpecSourceV1` has exactly these fields in this order:
 
-```text
-spec_time_utc
-digits
-point
-tick_size
-tick_value
-contract_size
-min_lot
-lot_step
-max_lot
-base_currency
-profit_currency
-margin_currency
-trade_mode_readonly_label
-session_status_readonly_label
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `spec_time_utc` | built-in `str` |
+| 2 | `digits` | built-in `int` |
+| 3 | `point` | built-in `int` or built-in `float` |
+| 4 | `tick_size` | built-in `int` or built-in `float` |
+| 5 | `tick_value` | built-in `int` or built-in `float` |
+| 6 | `contract_size` | built-in `int` or built-in `float` |
+| 7 | `min_lot` | built-in `int` or built-in `float` |
+| 8 | `lot_step` | built-in `int` or built-in `float` |
+| 9 | `max_lot` | built-in `int` or built-in `float` |
+| 10 | `base_currency` | built-in `str` |
+| 11 | `profit_currency` | built-in `str` |
+| 12 | `margin_currency` | built-in `str` |
+| 13 | `trade_mode_readonly_label` | built-in `str` |
+| 14 | `session_status_readonly_label` | built-in `str` |
 
-The values retain their canonical contract meaning. The two readonly labels
-are observed writer metadata only. They are not market-session policy,
-broker-trade permission, system permission, or ExecutionGate evidence.
+All numeric fields must be finite, exact built-in `int` or `float` values;
+`bool` and subclasses are invalid. `spec_time_utc` is a strict UTC `Z`
+timestamp. The values retain their canonical contract meaning. The two
+readonly labels are observed writer metadata only. They are not market-session
+policy, broker-trade permission, system permission, or ExecutionGate evidence.
 
 ## 7. Result Type
 
@@ -296,7 +301,7 @@ broker-trade permission, system permission, or ExecutionGate evidence.
 
 | Order | Field | Exact type |
 | ---: | --- | --- |
-| 1 | `contract_version` | built-in `str` |
+| 1 | `contract_version` | built-in `str`, exactly `1.0` |
 | 2 | `passed` | built-in `bool` |
 | 3 | `status_code` | built-in `str` |
 | 4 | `reason_codes` | built-in `tuple[str, ...]` |
@@ -309,7 +314,7 @@ broker-trade permission, system permission, or ExecutionGate evidence.
 | 11 | `broker_symbol` | built-in `str` or `None` |
 | 12 | `reference_time_utc` | built-in `str` or `None` |
 | 13 | `quote` | `CanonicalGoldQuoteFactsV1` or `None` |
-| 14 | `timeframes` | built-in tuple of facts records |
+| 14 | `timeframes` | exact built-in tuple of four `CanonicalGoldTimeframeFactsV1` records |
 | 15 | `symbol_spec` | `CanonicalGoldSymbolFactsV1` or `None` |
 | 16 | `freshness` | `CanonicalGoldFreshnessFactsV1` or `None` |
 | 17 | `read_only` | built-in `bool` |
@@ -328,101 +333,146 @@ execution field.
 
 ### 7.1 Quote facts
 
-`CanonicalGoldQuoteFactsV1` contains, in order:
+`CanonicalGoldQuoteFactsV1` has exactly these fields in this order:
 
-```text
-bid_decimal
-ask_decimal
-spread_decimal
-spread_points
-digits
-point_decimal
-tick_time_utc
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `bid_decimal` | built-in `str` |
+| 2 | `ask_decimal` | built-in `str` |
+| 3 | `spread_decimal` | built-in `str` |
+| 4 | `spread_points` | built-in `int` |
+| 5 | `digits` | built-in `int` |
+| 6 | `point_decimal` | built-in `str` |
+| 7 | `tick_time_utc` | built-in `str` |
 
 Decimal fields are built-in ASCII strings in fixed-point notation. They are
 not binary floating-point values in the result.
 
-### 7.2 Bar facts
+### 7.2 Timeframe and bar facts
 
-Result timeframes preserve the exact canonical timeframe order. Each result
-bar contains, in order:
+`timeframes` is an exact built-in tuple containing exactly four
+`CanonicalGoldTimeframeFactsV1` records. Their `timeframe` values are `M15`,
+`H1`, `H4`, and `D1` in that order. Each record has exactly these fields in
+this order:
 
-```text
-open_time_utc
-open_decimal
-high_decimal
-low_decimal
-close_decimal
-tick_volume
-spread_points
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `timeframe` | built-in `str` |
+| 2 | `period_seconds` | built-in `int` |
+| 3 | `bars` | exact built-in `tuple[CanonicalGoldBarFactsV1, ...]` |
+
+The exact `period_seconds` values are `900`, `3600`, `14400`, and `86400` in
+the same order. Every `bars` tuple is non-empty, preserves the accepted source
+order, and contains exact `CanonicalGoldBarFactsV1` records. Each bar has
+exactly these fields in this order:
+
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `open_time_utc` | built-in `str` |
+| 2 | `open_decimal` | built-in `str` |
+| 3 | `high_decimal` | built-in `str` |
+| 4 | `low_decimal` | built-in `str` |
+| 5 | `close_decimal` | built-in `str` |
+| 6 | `tick_volume` | built-in `int` |
+| 7 | `spread_points` | built-in `int` |
 
 The snapshot does not add indicators, labels, classifications, or inferred
 bar completion fields.
 
 ### 7.3 Symbol facts
 
-`CanonicalGoldSymbolFactsV1` contains, in order:
+`CanonicalGoldSymbolFactsV1` has exactly these fields in this order:
 
-```text
-spec_time_utc
-digits
-point_decimal
-tick_size_decimal
-tick_value_decimal
-contract_size_decimal
-min_lot_decimal
-lot_step_decimal
-max_lot_decimal
-base_currency
-profit_currency
-margin_currency
-trade_mode_readonly_label
-session_status_readonly_label
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `spec_time_utc` | built-in `str` |
+| 2 | `digits` | built-in `int` |
+| 3 | `point_decimal` | built-in `str` |
+| 4 | `tick_size_decimal` | built-in `str` |
+| 5 | `tick_value_decimal` | built-in `str` |
+| 6 | `contract_size_decimal` | built-in `str` |
+| 7 | `min_lot_decimal` | built-in `str` |
+| 8 | `lot_step_decimal` | built-in `str` |
+| 9 | `max_lot_decimal` | built-in `str` |
+| 10 | `base_currency` | built-in `str` |
+| 11 | `profit_currency` | built-in `str` |
+| 12 | `margin_currency` | built-in `str` |
+| 13 | `trade_mode_readonly_label` | built-in `str` |
+| 14 | `session_status_readonly_label` | built-in `str` |
 
 These are facts only. Lot fields do not calculate or authorize a lot size.
 
 ### 7.4 Freshness facts
 
-`CanonicalGoldFreshnessFactsV1` contains, in order:
+`CanonicalGoldFreshnessFactsV1` has exactly these fields in this order:
 
-```text
-tick_age_microseconds
-bars_payload_age_microseconds
-symbol_spec_age_microseconds
-```
+| Order | Field | Exact type |
+| ---: | --- | --- |
+| 1 | `tick_age_microseconds` | built-in `int` |
+| 2 | `bars_payload_age_microseconds` | built-in `int` |
+| 3 | `symbol_spec_age_microseconds` | built-in `int` |
 
-Each value is a non-negative exact built-in `int` derived from the server-owned
-reference time and accepted source timestamp. The bars age uses
+Each value is non-negative and derived from the server-owned reference time
+and accepted source timestamp. The bars age uses
 `bars_generated_at_utc`, not a bar open time. These values describe age only.
 They do not carry thresholds, pass/fail policy, source readiness, session
 permission, or trading permission.
 
+Every nested source and result record named in Sections 6 and 7 must be the
+exact frozen, slotted dataclass type specified by this contract. Subclasses,
+mappings, lists, iterators, wrong tuple element types, and records with
+missing, extra, duplicated, aliased, case-changed, or reordered fields fail
+closed.
+
 ## 8. Deterministic Normalization
 
-The future implementation must use one documented decimal normalization
+The future implementation must use exactly this decimal normalization
 algorithm:
 
-1. reject `bool`, subclasses, non-finite numbers, strings, and unsupported
-   numeric types;
-2. convert each accepted built-in `int` or `float` through its canonical
-   base-10 string representation into `Decimal`;
-3. derive the fixed price quantum from the exact accepted `digits` and `point`;
-4. require tick, bar, and symbol price values to be representable at the
-   canonical precision without a value-changing round operation;
-5. emit fixed-point ASCII text with exactly `digits` decimal places for price
-   fields;
-6. emit other decimal symbol values in normalized fixed-point ASCII form with
-   no exponent, leading plus sign, `NaN`, or infinity; and
-7. reject any normalization exception or ambiguous value rather than rounding,
-   sorting, repairing, or substituting it.
+1. Accept a numeric source value only when `type(value) is int` or
+   `type(value) is float`. Reject `bool`, subclasses, strings, all other
+   numeric types, and a float for which `math.isfinite(value)` is false.
+2. Convert the value exactly once with `Decimal(str(value))`. Do not use
+   `Decimal(value)`, `repr(value)`, prior formatting, binary float arithmetic,
+   a locale, or any alternate conversion path. Reject a non-finite Decimal and
+   reject signed zero (`decimal_value.is_zero()` and
+   `decimal_value.is_signed()`).
+3. Perform Decimal arithmetic in a fresh local context with `prec=64`,
+   `rounding=ROUND_HALF_EVEN`, `Emin=-999999`, `Emax=999999`, `capitals=1`,
+   and `clamp=0`. Trap `InvalidOperation`, `DivisionByZero`, and `Overflow`.
+   Disable every other trap. Clear all flags before every arithmetic operation
+   and reject the source if any context flag is set afterward. The configured
+   rounding mode never grants permission to round: `Inexact` or `Rounded` is
+   always a failure.
+4. Compute `price_quantum` exactly as `Decimal(1).scaleb(-digits)`. The exact
+   converted tick `point` and symbol `point` must both equal this quantum, and
+   tick and symbol `digits` must be equal. A price Decimal is representable
+   only when its tuple exponent is greater than or equal to `-digits`; a value
+   with more fractional places fails rather than being quantized.
+5. The price fields are tick `bid`, `ask`, `spread`, and `point`; bar `open`,
+   `high`, `low`, and `close`; and symbol `point` and `tick_size`. Emit each
+   with `format(decimal_value, f".{digits}f")`. The output must contain exactly
+   `digits` digits after the decimal point, including trailing zeroes, and no
+   exponent or leading plus sign. When `digits` is zero, the output contains
+   no decimal point.
+6. For `tick_value`, `contract_size`, `min_lot`, `lot_step`, and `max_lot`,
+   first use `format(decimal_value, "f")`, remove trailing zeroes only from the
+   fractional part, and then remove a trailing decimal point. An exact zero is
+   emitted as `0`; every other integral value has no decimal point. The output
+   has no exponent, leading plus sign, or unnecessary trailing fractional
+   zero. Field positivity and ordering rules remain those of Bundle v1.
+7. Convert `spread_points` exactly once with `Decimal(str(spread_points))`.
+   In the same exact Decimal context, require `spread == ask - bid` and
+   `spread == spread_points_decimal * point`. Both comparisons are exact. No
+   epsilon, tolerance, binary float operation, or value-changing conversion is
+   permitted.
+8. Any conversion, context, precision, scale, comparison, or formatting
+   ambiguity fails closed. The projector must not round, sort, repair,
+   substitute, retry, or use a fallback algorithm.
 
-The source `spread`, `spread_points`, and `point` relation must remain exact
-under normalized decimal arithmetic. Tick and symbol `digits` and `point` must
-match. No tolerance may silently convert an invalid source into a passed facts
-snapshot.
+This is the only permitted normalization algorithm. Tick and symbol `digits`
+and `point` must match, and no tolerance may convert an invalid source into a
+passed facts snapshot.
 
 Age values use parsed UTC instants and exact integer microseconds. A future
 timestamp, sub-microsecond timestamp, malformed timestamp, negative age, or
