@@ -97,16 +97,86 @@ It is valid only when every condition below is satisfied:
 6. `cross_package_activation` is the exact built-in boolean `false`.
 7. Git, scope, dependency, risk, ModelGate, required-check, and unknown
    evidence passes all existing TaskSizeGate validation.
-8. The frozen work order contains no activation, deployment, runtime source,
-   MT4, EA, order, execution, or trading surface.
-9. Activation, deployment, merge, tag, and any second work order remain
-   explicitly prohibited capabilities for the verification order.
+8. The exact canonical evidence tuples in section 4.1 are present without
+   missing, extra, reordered, duplicated, or subclassed values.
+9. The JLGO, pre-write, and review scope checks in section 4.2 prove that the
+   frozen and actual work contain no activation or runtime-authority surface.
 
 The exact `maturity_reason` is the deterministic discriminator. The future
 evaluator must not infer this transition from free text, task names, desired
 results, file names, or the absence of an activation file. The existing 29
 `TaskSizeGateEvidence` fields remain exact; this contract adds no thirtieth
 field.
+
+### 4.1 Exact canonical evidence values
+
+The exception reuses three existing `TaskSizeGateEvidence` fields. Their values
+are exact built-in tuples in the following order:
+
+```python
+NON_ACTIVATING_VERIFICATION_AFFECTED_SURFACES = (
+    "offline_verification_evidence",
+)
+
+NON_ACTIVATING_VERIFICATION_RISK_AND_POLICY_IMPACTS = (
+    "verification_does_not_grant_activation",
+    "no_runtime_authority_change",
+    "no_trading_or_execution_authority",
+)
+
+NON_ACTIVATING_VERIFICATION_PROHIBITED_CAPABILITIES = (
+    "merge",
+    "push_main",
+    "tag",
+    "deployment",
+    "activation",
+    "runtime_source_change",
+    "mt4_access",
+    "ea_call",
+    "order_execution",
+    "trading",
+    "second_work_order",
+)
+```
+
+For this transition, `affected_surfaces`, `risk_and_policy_impacts`, and
+`prohibited_capabilities` must equal these tuples respectively. Subsets,
+supersets, aliases, case changes, reordering, duplicates, string subclasses,
+lists, sets, or other containers are invalid. A caller must not add a local
+synonym or infer a marker from prose.
+
+These constants are evidence discriminators, not permissions and not new
+maturity values. They do not enter `TaskSizeGateResult.reason_codes`; the
+existing public allow, split, blocked, and Pro reason-code mappings remain
+unchanged.
+
+### 4.2 Validation ownership
+
+The future production evaluator owns only deterministic validation of the 29
+typed evidence fields. For this exception it must validate conditions 1-7 and
+exact equality with all three section 4.1 tuples. It must not inspect Git, read
+files, interpret a work-order object, parse arbitrary prose, or infer scope from
+file names.
+
+Actual repository scope remains caller-owned:
+
+- JLGO planning must prove from the frozen candidate that every allowed file is
+  verification evidence only, every affected subsystem is already integrated,
+  and no activation or runtime-authority surface is included. Failure or
+  ambiguity stops before evidence construction and calls the evaluator zero
+  times.
+- jl-develop and jl-supervisor pre-write must repeat that proof against fresh
+  Git, frozen work-order, dependency, scope, risk, and policy evidence before
+  the one permitted evaluator call. Drift calls the evaluator zero times and
+  performs no write.
+- jl-review must compare the immutable work order with the actual commit list
+  and cumulative diff. Any production, activation, deployment, MT4, EA, order,
+  execution, trading, or other runtime-authority drift prevents `PASS` and
+  `PASS WITH FOLLOW-UP`, returns `NO-GO`, and sets the next Skill to none.
+
+The evaluator cannot compensate for a caller that lies about actual scope.
+The independent caller checkpoints and exact evaluator tuples are both
+required; neither is a fallback for the other.
 
 If any condition is missing, subclassed, contradictory, unknown, or drifted,
 the transition is invalid and must fail closed under the existing
@@ -140,9 +210,15 @@ Later contract vectors must cover at least:
 - extra capability layers or any layer other than exact `VERIFICATION`;
 - zero or multiple objectives;
 - `cross_package_activation=true`;
+- each exact section 4.1 tuple with a missing, extra, reordered, duplicated,
+  aliased, case-changed, subclassed, or wrong-container value;
+- meaningless nonempty strings in any of the three section 4.1 evidence fields;
 - every lower maturity attempting to jump directly to `VERIFIED`;
 - backward transitions and unrelated multi-stage jumps;
 - activation, deployment, MT4, EA, order, execution, or trading scope drift;
+- JLGO or pre-write scope drift proving zero evaluator calls and no writes;
+- post-commit cumulative runtime-scope drift proving review `NO-GO` and no
+  merge recommendation;
 - proof that `VERIFIED` never changes activation readiness or authority.
 
 Static vectors alone must not be described as production evaluator support,
@@ -175,6 +251,8 @@ WF-4M is complete only when this document:
 - records the G168/current-TaskSizeGate conflict;
 - preserves exactly eight maturity values;
 - defines the strict non-activating `INTEGRATED -> VERIFIED` form;
+- fixes exact canonical evidence tuples and assigns evaluator versus caller
+  validation ownership;
 - preserves normal adjacent and maturity-preserving transitions;
 - rejects backward, lower-to-verified, and unrelated multi-stage transitions;
 - keeps verification and activation authority separate;
