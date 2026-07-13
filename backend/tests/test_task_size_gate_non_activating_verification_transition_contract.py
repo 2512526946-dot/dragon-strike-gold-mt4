@@ -173,12 +173,17 @@ class _StringSubclass(str):
     pass
 
 
+class _TupleSubclass(tuple):
+    pass
+
+
 INVALID_EXACT_TUPLE_VECTORS = (
     MappingProxyType(
         {
             "case_id": "missing_value",
             "field": "risk_and_policy_impacts",
             "value": EXPECTED_RISK_AND_POLICY_IMPACTS[:-1],
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -186,6 +191,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "extra_value",
             "field": "affected_surfaces",
             "value": EXPECTED_AFFECTED_SURFACES + ("extra_surface",),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -193,6 +199,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "reordered_values",
             "field": "risk_and_policy_impacts",
             "value": tuple(reversed(EXPECTED_RISK_AND_POLICY_IMPACTS)),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -200,6 +207,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "duplicate_value",
             "field": "prohibited_capabilities",
             "value": EXPECTED_PROHIBITED_CAPABILITIES + ("merge",),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -207,6 +215,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "alias_value",
             "field": "prohibited_capabilities",
             "value": ("merge_to_main",) + EXPECTED_PROHIBITED_CAPABILITIES[1:],
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -214,6 +223,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "case_changed_value",
             "field": "affected_surfaces",
             "value": ("OFFLINE_VERIFICATION_EVIDENCE",),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -221,6 +231,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "subclassed_value",
             "field": "affected_surfaces",
             "value": (_StringSubclass("offline_verification_evidence"),),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -228,6 +239,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "wrong_container",
             "field": "affected_surfaces",
             "value": frozenset(EXPECTED_AFFECTED_SURFACES),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -235,6 +247,7 @@ INVALID_EXACT_TUPLE_VECTORS = (
             "case_id": "meaningless_nonempty_value",
             "field": "risk_and_policy_impacts",
             "value": ("something_safe",),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
 )
@@ -245,6 +258,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "missing_reason",
             "field": "maturity_reason",
             "value": None,
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -252,6 +266,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "aliased_reason",
             "field": "maturity_reason",
             "value": "verification without activation",
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -259,6 +274,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "subclassed_reason",
             "field": "maturity_reason",
             "value": _StringSubclass("non-activating verification"),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -266,6 +282,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "extra_layer",
             "field": "capability_layers",
             "value": ("VERIFICATION", "ACTIVATION"),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -273,6 +290,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "wrong_layer",
             "field": "capability_layers",
             "value": ("ACTIVATION",),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -280,6 +298,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "zero_objectives",
             "field": "objective_count",
             "value": 0,
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -287,6 +306,7 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "multiple_objectives",
             "field": "objective_count",
             "value": 2,
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
     MappingProxyType(
@@ -294,6 +314,47 @@ INVALID_TRANSITION_EVIDENCE_VECTORS = (
             "case_id": "cross_package_activation",
             "field": "cross_package_activation",
             "value": True,
+            "expected_decision": "STOP_UNCERTAIN",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "subclassed_current_maturity",
+            "field": "current_maturity",
+            "value": _StringSubclass("INTEGRATED"),
+            "expected_decision": "STOP_UNCERTAIN",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "subclassed_target_maturity",
+            "field": "target_maturity",
+            "value": _StringSubclass("VERIFIED"),
+            "expected_decision": "STOP_UNCERTAIN",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "boolean_objective_count",
+            "field": "objective_count",
+            "value": True,
+            "expected_decision": "STOP_UNCERTAIN",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "integer_cross_package_activation",
+            "field": "cross_package_activation",
+            "value": 0,
+            "expected_decision": "STOP_UNCERTAIN",
+        }
+    ),
+    MappingProxyType(
+        {
+            "case_id": "subclassed_capability_layers_container",
+            "field": "capability_layers",
+            "value": _TupleSubclass(("VERIFICATION",)),
+            "expected_decision": "STOP_UNCERTAIN",
         }
     ),
 )
@@ -514,6 +575,10 @@ def test_invalid_exact_tuple_vectors_cover_every_required_failure_class() -> Non
     }
     assert type(INVALID_EXACT_TUPLE_VECTORS[6]["value"][0]) is not str
     assert type(INVALID_EXACT_TUPLE_VECTORS[7]["value"]) is not tuple
+    assert all(
+        vector["expected_decision"] == "STOP_UNCERTAIN"
+        for vector in INVALID_EXACT_TUPLE_VECTORS
+    )
 
 
 def test_invalid_transition_evidence_vectors_are_exact_and_fail_closed() -> None:
@@ -528,9 +593,22 @@ def test_invalid_transition_evidence_vectors_are_exact_and_fail_closed() -> None
         "zero_objectives",
         "multiple_objectives",
         "cross_package_activation",
+        "subclassed_current_maturity",
+        "subclassed_target_maturity",
+        "boolean_objective_count",
+        "integer_cross_package_activation",
+        "subclassed_capability_layers_container",
     )
     assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[2]["value"]) is not str
-    assert INVALID_TRANSITION_EVIDENCE_VECTORS[-1]["value"] is True
+    assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[8]["value"]) is not str
+    assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[9]["value"]) is not str
+    assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[10]["value"]) is bool
+    assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[11]["value"]) is int
+    assert type(INVALID_TRANSITION_EVIDENCE_VECTORS[12]["value"]) is not tuple
+    assert all(
+        vector["expected_decision"] == "STOP_UNCERTAIN"
+        for vector in INVALID_TRANSITION_EVIDENCE_VECTORS
+    )
     assert "must fail closed under the existing\n`STOP_UNCERTAIN` behavior" in (
         _read_contract()
     )
