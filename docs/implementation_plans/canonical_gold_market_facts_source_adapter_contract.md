@@ -165,8 +165,8 @@ with exactly these fields in order:
 | Order | Field | Exact type | Authority |
 | ---: | --- | --- | --- |
 | 1 | `authority_token` | exact built-in `object` identity | Module-private singleton |
-| 2 | `allowed_root` | exact `pathlib.Path` | Server configuration |
-| 3 | `bundle_dir` | exact `pathlib.Path` | Server configuration inside allowed root |
+| 2 | `allowed_root` | exact concrete platform path: `pathlib.WindowsPath` on Windows or `pathlib.PosixPath` on POSIX | Server configuration |
+| 3 | `bundle_dir` | same exact concrete platform path type as `allowed_root` | Server configuration inside allowed root |
 | 4 | `reference_time_utc` | exact `datetime.datetime` | Server-owned aware UTC time |
 | 5 | `previous_identity` | `_CanonicalBundlePreviousIdentityV1` or `None` | Server-owned prior accepted identity |
 | 6 | `read_policy` | exact existing `CanonicalMt4DemoReadonlyBundleV1ReadPolicy` | Server policy |
@@ -178,6 +178,30 @@ with exactly these fields in order:
 `str bundle_id` followed by exact built-in `int sequence`. The filesystem
 policy must set `max_manifest_consistency_retries` to exact built-in integer
 zero for this adapter. Invalid authority fails before any reader or Gate call.
+
+The server factory constructs both path fields with `pathlib.Path`. Their
+runtime types must be the platform's exact concrete `WindowsPath` or
+`PosixPath` class and must match each other. Built-in strings, `PurePath`, the
+factory `Path` class itself, a concrete-path subclass, a wrong-platform path,
+or any other path-like object is invalid. The existing reader remains solely
+responsible for resolution, containment, symlink, and filesystem safety.
+
+`reference_time_utc` must have exact runtime type `datetime.datetime`, non-null
+`tzinfo`, and `utcoffset() == datetime.timedelta(0)`. The adapter creates the
+G175 source string by exactly:
+
+```python
+reference_time_utc.astimezone(datetime.UTC).isoformat(
+    timespec="microseconds"
+).replace("+00:00", "Z")
+```
+
+The replacement must occur exactly once at the terminal suffix. The result is
+an exact built-in ASCII `str` with six fractional digits and terminal `Z`.
+Naive, non-zero-offset, subclassed, unformattable, or otherwise ambiguous time
+input fails authority validation before the reader call. The adapter must not
+read an ambient clock, round, truncate, choose another timespec, or accept an
+alternate UTC spelling.
 
 The future fixture integration may own a factory for this capsule, but that
 factory, fixture path, and fixture reference time are not defined or authorized
@@ -293,9 +317,13 @@ The adapter algorithm has one allowed order:
 7. Require the exact passed Gate envelope, exact passed status, exact ready
    state, empty reasons and warnings, exact source reader/value statuses, and
    all fixed safety flags.
-8. Recheck authority and reader artifacts for mutation. Require that the
-   accepted-attempt identity and every carried payload identity agree with the
-   accepted manifest. Any ambiguity or drift is same-attempt-invalid.
+8. Recheck the authority, exact reader-envelope object, exact capsule object,
+   and captured `attempt_token` object identity for substitution or mutation.
+   Require the same capsule returned atomically with the reader envelope and
+   the same reader-envelope object supplied to the Gate. Missing or replaced
+   objects, token drift, mutation, or post-call drift is same-attempt-invalid.
+   The adapter does not compare manifest and payload identity fields; those
+   checks remain exclusively inside W1 before any capsule can be created.
 9. Construct one fresh `CanonicalGoldUpstreamEvidenceV1` and one fresh
    `CanonicalGoldMarketFactsSourceV1` using only the mappings in section 7.
 10. Require exact production types, exact field order, fixed constants, and
@@ -316,9 +344,12 @@ step.
 | Authority invalid or dependency unavailable before reader call | 0 | 0 | 0 |
 | Reader blocks before value validation | 1 | 0 | 0 |
 | Reader blocks at value validation | 1 | 0 | 1 |
-| Reader exception or invalid reader return | 1 | 0 | 0 or 1, as reached internally |
+| Reader exception | 1 | 0 | 0 or 1, as reached internally |
+| Invalid reader envelope or capsule return | 1 | 0 | 0 or 1, as reached internally |
 | Reader warning rejected | 1 | 0 | 1 |
-| Gate blocked, invalid, or exceptional | 1 | 1 | 1 |
+| Gate blocked | 1 | 1 | 1 |
+| Invalid Gate envelope | 1 | 1 | 1 |
+| Gate exception | 1 | 1 | 1 |
 | Same-attempt identity or source construction invalid | 1 | 1 | 1 |
 | Ready | 1 | 1 | 1 |
 
@@ -337,7 +368,7 @@ retry or second invocation.
 | 4 | `sequence` | Adapter projection of accepted capsule `manifest.sequence` |
 | 5 | `canonical_symbol` | Adapter projection of accepted capsule `manifest.canonical_symbol`, required to equal `XAUUSD` |
 | 6 | `broker_symbol` | Adapter projection of accepted capsule `manifest.broker_symbol`, required to equal `GOLD` in v1 |
-| 7 | `reference_time_utc` | Authority `reference_time_utc`, normalized only to the G175 strict UTC `Z` representation |
+| 7 | `reference_time_utc` | Authority `reference_time_utc`, converted only by the exact six-fractional-digit UTC `Z` algorithm in section 5.1 |
 | 8 | `policy_profile_version` | Authority constant `canonical_gold_market_facts_policy_v1` |
 | 9 | `upstream_evidence` | Fresh record from the exact reader and Gate envelopes in this call |
 | 10 | `live_tick` | Fresh G175 record projected by the adapter from frozen accepted `live_tick.json` evidence |
@@ -345,10 +376,13 @@ retry or second invocation.
 | 12 | `timeframes` | Fresh G175 records projected by the adapter from frozen accepted `latest_bars.json.timeframes` evidence |
 | 13 | `symbol_spec` | Fresh G175 record projected by the adapter from frozen accepted `symbol_spec.json` evidence |
 
-The manifest identity and `schema_version`, `bundle_id`, `sequence`,
-`canonical_symbol`, `broker_symbol`, and eight fixed safety flags must agree
-with every required payload under the existing W1 checks. The adapter must not
-perform a weaker parallel identity algorithm.
+The existing W1 checks exclusively prove that manifest `schema_version`,
+`bundle_id`, `sequence`, `canonical_symbol`, `broker_symbol`, and eight fixed
+safety flags agree with every required payload. W1 creates the capsule only
+after that proof passes. The adapter must not parse, repeat, weaken, or replace
+that identity algorithm; it checks only atomic envelope/capsule return,
+captured object identity, immutability, and post-call drift as specified in
+section 6.
 
 ### 7.2 Upstream evidence
 
@@ -406,17 +440,23 @@ one reason. A ready result has no reason. Warning codes are always empty in v1.
 | --- | --- | --- | --- |
 | Exact successful source construction | true | `CANONICAL_GOLD_SOURCE_ADAPTER_READY` | none |
 | Authority capsule, token, policy, time, or dependency invalid before reader call | false | `CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID` | `GOLD_SOURCE_AUTHORITY_INVALID` |
-| Reader blocked or returned no accepted attempt | false | `CANONICAL_GOLD_SOURCE_ADAPTER_READER_BLOCKED` | `GOLD_SOURCE_READER_NOT_READY` |
+| Reader returned an exact internally consistent blocked envelope and no capsule | false | `CANONICAL_GOLD_SOURCE_ADAPTER_READER_BLOCKED` | `GOLD_SOURCE_READER_NOT_READY` |
+| Reader return fails exact envelope/capsule pairing, type, field, or consistency checks, including a passed envelope without one capsule or a blocked envelope with a capsule | false | `CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE` | `GOLD_SOURCE_READER_RESULT_INVALID` |
 | Reader returned any warning | false | `CANONICAL_GOLD_SOURCE_ADAPTER_WARNING_BLOCKED` | `GOLD_SOURCE_UPSTREAM_WARNING_REJECTED` |
 | Gate blocked or was not exactly ready | false | `CANONICAL_GOLD_SOURCE_ADAPTER_DATA_QUALITY_BLOCKED` | `GOLD_SOURCE_DATA_QUALITY_NOT_READY` |
+| Gate return fails exact envelope, type, field, or consistency checks | false | `CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE` | `GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID` |
 | Attempt capsule, identity binding, or post-call drift invalid | false | `CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID` | `GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID` |
 | Exact source type or construction consistency invalid | false | `CANONICAL_GOLD_SOURCE_ADAPTER_SOURCE_INVALID` | `GOLD_SOURCE_CONSTRUCTION_INVALID` |
 | Unexpected reader, Gate, mapping, or boundary exception | false | `CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE` | `GOLD_SOURCE_EXCEPTION_SANITIZED` |
 
-Expected reader or Gate blocked envelopes retain their blocked classification.
-Unexpected exceptions are sanitized as safe failure. Exception type, message,
-traceback, input, path, payload content, internal status, or dependency detail
-must not be returned or logged by this boundary.
+An exact, internally consistent reader or Gate blocked envelope retains its
+blocked classification. A returned object with a wrong exact type, missing,
+extra, reordered, subclassed, or wrong-container field, or a contradictory
+status/reason/warning/readiness/safety combination uses its dedicated invalid
+result reason above; it must not be relabeled as a normal blocked result.
+Unexpected exceptions use `GOLD_SOURCE_EXCEPTION_SANITIZED`. Exception type,
+message, traceback, input, path, payload content, internal status, or dependency
+detail must not be returned or logged by this boundary.
 
 If more than one invalid condition is observable, the first reached step in
 section 6 wins. The adapter must not continue to collect, reorder, or combine
@@ -453,8 +493,8 @@ The adapter must fail closed when any of the following occurs:
   inconsistency;
 - no accepted-attempt capsule, an extra capsule, or a capsule from another
   call;
-- manifest/payload identity mismatch, warning, mixed attempt, polluted
-  evidence, post-call mutation, or ambiguous provenance;
+- a manifest/payload identity mismatch reported by W1, warning, mixed attempt,
+  polluted evidence, post-call mutation, or ambiguous provenance;
 - account, path, payload, checksum, exception, or internal state entering a
   source or result;
 - source construction mismatch or any unexpected exception.
@@ -485,6 +525,8 @@ import or call the future adapter. At minimum it must lock:
 - zero/one reader, value-validator, and Gate call accounting;
 - the exact source-provenance tables in section 7;
 - all status/reason pairs and first-failure order;
+- exact separation of valid blocked envelopes, invalid reader/Gate returns,
+  and sanitized exceptions;
 - passed-with-warning rejection and empty-warning success;
 - missing, extra, reordered, duplicate, subclassed, alias, wrong-container,
   mixed-attempt, mutation, and caller-override vectors;
@@ -539,8 +581,8 @@ G179 is acceptable only when:
 - all 13 G175 source fields and every nested record have exact provenance;
 - no raw payload, account, path, checksum, exception, internal token, API,
   diagnostics, MT4, or execution state can leak;
-- blocked, warning, identity, construction, and exceptional outcomes fail
-  closed with exact status/reason pairs;
+- blocked, invalid-envelope, warning, identity, construction, and exceptional
+  outcomes fail closed with exact status/reason pairs;
 - Demo-only, Read-only, no-EA, no-execution, and no-trading flags remain fixed;
 - tests, implementation, fixture integration, verification, ReplayRunner W6,
   activation, and W7-W21 remain explicitly unimplemented;
