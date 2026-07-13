@@ -1,7 +1,8 @@
 # Demo Auto-Execution MVP Weighted WBS
 
 Status: WF-4A planning baseline, with the W5 estimate updated after G174 and
-the W6 estimate updated after the accepted G175/G176 contract-vector stage.
+the W6 estimate updated after the accepted G175/G176 contract-vector stage and
+the G177 production-type stage.
 This document establishes an engineering-hour weighted work breakdown
 structure for the Dragon Strike Demo auto-execution MVP and the separately
 frozen Live auto-execution goal. It does not implement, integrate, activate,
@@ -29,13 +30,13 @@ arithmetic. It does not rewrite the original baseline or authorize W6-W21.
 W6 was re-estimated from repository evidence at:
 
 ```text
-8019475e31a23b12f1595def43a915dc3ae158ef
+0294eec6fc2b66afe336e9ed5c09a993e5a5a1b0
 ```
 
 This checkpoint updates only the W6 evidence, maturity, effort ranges,
 remaining minimal-work-order estimate, and resulting endpoint arithmetic. It
-does not rewrite W0-W5 or W7-W21 and does not authorize W6 implementation or
-any later capability.
+does not rewrite W0-W5 or W7-W21 and does not authorize projector behavior,
+source-adapter integration, activation, or any later capability.
 
 ## 1. Authority and safety boundary
 
