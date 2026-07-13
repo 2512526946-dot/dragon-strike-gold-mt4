@@ -1,9 +1,10 @@
 # Demo Auto-Execution MVP Weighted WBS
 
-Status: WF-4A planning baseline. This document establishes an engineering-hour
-weighted work breakdown structure for the Dragon Strike Demo auto-execution
-MVP and the separately frozen Live auto-execution goal. It does not implement,
-integrate, activate, or authorize any capability.
+Status: WF-4A planning baseline, with the W5 estimate updated after G174. This
+document establishes an engineering-hour weighted work breakdown structure
+for the Dragon Strike Demo auto-execution MVP and the separately frozen Live
+auto-execution goal. It does not implement, integrate, activate, or authorize
+any capability.
 
 Baseline commit at estimation time:
 
@@ -14,6 +15,15 @@ Baseline commit at estimation time:
 The commit is evidence for this estimate, not a permanent runtime checkpoint.
 Future WBS updates must inspect the then-current repository state and must not
 assume that this commit is still current.
+
+W5 was re-estimated from repository evidence at:
+
+```text
+2a96d44512eb839cba2a1c1e90497e443bc21cf0
+```
+
+This later checkpoint updates only the W5 evidence and the resulting endpoint
+arithmetic. It does not rewrite the original baseline or authorize W6-W21.
 
 ## 1. Authority and safety boundary
 
@@ -169,7 +179,7 @@ Critical-path values are:
 | W2 | Diagnostics and legacy migration | Both diagnostics surfaces consume the canonical safe chain without duplicate readers. | `INTEGRATED` | Canonical Demo diagnostics pipeline is guarded and integrated; legacy mapping adapter exists. | Complete legacy endpoint migration, hardening, and compatibility verification. | W1, W3 -> W19 | High | `PRO_REQUIRED` | CRITICAL | 3-5 | 100-150 / 20-35 | Medium | No |
 | W3 | Canonical docs fixture producer | Deterministic checked-in default source for canonical diagnostics. | `VERIFIED` | Canonical assets, zero-argument producer, strict envelope validation, and fail-closed tests exist. | Connect the approved producer only through the separately reviewed diagnostics migration boundary. | W1 -> W2, W5 | Medium | `PRO_REQUIRED` | CRITICAL | 1-2 | 35-55 / 5-10 | Low | No |
 | W4 | TradeMax MT4 Demo Writer and real Bundle bridge | MT4 Demo publishes atomic canonical bundles through one approved bridge. | `CONTRACT_ONLY` | Read-only bridge and Bundle writer requirements are documented. | MQL4 writer, manifest-last atomic publish, symbol mapping, sandbox integration, and real Demo evidence. | W1 -> W6, W14, W20 | High | `PRO_REQUIRED` | PARALLEL_CRITICAL | 8-12 | 15-25 / 80-140 | High | Yes, estimated 2-4 weeks of broker-terminal observation |
-| W5 | ReplayRunner | Deterministic offline replay of the complete decision chain. | `POLICY_ONLY` | Read-only review/replay intent exists. | Typed inputs/results, fixed clock, golden vectors, failure injection, runner, and deterministic regression suite. | W1, W3 -> W6-W13, W18 | High | `PRO_REQUIRED` | CRITICAL | 6-10 | 5-10 / 50-90 | Medium | No |
+| W5 | ReplayRunner | Versioned deterministic offline replay infrastructure; v1 covers the canonical diagnostics chain. | `VERIFIED` | Frozen public types and server-owned registry, strict summary validation, bounded production runner, genuine ReplayRunner -> G153 -> G151 integration, and deterministic regression evidence exist for v1. | After W6-W13 are separately implemented and integrated, add separately contracted replay stages for the complete decision chain and W18 linkage. Current v1 grants no activation or runtime execution authority. | W1, W3 -> W6-W13, W18 | High | `PRO_REQUIRED` | CRITICAL | 4-7 | 40-80 / 20-40 | Medium | No |
 | W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `CONTRACT_ONLY` | Market, bars, tick, symbol, and account facts exist in canonical schemas. | Session facts, spread/freshness facts, volatility and structure features, economic-window inputs, and fixtures. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 15-25 / 45-80 | Medium | No |
 | W7 | Deterministic analysis and opportunity assessment | One explainable, versioned, non-LLM decision path. | `POLICY_ONLY` | Advice authority and explanation boundaries are documented; placeholder observation logic exists. | Strategy contract, deterministic candidate logic, invalidation conditions, reason codes, and replay evidence. | W6 -> W10 | High | `PRO_REQUIRED` | CRITICAL | 6-10 | 10-20 / 50-90 | High | No |
 | W8 | RiskGate | One server-owned fail-closed risk decision. | `CONTRACT_ONLY` | Safety-gate and execution-authority contracts define veto semantics and major prohibitions. | Typed policy, daily loss, consecutive loss, spread, freshness, event, stop-loss, leverage, and no-overnight enforcement. | W10 -> W9, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 10-20 / 45-80 | Medium | No |
@@ -187,6 +197,28 @@ Critical-path values are:
 | W20 | Demo GoLiveGate | Separate evidence-based authorization for limited Demo execution. | `POLICY_ONLY` | Demo-only, manual confirmation, safety limits, and activation principles are documented. | Measurable criteria, evidence collector, review packet, user approval state, rollback drill, and controlled activation decision. | W4-W19 -> Demo activation | Critical | `PRO_REQUIRED` | EVIDENCE_GATE | 6-10 | 5-10 / 60-100 | High | Yes, at least 4-12 weeks after the chain is operational |
 | W21 | Live GoLiveGate and real-account activation | Future independent Live safety and authorization program. | `POLICY_ONLY` | Live is explicitly excluded and frozen. | Regulatory, operational, credential, broker, security, capital, monitoring, incident, long-Demo-evidence, and independent authorization work. | W20 -> Live activation | Critical | `PRO_REQUIRED` | FROZEN | 12-20 | 5-10 / 140-250 | Very high | Yes, minimum planning assumption 12-24 weeks after verified Demo evidence; not authorized |
 
+### 5.1 W5 post-verification re-estimation
+
+The W5 maturity is `VERIFIED` only for the approved ReplayRunner v1 canonical
+diagnostics boundary. The evidence progresses through an approved contract,
+immutable contract vectors, a shared strict G151 summary validator, a bounded
+production runner, genuine ReplayRunner -> G153 -> G151 integration, and
+deterministic offline regression verification. Activation was neither required
+nor authorized because this is a non-activating offline verification path.
+
+The invested range moves from 5-10 to 40-80 equivalent engineering hours. The
+increase accounts for the delivered design, contract vectors, reusable safety
+validation, implementation and hardening, real integration evidence, and
+deterministic verification work. It is not derived from work-order, commit,
+test, file, line, or version counts.
+
+The remaining range moves from 50-90 to 20-40 hours because the bounded v1
+runner and its verification evidence now exist. Remaining W5 work is limited
+to separately contracted, versioned replay-stage extensions after W6-W13
+produce reviewed upstream boundaries, plus later W18 linkage. Those upstream
+packages retain their own engineering-hour estimates; their work is not
+double-counted in W5.
+
 ## 6. Endpoint progress baseline
 
 ### 6.1 Demo Auto-Execution MVP
@@ -194,26 +226,28 @@ Critical-path values are:
 W0 through W20 sum to:
 
 ```text
-estimated invested hours: 477-771
-estimated remaining hours: 950-1660
-central weighted progress: 32.3%
-mathematical estimate bounds: 22.3%-44.8%
+estimated invested hours: 512-841
+estimated remaining hours: 920-1610
+central weighted progress: 34.8%
+mathematical estimate bounds: 24.1%-47.8%
 reporting range after judgment: approximately 25%-40%
 ```
 
 The reporting range is deliberately wider than a point estimate. The largest
 uncertainty lies in the real TradeMax bridge, EA integration, recovery,
-circuit-breaker behavior, and calendar-based Demo evidence.
+circuit-breaker behavior, and calendar-based Demo evidence. W5 verification
+raises the central estimate, but those larger execution-chain uncertainties do
+not justify narrowing or raising the reporting range.
 
 ### 6.2 Live Auto-Execution
 
 W0 through W21 sum to:
 
 ```text
-estimated invested hours: 482-781
-estimated remaining hours: 1090-1910
-central engineering progress: 29.6%
-mathematical estimate bounds: 20.2%-41.7%
+estimated invested hours: 517-851
+estimated remaining hours: 1060-1860
+central engineering progress: 31.9%
+mathematical estimate bounds: 21.8%-44.5%
 reporting range after judgment: approximately 20%-40%
 Live activation readiness: 0%
 ```
