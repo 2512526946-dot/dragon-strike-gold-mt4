@@ -314,7 +314,7 @@ policy, broker-trade permission, system permission, or ExecutionGate evidence.
 | 11 | `broker_symbol` | built-in `str` or `None` |
 | 12 | `reference_time_utc` | built-in `str` or `None` |
 | 13 | `quote` | `CanonicalGoldQuoteFactsV1` or `None` |
-| 14 | `timeframes` | exact built-in tuple of four `CanonicalGoldTimeframeFactsV1` records |
+| 14 | `timeframes` | exact built-in tuple: four `CanonicalGoldTimeframeFactsV1` records when passed; empty when non-passed |
 | 15 | `symbol_spec` | `CanonicalGoldSymbolFactsV1` or `None` |
 | 16 | `freshness` | `CanonicalGoldFreshnessFactsV1` or `None` |
 | 17 | `read_only` | built-in `bool` |
@@ -350,10 +350,10 @@ not binary floating-point values in the result.
 
 ### 7.2 Timeframe and bar facts
 
-`timeframes` is an exact built-in tuple containing exactly four
-`CanonicalGoldTimeframeFactsV1` records. Their `timeframe` values are `M15`,
-`H1`, `H4`, and `D1` in that order. Each record has exactly these fields in
-this order:
+For `CANONICAL_GOLD_MARKET_FACTS_READY`, `timeframes` is an exact built-in tuple
+containing exactly four `CanonicalGoldTimeframeFactsV1` records. Their
+`timeframe` values are `M15`, `H1`, `H4`, and `D1` in that order. Each record
+has exactly these fields in this order:
 
 | Order | Field | Exact type |
 | ---: | --- | --- |
@@ -378,6 +378,10 @@ exactly these fields in this order:
 
 The snapshot does not add indicators, labels, classifications, or inferred
 bar completion fields.
+
+Every non-passed result uses the exact empty built-in tuple required by
+Section 10. Any other tuple length, timeframe order, container type, or element
+type fails closed.
 
 ### 7.3 Symbol facts
 
