@@ -440,6 +440,70 @@ def test_forged_reader_status_reason_and_component_status_fail_closed(
     assert gate_calls == 0
 
 
+def test_forged_reader_component_reason_ownership_and_duplicates_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrong_owner = _blocked_reader_envelope()
+    wrong_owner["component_statuses"][0].update(
+        {
+            "passed": False,
+            "status_code": (
+                "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_"
+                "FILESYSTEM_BOUNDARY_INVALID"
+            ),
+            "reason_codes": ["FILE_NOT_FOUND"],
+            "warning_codes": [],
+        }
+    )
+    wrong_owner["component_statuses"][1].update(
+        {
+            "passed": False,
+            "status_code": (
+                "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_"
+                "SNAPSHOT_MANIFEST_NOT_CHECKED"
+            ),
+            "reason_codes": [],
+            "warning_codes": [],
+        }
+    )
+
+    duplicated_reason = _blocked_reader_envelope()
+    duplicated_reason["component_statuses"][2].update(
+        {
+            "passed": False,
+            "status_code": (
+                "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_LIVE_TICK_INVALID"
+            ),
+            "reason_codes": ["FILE_NOT_FOUND"],
+            "warning_codes": [],
+        }
+    )
+
+    gate_calls = 0
+
+    def gate_spy(**_: object) -> object:
+        nonlocal gate_calls
+        gate_calls += 1
+        raise AssertionError("gate must not run")
+
+    monkeypatch.setattr(adapter_module, "_evaluate_data_quality", gate_spy)
+    for envelope in (wrong_owner, duplicated_reason):
+        monkeypatch.setattr(
+            adapter_module,
+            "_read_accepted_attempt",
+            lambda envelope=envelope, **_: (envelope, None),
+        )
+        result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+            authority=_authority()
+        )
+        _assert_blocked(
+            result,
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+        )
+    assert gate_calls == 0
+
+
 @pytest.mark.parametrize("mutation", ("reordered", "extra"))
 def test_nested_capsule_shape_drift_fails_before_gate(
     monkeypatch: pytest.MonkeyPatch,

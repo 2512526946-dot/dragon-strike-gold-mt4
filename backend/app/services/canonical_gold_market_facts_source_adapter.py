@@ -103,6 +103,45 @@ _READER_COMPONENT_NAMES = (
     "checksum",
     "upstream_value_validation",
 )
+_READER_FILE_COMPONENT_NAMES = frozenset(
+    {
+        "snapshot_manifest",
+        "live_tick",
+        "latest_bars",
+        "symbol_spec",
+        "account_snapshot",
+    }
+)
+_READER_REASON_COMPONENTS = {
+    "ALLOWED_ROOT_INPUT_INVALID": frozenset({"filesystem_boundary"}),
+    "BUNDLE_DIRECTORY_INPUT_INVALID": frozenset({"filesystem_boundary"}),
+    "FILESYSTEM_POLICY_INVALID": frozenset({"filesystem_boundary"}),
+    "ALLOWED_ROOT_REJECTED": frozenset({"filesystem_boundary"}),
+    "BUNDLE_DIRECTORY_REJECTED": frozenset({"filesystem_boundary"}),
+    "PATH_ESCAPE_BLOCKED": frozenset(
+        {"filesystem_boundary", *_READER_FILE_COMPONENT_NAMES}
+    ),
+    "SYMLINK_BLOCKED": frozenset(
+        {"filesystem_boundary", *_READER_FILE_COMPONENT_NAMES}
+    ),
+    "FILE_NOT_FOUND": _READER_FILE_COMPONENT_NAMES,
+    "FILE_SIZE_LIMIT_EXCEEDED": _READER_FILE_COMPONENT_NAMES,
+    "FILE_UNREADABLE": _READER_FILE_COMPONENT_NAMES,
+    "UTF8_BOM_REJECTED": _READER_FILE_COMPONENT_NAMES,
+    "UTF8_DECODE_INVALID": _READER_FILE_COMPONENT_NAMES,
+    "JSON_DUPLICATE_KEY": _READER_FILE_COMPONENT_NAMES,
+    "JSON_INVALID": _READER_FILE_COMPONENT_NAMES,
+    "JSON_NOT_OBJECT": _READER_FILE_COMPONENT_NAMES,
+    "MANIFEST_CHANGED_DURING_READ": frozenset({"manifest_consistency"}),
+    "MANIFEST_UNSTABLE": frozenset({"manifest_consistency"}),
+    "CHECKSUM_MISMATCH": frozenset({"checksum"}),
+    "UPSTREAM_VALUE_VALIDATION_BLOCKED": frozenset(
+        {"upstream_value_validation"}
+    ),
+    "FILESYSTEM_READER_EXCEPTION_SANITIZED": frozenset(
+        {"filesystem_boundary", "upstream_value_validation"}
+    ),
+}
 _READER_NEXT_ALLOWED = ("canonical_data_quality_gate_integration",)
 _READER_NEXT_BLOCKED = (
     "api_reader_activation",
@@ -746,6 +785,11 @@ def _reader_components_are_valid(value: object) -> bool:
             return False
         if not _strict_code_or_stage_list(component["reason_codes"], codes=True):
             return False
+        if any(
+            expected_name not in _READER_REASON_COMPONENTS.get(reason, ())
+            for reason in component["reason_codes"]
+        ):
+            return False
         if not _strict_code_or_stage_list(component["warning_codes"], codes=True):
             return False
         if any(
@@ -853,12 +897,8 @@ def _component_codes(value: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
     reasons: list[str] = []
     warnings: list[str] = []
     for component in value:
-        for code in component["reason_codes"]:
-            if code not in reasons:
-                reasons.append(code)
-        for code in component["warning_codes"]:
-            if code not in warnings:
-                warnings.append(code)
+        reasons.extend(component["reason_codes"])
+        warnings.extend(component["warning_codes"])
     return tuple(reasons), tuple(warnings)
 
 
