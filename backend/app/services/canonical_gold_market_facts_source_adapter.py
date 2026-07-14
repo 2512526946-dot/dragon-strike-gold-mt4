@@ -180,6 +180,219 @@ _GATE_STATUS_CODES = frozenset(
     }
 )
 
+_READER_BLOCKED_REASONS_BY_STATUS = {
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_INPUT_INVALID: frozenset(
+        {
+            ("ALLOWED_ROOT_INPUT_INVALID",),
+            ("BUNDLE_DIRECTORY_INPUT_INVALID",),
+        }
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_POLICY_INVALID: frozenset(
+        {("FILESYSTEM_POLICY_INVALID",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_ROOT_REJECTED: frozenset(
+        {("ALLOWED_ROOT_REJECTED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_DIRECTORY_REJECTED: frozenset(
+        {("BUNDLE_DIRECTORY_REJECTED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_PATH_ESCAPE_BLOCKED: frozenset(
+        {("PATH_ESCAPE_BLOCKED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SYMLINK_BLOCKED: frozenset(
+        {("SYMLINK_BLOCKED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FILE_MISSING: frozenset(
+        {("FILE_NOT_FOUND",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FILE_TOO_LARGE: frozenset(
+        {("FILE_SIZE_LIMIT_EXCEEDED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FILE_UNREADABLE: frozenset(
+        {("FILE_UNREADABLE",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_UTF8_INVALID: frozenset(
+        {("UTF8_BOM_REJECTED",), ("UTF8_DECODE_INVALID",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_INVALID: frozenset(
+        {("JSON_DUPLICATE_KEY",), ("JSON_INVALID",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_JSON_NOT_OBJECT: frozenset(
+        {("JSON_NOT_OBJECT",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_MANIFEST_UNSTABLE: frozenset(
+        {("MANIFEST_CHANGED_DURING_READ", "MANIFEST_UNSTABLE")}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_CHECKSUM_MISMATCH: frozenset(
+        {("CHECKSUM_MISMATCH",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_UPSTREAM_BLOCKED: frozenset(
+        {("UPSTREAM_VALUE_VALIDATION_BLOCKED",)}
+    ),
+    _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE: frozenset(
+        {("FILESYSTEM_READER_EXCEPTION_SANITIZED",)}
+    ),
+}
+
+_GATE_BLOCKED_REASON_BY_STATUS = {
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INPUT_INVALID: frozenset(
+        {
+            _gate.DATA_QUALITY_INPUT_NOT_OBJECT,
+            _gate.DATA_QUALITY_REQUIRED_READER_KEY_MISSING,
+            _gate.DATA_QUALITY_UNEXPECTED_READER_KEY,
+            _gate.DATA_QUALITY_READER_FIELD_TYPE_INVALID,
+            _gate.DATA_QUALITY_COMPONENT_STATUS_INVALID,
+        }
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_POLICY_INVALID: frozenset(
+        {_gate.DATA_QUALITY_POLICY_INVALID}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFETY_BLOCKED: frozenset(
+        {
+            _gate.READER_SAFETY_ENVELOPE_INVALID,
+            _gate.READER_RESULT_INCONSISTENT,
+            _gate.READER_WARNING_CODES_INVALID,
+        }
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_MIXED_GENERATION_BLOCKED: frozenset(
+        {_gate.READER_MIXED_GENERATION_BLOCKED}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_INTEGRITY_BLOCKED: frozenset(
+        {_gate.READER_INTEGRITY_INVALID}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STALE_BLOCKED: frozenset(
+        {_gate.READER_DATA_STALE}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_STRUCTURE_BLOCKED: frozenset(
+        {_gate.READER_STRUCTURE_INVALID}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_VALUE_BLOCKED: frozenset(
+        {_gate.READER_VALUE_INVALID}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_READER_BLOCKED: frozenset(
+        {_gate.READER_BLOCKED}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_REJECTED: frozenset(
+        {_gate.UPSTREAM_WARNINGS_REJECTED_BY_POLICY}
+    ),
+    _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_SAFE_FAILURE: frozenset(
+        {_gate.DATA_QUALITY_GATE_EXCEPTION_SANITIZED}
+    ),
+}
+
+_MANIFEST_KEYS = (
+    "schema_version",
+    "manifest_type",
+    "bundle_id",
+    "sequence",
+    "generated_at_utc",
+    "committed_at_utc",
+    "writer_heartbeat_at_utc",
+    "source_id",
+    "writer_version",
+    "terminal_id_masked",
+    "account_mode",
+    "is_demo_account",
+    "is_live_account",
+    "canonical_symbol",
+    "broker_symbol",
+    "commit_state",
+    "required_files",
+    "optional_files",
+    "compatible_reader_schema_versions",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
+    "is_trading_permission",
+    "is_execution_instruction",
+    "allowed_to_call_ea",
+    "allowed_to_modify_risk",
+)
+_COMMON_PAYLOAD_KEYS = (
+    "schema_version",
+    "file_type",
+    "bundle_id",
+    "sequence",
+    "generated_at_utc",
+    "source_id",
+    "writer_version",
+    "terminal_id_masked",
+    "account_mode",
+    "is_demo_account",
+    "is_live_account",
+    "read_only",
+    "demo_only",
+    "is_tradable",
+    "can_execute",
+    "is_trading_permission",
+    "is_execution_instruction",
+    "allowed_to_call_ea",
+    "allowed_to_modify_risk",
+)
+_PAYLOAD_KEYS_BY_FILENAME = {
+    "live_tick.json": _COMMON_PAYLOAD_KEYS
+    + (
+        "canonical_symbol",
+        "broker_symbol",
+        "bid",
+        "ask",
+        "spread",
+        "spread_points",
+        "digits",
+        "point",
+        "tick_time_utc",
+    ),
+    "latest_bars.json": _COMMON_PAYLOAD_KEYS
+    + ("canonical_symbol", "broker_symbol", "timeframes"),
+    "symbol_spec.json": _COMMON_PAYLOAD_KEYS
+    + (
+        "canonical_symbol",
+        "broker_symbol",
+        "spec_time_utc",
+        "digits",
+        "point",
+        "tick_size",
+        "tick_value",
+        "contract_size",
+        "min_lot",
+        "lot_step",
+        "max_lot",
+        "base_currency",
+        "profit_currency",
+        "margin_currency",
+        "trade_mode_readonly_label",
+        "session_status_readonly_label",
+    ),
+    "account_snapshot.json": _COMMON_PAYLOAD_KEYS
+    + (
+        "snapshot_time_utc",
+        "account_alias_masked",
+        "server_name_masked",
+        "account_currency",
+        "balance",
+        "equity",
+        "margin",
+        "free_margin",
+        "margin_level",
+        "leverage",
+        "positions_count",
+        "pending_orders_count",
+        "daily_realized_pnl",
+        "daily_floating_pnl",
+    ),
+}
+_TIMEFRAME_KEYS = ("timeframe", "period_seconds", "bar_count", "bars")
+_BAR_KEYS = (
+    "open_time_utc",
+    "open",
+    "high",
+    "low",
+    "close",
+    "tick_volume",
+    "spread_points",
+)
+
 _read_accepted_attempt = (
     _reader._read_and_validate_canonical_mt4_demo_readonly_bundle_v1_with_accepted_attempt
 )
@@ -419,12 +632,18 @@ def _authority_snapshot(value: _CanonicalGoldMarketFactsSourceAuthorityV1) -> tu
         value.allowed_root,
         value.bundle_dir,
         value.reference_time_utc,
-        value.previous_identity,
+        _previous_identity_snapshot(value.previous_identity),
         tuple(vars(value.read_policy).items()),
         tuple(vars(value.filesystem_policy).items()),
         tuple(vars(value.data_quality_policy).items()),
         value.policy_profile_version,
     )
+
+
+def _previous_identity_snapshot(value: object) -> tuple[str, int] | None:
+    if value is None:
+        return None
+    return value.bundle_id, value.sequence
 
 
 def _reader_state(
@@ -525,21 +744,40 @@ def _reader_components_are_valid(value: object) -> bool:
             return False
         if type(component["passed"]) is not bool:
             return False
-        if type(component["status_code"]) is not str:
-            return False
-        if _SAFE_CODE.fullmatch(component["status_code"]) is None:
-            return False
-        if not component["status_code"].startswith(
-            "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_"
-        ):
-            return False
         if not _strict_code_or_stage_list(component["reason_codes"], codes=True):
             return False
         if not _strict_code_or_stage_list(component["warning_codes"], codes=True):
             return False
-        if component["passed"] and component["reason_codes"]:
+        if any(
+            warning not in _gate.CANONICAL_MT4_BUNDLE_V1_WARNING_CODES
+            for warning in component["warning_codes"]
+        ):
+            return False
+        if not _reader_component_status_is_consistent(expected_name, component):
             return False
     return True
+
+
+def _reader_component_status_is_consistent(
+    component_name: str,
+    component: dict[str, object],
+) -> bool:
+    status_code = component["status_code"]
+    if type(status_code) is not str:
+        return False
+    status_prefix = (
+        "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_" f"{component_name.upper()}_"
+    )
+    if component["passed"]:
+        allowed_statuses = {status_prefix + "VALID"}
+        if component_name == "checksum":
+            allowed_statuses.add(status_prefix + "NOT_REQUIRED")
+        return not component["reason_codes"] and status_code in allowed_statuses
+    if component["reason_codes"]:
+        return status_code == status_prefix + "INVALID"
+    return status_code == status_prefix + "NOT_CHECKED" and not component[
+        "warning_codes"
+    ]
 
 
 def _reader_success_is_consistent(value: dict[str, object]) -> bool:
@@ -592,6 +830,7 @@ def _reader_blocked_is_consistent(value: dict[str, object]) -> bool:
     return (
         value["reader_status"] == "blocked"
         and bool(value["reason_codes"])
+        and _reader_blocked_status_reason_is_consistent(value)
         and value["reason_codes"] == list(component_reasons)
         and value["warning_codes"] == list(component_warnings)
         and value["ready_for_readonly_analysis"] is False
@@ -603,6 +842,11 @@ def _reader_blocked_is_consistent(value: dict[str, object]) -> bool:
         )
         and not (value["checksum_passed"] and not value["checksum_checked"])
     )
+
+
+def _reader_blocked_status_reason_is_consistent(value: dict[str, object]) -> bool:
+    allowed_reasons = _READER_BLOCKED_REASONS_BY_STATUS.get(value["status_code"])
+    return allowed_reasons is not None and tuple(value["reason_codes"]) in allowed_reasons
 
 
 def _component_codes(value: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -632,7 +876,7 @@ def _capsule_shape_is_valid(value: object) -> bool:
     return (
         type(value) is _reader._CanonicalMt4DemoReadonlyAcceptedAttemptV1
         and type(value.attempt_token) is object
-        and _is_json_object(value.manifest)
+        and _json_object_has_exact_keys(value.manifest, _MANIFEST_KEYS)
         and _payloads_are_valid(value.payloads_by_filename)
     )
 
@@ -646,9 +890,40 @@ def _payloads_are_valid(value: object) -> bool:
         name, payload = item
         if type(name) is not str or name != expected_name:
             return False
-        if not _is_json_object(payload):
+        expected_keys = _PAYLOAD_KEYS_BY_FILENAME[expected_name]
+        if not _json_object_has_exact_keys(payload, expected_keys):
+            return False
+        if expected_name == "latest_bars.json" and not _timeframes_are_valid(payload):
             return False
     return True
+
+
+def _json_object_has_exact_keys(value: object, expected_keys: tuple[str, ...]) -> bool:
+    return _is_json_object(value) and tuple(key for key, _ in value) == expected_keys
+
+
+def _timeframes_are_valid(value: object) -> bool:
+    timeframes = _json_object_value(value, "timeframes")
+    if type(timeframes) is not tuple:
+        return False
+    for timeframe in timeframes:
+        if not _json_object_has_exact_keys(timeframe, _TIMEFRAME_KEYS):
+            return False
+        bars = _json_object_value(timeframe, "bars")
+        if type(bars) is not tuple or not all(
+            _json_object_has_exact_keys(bar, _BAR_KEYS) for bar in bars
+        ):
+            return False
+    return True
+
+
+def _json_object_value(value: object, field: str) -> object | None:
+    if type(value) is not tuple:
+        return None
+    for name, child in value:
+        if name == field:
+            return child
+    return None
 
 
 def _is_json_object(value: object) -> bool:
@@ -786,6 +1061,7 @@ def _gate_state(
             and value["reader_status"] == "blocked"
             and value["data_quality_status"] == "blocked"
             and len(value["reason_codes"]) == 1
+            and _gate_blocked_status_reason_is_consistent(value)
             and value["warning_codes"] == []
             and value["ready_for_readonly_analysis"] is False
             and value["next_allowed_stage"] == []
@@ -795,6 +1071,11 @@ def _gate_state(
         return "blocked"
     except Exception:
         return None
+
+
+def _gate_blocked_status_reason_is_consistent(value: dict[str, object]) -> bool:
+    allowed_reasons = _GATE_BLOCKED_REASON_BY_STATUS.get(value["status_code"])
+    return allowed_reasons is not None and value["reason_codes"][0] in allowed_reasons
 
 
 def _same_attempt_unchanged(

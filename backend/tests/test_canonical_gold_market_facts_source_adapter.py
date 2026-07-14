@@ -399,6 +399,90 @@ def test_reader_block_warning_and_invalid_pairing_stop_before_gate(
     assert gate_calls == 0
 
 
+def test_forged_reader_status_reason_and_component_status_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate_calls = 0
+
+    def gate_spy(**_: object) -> object:
+        nonlocal gate_calls
+        gate_calls += 1
+        raise AssertionError("gate must not run")
+
+    monkeypatch.setattr(adapter_module, "_evaluate_data_quality", gate_spy)
+    forged_pair = _blocked_reader_envelope()
+    forged_pair["reason_codes"] = ["FILESYSTEM_POLICY_INVALID"]
+    forged_pair["component_statuses"][1]["reason_codes"] = [
+        "FILESYSTEM_POLICY_INVALID"
+    ]
+    forged_component = _ready_reader_envelope()
+    forged_component["component_statuses"][0]["status_code"] = (
+        "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FORGED_VALID"
+    )
+
+    for envelope, capsule in (
+        (forged_pair, None),
+        (forged_component, _capsule()),
+    ):
+        monkeypatch.setattr(
+            adapter_module,
+            "_read_accepted_attempt",
+            lambda envelope=envelope, capsule=capsule, **_: (envelope, capsule),
+        )
+        result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+            authority=_authority()
+        )
+        _assert_blocked(
+            result,
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+        )
+    assert gate_calls == 0
+
+
+@pytest.mark.parametrize("mutation", ("reordered", "extra"))
+def test_nested_capsule_shape_drift_fails_before_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    capsule = _capsule()
+    payloads = list(capsule.payloads_by_filename)
+    live_tick = payloads[0][1]
+    if mutation == "reordered":
+        changed_live_tick = tuple(reversed(live_tick))
+    else:
+        changed_live_tick = (*live_tick, ("unexpected", "polluted"))
+    payloads[0] = (payloads[0][0], changed_live_tick)
+    changed_capsule = type(capsule)(
+        attempt_token=capsule.attempt_token,
+        manifest=capsule.manifest,
+        payloads_by_filename=tuple(payloads),
+    )
+    gate_calls = 0
+
+    def gate_spy(**_: object) -> object:
+        nonlocal gate_calls
+        gate_calls += 1
+        raise AssertionError("gate must not run")
+
+    monkeypatch.setattr(
+        adapter_module,
+        "_read_accepted_attempt",
+        lambda **_: (_ready_reader_envelope(), changed_capsule),
+    )
+    monkeypatch.setattr(adapter_module, "_evaluate_data_quality", gate_spy)
+
+    result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+        authority=_authority()
+    )
+    _assert_blocked(
+        result,
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_READER_RESULT_INVALID",
+    )
+    assert gate_calls == 0
+
+
 def test_gate_block_warning_and_invalid_result_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -445,6 +529,32 @@ def test_gate_block_warning_and_invalid_result_fail_closed(
     assert gate_calls == 3
 
 
+def test_forged_gate_status_reason_pair_is_result_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate_result = _blocked_gate_result()
+    gate_result["reason_codes"] = ["DATA_QUALITY_POLICY_INVALID"]
+    monkeypatch.setattr(
+        adapter_module,
+        "_read_accepted_attempt",
+        lambda **_: (_ready_reader_envelope(), _capsule()),
+    )
+    monkeypatch.setattr(
+        adapter_module,
+        "_evaluate_data_quality",
+        lambda **_: gate_result,
+    )
+
+    result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+        authority=_authority()
+    )
+    _assert_blocked(
+        result,
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+    )
+
+
 def test_post_call_drift_is_identity_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -464,6 +574,35 @@ def test_post_call_drift_is_identity_invalid(
     monkeypatch.setattr(adapter_module, "_evaluate_data_quality", drifting_gate)
     result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
         authority=_authority()
+    )
+    _assert_blocked(
+        result,
+        "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+        "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+    )
+
+
+def test_previous_identity_scalar_drift_is_identity_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous_identity = adapter_module._CanonicalBundlePreviousIdentityV1(
+        bundle_id="previous-bundle-1",
+        sequence=6,
+    )
+    authority = _authority(previous_identity=previous_identity)
+    monkeypatch.setattr(
+        adapter_module,
+        "_read_accepted_attempt",
+        lambda **_: (_ready_reader_envelope(), _capsule()),
+    )
+
+    def drifting_gate(**_: object) -> dict[str, object]:
+        object.__setattr__(previous_identity, "sequence", 7)
+        return _ready_gate_result()
+
+    monkeypatch.setattr(adapter_module, "_evaluate_data_quality", drifting_gate)
+    result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+        authority=authority
     )
     _assert_blocked(
         result,
@@ -631,7 +770,12 @@ def _capsule(
         "spread_points": 30,
     }
     timeframes = [
-        {"timeframe": name, "period_seconds": period, "bars": [bar]}
+        {
+            "timeframe": name,
+            "period_seconds": period,
+            "bar_count": 1,
+            "bars": [bar],
+        }
         for name, period in (("M15", 900), ("H1", 3600), ("H4", 14400), ("D1", 86400))
     ]
     symbol_spec = {
@@ -652,24 +796,99 @@ def _capsule(
     }
     manifest = {
         "schema_version": "1.0",
+        "manifest_type": "canonical_mt4_demo_readonly_bundle_v1",
         "bundle_id": "demo-bundle-000000000007",
         "sequence": 7,
+        "generated_at_utc": "2026-07-14T00:00:00Z",
+        "committed_at_utc": "2026-07-14T00:00:00Z",
+        "writer_heartbeat_at_utc": "2026-07-14T00:00:00Z",
+        "source_id": "docs_fixture_only",
+        "writer_version": "1.0",
+        "terminal_id_masked": "terminal-masked",
+        "account_mode": "demo",
+        "is_demo_account": True,
+        "is_live_account": False,
         "canonical_symbol": "XAUUSD",
         "broker_symbol": "GOLD",
+        "commit_state": "committed",
+        "required_files": [],
+        "optional_files": [],
+        "compatible_reader_schema_versions": ["1.0"],
+        **SAFETY_FLAGS,
     }
+
+    def payload_envelope(file_type: str) -> dict[str, object]:
+        return {
+            "schema_version": "1.0",
+            "file_type": file_type,
+            "bundle_id": "demo-bundle-000000000007",
+            "sequence": 7,
+            "generated_at_utc": "2026-07-14T00:00:00Z",
+            "source_id": "docs_fixture_only",
+            "writer_version": "1.0",
+            "terminal_id_masked": "terminal-masked",
+            "account_mode": "demo",
+            "is_demo_account": True,
+            "is_live_account": False,
+            **SAFETY_FLAGS,
+        }
+
     payloads = (
-        ("live_tick.json", _freeze_json(live_tick)),
+        (
+            "live_tick.json",
+            _freeze_json(
+                {
+                    **payload_envelope("live_tick"),
+                    "canonical_symbol": "XAUUSD",
+                    "broker_symbol": "GOLD",
+                    **live_tick,
+                }
+            ),
+        ),
         (
             "latest_bars.json",
             _freeze_json(
                 {
-                    "generated_at_utc": "2026-07-14T00:00:00Z",
+                    **payload_envelope("latest_bars"),
+                    "canonical_symbol": "XAUUSD",
+                    "broker_symbol": "GOLD",
                     "timeframes": timeframes,
                 }
             ),
         ),
-        ("symbol_spec.json", _freeze_json(symbol_spec)),
-        ("account_snapshot.json", _freeze_json({})),
+        (
+            "symbol_spec.json",
+            _freeze_json(
+                {
+                    **payload_envelope("symbol_spec"),
+                    "canonical_symbol": "XAUUSD",
+                    "broker_symbol": "GOLD",
+                    **symbol_spec,
+                }
+            ),
+        ),
+        (
+            "account_snapshot.json",
+            _freeze_json(
+                {
+                    **payload_envelope("account_snapshot"),
+                    "snapshot_time_utc": "2026-07-14T00:00:00Z",
+                    "account_alias_masked": "demo-account",
+                    "server_name_masked": "demo-server",
+                    "account_currency": "USD",
+                    "balance": 10000.0,
+                    "equity": 10000.0,
+                    "margin": 0.0,
+                    "free_margin": 10000.0,
+                    "margin_level": 0.0,
+                    "leverage": 100,
+                    "positions_count": 0,
+                    "pending_orders_count": 0,
+                    "daily_realized_pnl": 0.0,
+                    "daily_floating_pnl": 0.0,
+                }
+            ),
+        ),
     )
     return reader_module._CanonicalMt4DemoReadonlyAcceptedAttemptV1(
         attempt_token=object(),
@@ -744,14 +963,26 @@ def _blocked_reader_envelope() -> dict[str, object]:
     result["passed"] = False
     result["status_code"] = reader_module.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FILE_MISSING
     result["reader_status"] = "blocked"
-    result["reason_codes"] = ["REQUIRED_FILE_MISSING"]
-    result["component_statuses"][0].update(
+    result["reason_codes"] = ["FILE_NOT_FOUND"]
+    result["component_statuses"][1].update(
         {
             "passed": False,
-            "status_code": "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_FILESYSTEM_BOUNDARY_INVALID",
-            "reason_codes": ["REQUIRED_FILE_MISSING"],
+            "status_code": "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SNAPSHOT_MANIFEST_INVALID",
+            "reason_codes": ["FILE_NOT_FOUND"],
         }
     )
+    for component in result["component_statuses"][2:]:
+        component.update(
+            {
+                "passed": False,
+                "status_code": (
+                    "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_"
+                    f"{component['component_name'].upper()}_NOT_CHECKED"
+                ),
+                "reason_codes": [],
+                "warning_codes": [],
+            }
+        )
     result["manifest_consistency_checked"] = False
     result["manifest_consistency_passed"] = False
     result["checksum_checked"] = False
