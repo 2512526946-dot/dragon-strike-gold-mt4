@@ -56,6 +56,14 @@ class InvalidShapeVector:
     observed_fields: tuple[str, ...]
     expected_container: str
     observed_container: str
+    accounting_outcome: str
+    expected_status: str
+    expected_reason: str
+    reader_calls: tuple[int, ...]
+    gate_calls: tuple[int, ...]
+    value_validator_calls: tuple[int, ...]
+    source_available: bool
+    source_is_none: bool
     accepted: bool
 
 
@@ -63,7 +71,14 @@ class InvalidShapeVector:
 class CallerOverrideVector:
     name: str
     attempted_authority: str
-    expected_reader_calls: int
+    accounting_outcome: str
+    expected_status: str
+    expected_reason: str
+    reader_calls: tuple[int, ...]
+    gate_calls: tuple[int, ...]
+    value_validator_calls: tuple[int, ...]
+    source_available: bool
+    source_is_none: bool
     accepted: bool
 
 
@@ -297,98 +312,166 @@ UPSTREAM_PROVENANCE = (
 NESTED_SOURCE_FIELDS = MappingProxyType(
     {
         "CanonicalGoldTickSourceV1": (
-            FieldVector("bid", "built-in `int` or built-in `float`", "Accepted live tick"),
-            FieldVector("ask", "built-in `int` or built-in `float`", "Accepted live tick"),
+            FieldVector(
+                "bid",
+                "built-in `int` or built-in `float`",
+                "accepted `live_tick.json.bid`",
+            ),
+            FieldVector(
+                "ask",
+                "built-in `int` or built-in `float`",
+                "accepted `live_tick.json.ask`",
+            ),
             FieldVector(
                 "spread",
                 "built-in `int` or built-in `float`",
-                "Accepted live tick",
+                "accepted `live_tick.json.spread`",
             ),
-            FieldVector("spread_points", "built-in `int`", "Accepted live tick"),
-            FieldVector("digits", "built-in `int`", "Accepted live tick"),
+            FieldVector(
+                "spread_points",
+                "built-in `int`",
+                "accepted `live_tick.json.spread_points`",
+            ),
+            FieldVector(
+                "digits",
+                "built-in `int`",
+                "accepted `live_tick.json.digits`",
+            ),
             FieldVector(
                 "point",
                 "built-in `int` or built-in `float`",
-                "Accepted live tick",
+                "accepted `live_tick.json.point`",
             ),
-            FieldVector("tick_time_utc", "built-in `str`", "Accepted live tick"),
+            FieldVector(
+                "tick_time_utc",
+                "built-in `str`",
+                "accepted `live_tick.json.tick_time_utc`",
+            ),
         ),
         "CanonicalGoldTimeframeSourceV1": (
-            FieldVector("timeframe", "built-in `str`", "Accepted timeframe"),
-            FieldVector("period_seconds", "built-in `int`", "Accepted timeframe"),
+            FieldVector(
+                "timeframe",
+                "built-in `str`",
+                "accepted `latest_bars.json.timeframes[*].timeframe`",
+            ),
+            FieldVector(
+                "period_seconds",
+                "built-in `int`",
+                "accepted `latest_bars.json.timeframes[*].period_seconds`",
+            ),
             FieldVector(
                 "bars",
                 "exact built-in `tuple[CanonicalGoldBarSourceV1, ...]`",
-                "Accepted timeframe bars",
+                "accepted `latest_bars.json.timeframes[*].bars`",
             ),
         ),
         "CanonicalGoldBarSourceV1": (
-            FieldVector("open_time_utc", "built-in `str`", "Accepted bar"),
-            FieldVector("open", "built-in `int` or built-in `float`", "Accepted bar"),
-            FieldVector("high", "built-in `int` or built-in `float`", "Accepted bar"),
-            FieldVector("low", "built-in `int` or built-in `float`", "Accepted bar"),
-            FieldVector("close", "built-in `int` or built-in `float`", "Accepted bar"),
-            FieldVector("tick_volume", "built-in `int`", "Accepted bar"),
-            FieldVector("spread_points", "built-in `int`", "Accepted bar"),
+            FieldVector(
+                "open_time_utc",
+                "built-in `str`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].open_time_utc`",
+            ),
+            FieldVector(
+                "open",
+                "built-in `int` or built-in `float`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].open`",
+            ),
+            FieldVector(
+                "high",
+                "built-in `int` or built-in `float`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].high`",
+            ),
+            FieldVector(
+                "low",
+                "built-in `int` or built-in `float`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].low`",
+            ),
+            FieldVector(
+                "close",
+                "built-in `int` or built-in `float`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].close`",
+            ),
+            FieldVector(
+                "tick_volume",
+                "built-in `int`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].tick_volume`",
+            ),
+            FieldVector(
+                "spread_points",
+                "built-in `int`",
+                "accepted `latest_bars.json.timeframes[*].bars[*].spread_points`",
+            ),
         ),
         "CanonicalGoldSymbolSpecSourceV1": (
-            FieldVector("spec_time_utc", "built-in `str`", "Accepted symbol spec"),
-            FieldVector("digits", "built-in `int`", "Accepted symbol spec"),
+            FieldVector(
+                "spec_time_utc",
+                "built-in `str`",
+                "accepted `symbol_spec.json.spec_time_utc`",
+            ),
+            FieldVector(
+                "digits",
+                "built-in `int`",
+                "accepted `symbol_spec.json.digits`",
+            ),
             FieldVector(
                 "point",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.point`",
             ),
             FieldVector(
                 "tick_size",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.tick_size`",
             ),
             FieldVector(
                 "tick_value",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.tick_value`",
             ),
             FieldVector(
                 "contract_size",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.contract_size`",
             ),
             FieldVector(
                 "min_lot",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.min_lot`",
             ),
             FieldVector(
                 "lot_step",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.lot_step`",
             ),
             FieldVector(
                 "max_lot",
                 "built-in `int` or built-in `float`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.max_lot`",
             ),
-            FieldVector("base_currency", "built-in `str`", "Accepted symbol spec"),
+            FieldVector(
+                "base_currency",
+                "built-in `str`",
+                "accepted `symbol_spec.json.base_currency`",
+            ),
             FieldVector(
                 "profit_currency",
                 "built-in `str`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.profit_currency`",
             ),
             FieldVector(
                 "margin_currency",
                 "built-in `str`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.margin_currency`",
             ),
             FieldVector(
                 "trade_mode_readonly_label",
                 "built-in `str`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.trade_mode_readonly_label`",
             ),
             FieldVector(
                 "session_status_readonly_label",
                 "built-in `str`",
-                "Accepted symbol spec",
+                "accepted `symbol_spec.json.session_status_readonly_label`",
             ),
         ),
     }
@@ -527,39 +610,114 @@ SAFETY_FLAGS = MappingProxyType(
 )
 
 AUTHORITY_OVERRIDES = (
-    CallerOverrideVector("path_override", "allowed root or bundle directory", 0, False),
-    CallerOverrideVector("clock_override", "reference time or clock", 0, False),
-    CallerOverrideVector("identity_override", "previous bundle identity", 0, False),
+    CallerOverrideVector(
+        "path_override",
+        "allowed root or bundle directory",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
+        False,
+    ),
+    CallerOverrideVector(
+        "clock_override",
+        "reference time or clock",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
+        False,
+    ),
+    CallerOverrideVector(
+        "identity_override",
+        "previous bundle identity",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
+        False,
+    ),
     CallerOverrideVector(
         "policy_override",
         "filesystem, freshness, future-skew, or DataQualityGate policy",
-        0,
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
-    CallerOverrideVector("profile_override", "policy-profile version", 0, False),
+    CallerOverrideVector(
+        "profile_override",
+        "policy-profile version",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
+        False,
+    ),
     CallerOverrideVector(
         "symbol_override",
         "canonical or broker symbol mapping",
-        0,
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
     CallerOverrideVector(
         "dependency_override",
         "reader, validator, Gate, adapter, or fallback dependency",
-        0,
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
     CallerOverrideVector(
         "oracle_override",
         "expected result, status, reason, or oracle",
-        0,
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
 )
 
 AUTHORITY_FIELD_NAMES = tuple(vector.field for vector in AUTHORITY_FIELDS)
 ACCEPTED_FIELD_NAMES = tuple(vector.field for vector in ACCEPTED_ATTEMPT_FIELDS)
-RESULT_FIELD_NAMES = tuple(vector.field for vector in RESULT_FIELDS)
 SOURCE_FIELD_NAMES = tuple(vector.field for vector in SOURCE_PROVENANCE)
 
 INVALID_SHAPE_VECTORS = (
@@ -570,24 +728,48 @@ INVALID_SHAPE_VECTORS = (
         AUTHORITY_FIELD_NAMES[:-1],
         "tuple",
         "tuple",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
-        "extra_result_field",
-        "result",
-        RESULT_FIELD_NAMES,
-        RESULT_FIELD_NAMES + ("internal_status",),
+        "extra_reader_envelope_field",
+        "reader_envelope",
+        ("passed", "status_code", "reason_codes", "warning_codes"),
+        ("passed", "status_code", "reason_codes", "warning_codes", "path"),
         "tuple",
         "tuple",
+        "Invalid reader envelope or capsule return",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_READER_RESULT_INVALID",
+        (1,),
+        (0,),
+        (0, 1),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
-        "reordered_accepted_attempt",
-        "accepted_attempt",
-        ACCEPTED_FIELD_NAMES,
-        ("manifest", "attempt_token", "payloads_by_filename"),
+        "reordered_gate_envelope",
+        "gate_envelope",
+        ("passed", "status_code", "reason_codes", "warning_codes"),
+        ("status_code", "passed", "reason_codes", "warning_codes"),
         "tuple",
         "tuple",
+        "Invalid Gate envelope",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+        (1,),
+        (1,),
+        (1,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -597,6 +779,14 @@ INVALID_SHAPE_VECTORS = (
         SOURCE_FIELD_NAMES + ("bundle_id",),
         "tuple",
         "tuple",
+        "Same-attempt identity or source construction invalid",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SOURCE_INVALID",
+        "GOLD_SOURCE_CONSTRUCTION_INVALID",
+        (1,),
+        (1,),
+        (1,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -606,15 +796,31 @@ INVALID_SHAPE_VECTORS = (
         ("attempt_token", "manifest_alias", "payloads_by_filename"),
         "tuple",
         "tuple",
+        "Invalid reader envelope or capsule return",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_READER_RESULT_INVALID",
+        (1,),
+        (0,),
+        (0, 1),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
-        "case_changed_result_field",
-        "result",
-        RESULT_FIELD_NAMES,
-        ("Contract_version",) + RESULT_FIELD_NAMES[1:],
+        "case_changed_gate_field",
+        "gate_envelope",
+        ("passed", "status_code", "reason_codes", "warning_codes"),
+        ("Passed", "status_code", "reason_codes", "warning_codes"),
         "tuple",
         "tuple",
+        "Invalid Gate envelope",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+        (1,),
+        (1,),
+        (1,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -624,6 +830,14 @@ INVALID_SHAPE_VECTORS = (
         AUTHORITY_FIELD_NAMES,
         "exact authority dataclass",
         "authority subclass",
+        "Authority invalid or dependency unavailable before reader call",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+        "GOLD_SOURCE_AUTHORITY_INVALID",
+        (0,),
+        (0,),
+        (0,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -633,6 +847,14 @@ INVALID_SHAPE_VECTORS = (
         PAYLOAD_ORDER,
         "tuple",
         "list",
+        "Invalid reader envelope or capsule return",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_READER_RESULT_INVALID",
+        (1,),
+        (0,),
+        (0, 1),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -642,6 +864,14 @@ INVALID_SHAPE_VECTORS = (
         ("reader_token", "different_reader_object", "different_token"),
         "identity tuple",
         "identity tuple",
+        "Same-attempt identity or source construction invalid",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+        "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+        (1,),
+        (1,),
+        (1,),
+        False,
+        True,
         False,
     ),
     InvalidShapeVector(
@@ -651,6 +881,14 @@ INVALID_SHAPE_VECTORS = (
         ("frozen_authority", "mutated_reader", "frozen_capsule"),
         "identity tuple",
         "identity tuple",
+        "Same-attempt identity or source construction invalid",
+        "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+        "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+        (1,),
+        (1,),
+        (1,),
+        False,
+        True,
         False,
     ),
 )
@@ -671,6 +909,28 @@ SENSITIVE_TERMS = (
     "risk decision",
     "order",
     "execution field",
+)
+
+FAIL_CLOSED_CONDITIONS = (
+    "missing, extra, reordered, subclassed, aliased, or wrong-container authority, reader, Gate, capsule, source, or result fields;",
+    "authority token mismatch or non-server-owned configuration;",
+    "path, time, policy, dependency, symbol mapping, or oracle override;",
+    "reader or Gate dependency unavailable before its permitted call;",
+    "reader/Gate status, reason, warning, readiness, component, or safety-envelope inconsistency;",
+    "no accepted-attempt capsule, an extra capsule, or a capsule from another call;",
+    "a manifest/payload identity mismatch reported by W1, warning, mixed attempt, polluted evidence, post-call mutation, or ambiguous provenance;",
+    "account, path, payload, checksum, exception, or internal state entering a source or result;",
+    "source construction mismatch or any unexpected exception.",
+)
+
+FORBIDDEN_BEHAVIORS = (
+    "copy or reimplement G148 reader, W1 validators, G149 Gate, G151 adapter, G153 pipeline, G170/G171 summary validator, or G178 projector logic;",
+    "expose or persist the private capsule or authority object;",
+    "call a public diagnostics endpoint or use a diagnostics result as facts;",
+    "read environment variables, ambient clock, settings, network, database, cache, frontend state, or runtime data outside the approved reader call;",
+    "retry, fallback, reread, sort, round, repair, infer, switch source, or call a second dependency;",
+    "return a partial source; or",
+    "call the projector, ReplayRunner, API, MT4, EA, order, execution, or trading component.",
 )
 
 STAGED_DELIVERY = (
@@ -713,11 +973,85 @@ def _assert_ordered_normalized(text: str, fragments: tuple[str, ...]) -> None:
     assert positions == tuple(sorted(positions))
 
 
-def _field_table_rows(vectors: tuple[FieldVector, ...]) -> tuple[str, ...]:
-    return tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} | {vector.source} |"
+def _markdown_tables(
+    text: str,
+    start: str,
+    end: str,
+) -> tuple[tuple[tuple[str, ...], tuple[tuple[str, ...], ...]], ...]:
+    table_groups: list[list[str]] = []
+    current_group: list[str] = []
+    for line in _section(text, start, end).splitlines():
+        if line.startswith("|"):
+            current_group.append(line)
+        elif current_group:
+            table_groups.append(current_group)
+            current_group = []
+    if current_group:
+        table_groups.append(current_group)
+
+    parsed_tables = []
+    for lines in table_groups:
+        assert len(lines) >= 2
+        rows = tuple(
+            tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
+            for line in lines
+        )
+        assert all(len(row) == len(rows[0]) for row in rows)
+        assert all(
+            cell and set(cell.replace(" ", "")) <= {"-", ":"}
+            for cell in rows[1]
+        )
+        parsed_tables.append((rows[0], rows[2:]))
+    return tuple(parsed_tables)
+
+
+def _markdown_table(
+    text: str,
+    start: str,
+    end: str,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]:
+    tables = _markdown_tables(text, start, end)
+    assert len(tables) == 1
+    return tables[0]
+
+
+def _bullet_items(text: str, start: str, end: str) -> tuple[str, ...]:
+    items: list[str] = []
+    current = ""
+    for line in _section(text, start, end).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            if current:
+                items.append(_normalize_whitespace(current))
+            current = stripped[2:]
+        elif current and stripped:
+            current += " " + stripped
+    if current:
+        items.append(_normalize_whitespace(current))
+    return tuple(items)
+
+
+def _field_table(
+    header: tuple[str, ...],
+    vectors: tuple[FieldVector, ...],
+    *,
+    include_source: bool,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]:
+    rows = tuple(
+        (
+            str(index),
+            f"`{vector.field}`",
+            vector.exact_type,
+            *((vector.source,) if include_source else ()),
+        )
         for index, vector in enumerate(vectors, start=1)
     )
+    return header, rows
+
+
+def _oxford_backticks(fields: tuple[FieldVector, ...]) -> str:
+    names = tuple(f"`{vector.field}`" for vector in fields)
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
 
 
 def _call_cell(values: tuple[int, ...]) -> str:
@@ -779,14 +1113,25 @@ def test_contract_locks_internal_interface_and_authority_ownership() -> None:
 def test_exact_authority_attempt_and_result_tables_match_contract() -> None:
     text = _contract_text()
     normalized = _normalize_whitespace(text)
-    _assert_ordered(text, _field_table_rows(AUTHORITY_FIELDS))
-    _assert_ordered(text, _field_table_rows(ACCEPTED_ATTEMPT_FIELDS))
-
-    result_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for index, vector in enumerate(RESULT_FIELDS, start=1)
+    assert _markdown_table(text, "### 5.1 Authority capsule", "### 5.2") == (
+        _field_table(
+            ("Order", "Field", "Exact type", "Authority"),
+            AUTHORITY_FIELDS,
+            include_source=True,
+        )
     )
-    _assert_ordered(text, result_rows)
+    assert _markdown_table(text, "### 5.2 Accepted-attempt capsule", "### 5.3") == (
+        _field_table(
+            ("Order", "Field", "Exact type", "Source"),
+            ACCEPTED_ATTEMPT_FIELDS,
+            include_source=True,
+        )
+    )
+    assert _markdown_table(text, "### 5.3 Adapter result", "## 6.") == _field_table(
+        ("Order", "Field", "Exact type"),
+        RESULT_FIELDS,
+        include_source=False,
+    )
     assert (
         "`_CanonicalBundlePreviousIdentityV1` is frozen and slotted with exact "
         "built-in\n`str bundle_id` followed by exact built-in `int sequence`."
@@ -795,6 +1140,19 @@ def test_exact_authority_attempt_and_result_tables_match_contract() -> None:
     assert "`max_manifest_consistency_retries` to exact built-in integer\nzero" in text
     assert "Built-in strings, `PurePath`, the factory `Path` class itself" in normalized
     assert "a concrete-path subclass, a wrong-platform path" in normalized
+    assert (
+        "On success, `source_available` is true and `source` is exact type "
+        "`CanonicalGoldMarketFactsSourceV1`. On every non-passed result, "
+        "`source_available` is false and `source` is `None`."
+        in normalized
+    )
+    assert (
+        "No result may contain a path, filename, raw payload, digest, checksum, "
+        "account fact, exception text, traceback, internal attempt token, source "
+        "status detail, policy object, dependency, strategy, risk decision, order, "
+        "or execution field."
+        in normalized
+    )
 
 
 def test_datetime_json_payload_and_same_attempt_rules_are_exact() -> None:
@@ -829,19 +1187,21 @@ def test_datetime_json_payload_and_same_attempt_rules_are_exact() -> None:
 def test_call_accounting_and_no_retry_rules_match_exactly() -> None:
     text = _contract_text()
     normalized = _normalize_whitespace(text)
-    rows = tuple(
-        "| "
-        + vector.outcome
-        + " | "
-        + _call_cell(vector.reader_calls)
-        + " | "
-        + _call_cell(vector.gate_calls)
-        + " | "
-        + _call_cell(vector.value_validator_calls)
-        + " |"
-        for vector in CALL_ACCOUNTING
+    expected_table = (
+        ("Outcome", "Reader calls", "Gate calls", "Value-validator calls"),
+        tuple(
+            (
+                vector.outcome,
+                _call_cell(vector.reader_calls),
+                _call_cell(vector.gate_calls),
+                _call_cell(vector.value_validator_calls),
+            )
+            for vector in CALL_ACCOUNTING
+        ),
     )
-    _assert_ordered(text, rows)
+    assert _markdown_table(text, "### 6.1 Call accounting", "## 7.") == (
+        expected_table
+    )
     assert CALL_ACCOUNTING[0].reader_calls == (0,)
     assert CALL_ACCOUNTING[-1].reader_calls == (1,)
     assert CALL_ACCOUNTING[-1].gate_calls == (1,)
@@ -856,90 +1216,164 @@ def test_source_and_nested_provenance_is_complete_and_ordered() -> None:
     text = _contract_text()
     snapshot_text = _snapshot_contract_text()
     normalized = _normalize_whitespace(text)
-    source_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.source} |"
-        for index, vector in enumerate(SOURCE_PROVENANCE, start=1)
-    )
-    upstream_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.source} |"
-        for index, vector in enumerate(UPSTREAM_PROVENANCE, start=1)
-    )
-    _assert_ordered(text, source_rows)
-    _assert_ordered(text, upstream_rows)
-
-    source_type_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for index, vector in enumerate(SOURCE_PROVENANCE, start=1)
-    )
-    upstream_type_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for index, vector in enumerate(UPSTREAM_PROVENANCE, start=1)
-    )
-    _assert_ordered(
-        _section(snapshot_text, "## 6. Source Type", "### 6.1 Upstream evidence"),
-        source_type_rows,
-    )
-    _assert_ordered(
-        _section(snapshot_text, "### 6.1 Upstream evidence", "### 6.2 Tick source"),
-        upstream_type_rows,
-    )
-
-    tick_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for index, vector in enumerate(
-            NESTED_SOURCE_FIELDS["CanonicalGoldTickSourceV1"],
-            start=1,
+    assert _markdown_table(text, "### 7.1 Top-level 13 fields", "### 7.2") == (
+        (
+            ("Order", "G175 source field", "Exact source"),
+            tuple(
+                (str(index), f"`{vector.field}`", vector.source)
+                for index, vector in enumerate(SOURCE_PROVENANCE, start=1)
+            ),
         )
     )
-    timeframe_and_bar_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for fields in (
+    assert _markdown_table(text, "### 7.2 Upstream evidence", "### 7.3") == (
+        (
+            ("Order", "Field", "Exact source or value"),
+            tuple(
+                (str(index), f"`{vector.field}`", vector.source)
+                for index, vector in enumerate(UPSTREAM_PROVENANCE, start=1)
+            ),
+        )
+    )
+
+    source_type_table = _markdown_table(
+        snapshot_text,
+        "## 6. Source Type",
+        "### 6.1 Upstream evidence",
+    )
+    assert source_type_table[0] == ("Order", "Field", "Exact type", "Authority")
+    assert tuple(row[:3] for row in source_type_table[1]) == _field_table(
+        ("Order", "Field", "Exact type"),
+        SOURCE_PROVENANCE,
+        include_source=False,
+    )[1]
+    assert len(source_type_table[1]) == len(SOURCE_PROVENANCE)
+
+    upstream_type_table = _markdown_table(
+        snapshot_text,
+        "### 6.1 Upstream evidence",
+        "### 6.2 Tick source",
+    )
+    assert upstream_type_table[0] == (
+        "Order",
+        "Field",
+        "Exact type",
+        "Exact value or rule",
+    )
+    assert tuple(row[:3] for row in upstream_type_table[1]) == _field_table(
+        ("Order", "Field", "Exact type"),
+        UPSTREAM_PROVENANCE,
+        include_source=False,
+    )[1]
+    assert len(upstream_type_table[1]) == len(UPSTREAM_PROVENANCE)
+
+    assert _markdown_table(
+        snapshot_text,
+        "### 6.2 Tick source",
+        "### 6.3 Timeframe and bar source",
+    ) == _field_table(
+        ("Order", "Field", "Exact type"),
+        NESTED_SOURCE_FIELDS["CanonicalGoldTickSourceV1"],
+        include_source=False,
+    )
+    assert _markdown_tables(
+        snapshot_text,
+        "### 6.3 Timeframe and bar source",
+        "### 6.4 Symbol source",
+    ) == (
+        _field_table(
+            ("Order", "Field", "Exact type"),
             NESTED_SOURCE_FIELDS["CanonicalGoldTimeframeSourceV1"],
+            include_source=False,
+        ),
+        _field_table(
+            ("Order", "Field", "Exact type"),
             NESTED_SOURCE_FIELDS["CanonicalGoldBarSourceV1"],
-        )
-        for index, vector in enumerate(fields, start=1)
+            include_source=False,
+        ),
     )
-    symbol_rows = tuple(
-        f"| {index} | `{vector.field}` | {vector.exact_type} |"
-        for index, vector in enumerate(
-            NESTED_SOURCE_FIELDS["CanonicalGoldSymbolSpecSourceV1"],
-            start=1,
-        )
-    )
-    _assert_ordered(
-        _section(snapshot_text, "### 6.2 Tick source", "### 6.3 Timeframe and bar source"),
-        tick_rows,
-    )
-    _assert_ordered(
-        _section(snapshot_text, "### 6.3 Timeframe and bar source", "### 6.4 Symbol source"),
-        timeframe_and_bar_rows,
-    )
-    _assert_ordered(
-        _section(snapshot_text, "### 6.4 Symbol source", "## 7. Result Type"),
-        symbol_rows,
+    assert _markdown_table(
+        snapshot_text,
+        "### 6.4 Symbol source",
+        "## 7. Result Type",
+    ) == _field_table(
+        ("Order", "Field", "Exact type"),
+        NESTED_SOURCE_FIELDS["CanonicalGoldSymbolSpecSourceV1"],
+        include_source=False,
     )
 
     assert TIMEFRAME_ORDER == ("M15", "H1", "H4", "D1")
-    assert "in `M15`, `H1`, `H4`, `D1` order" in text
-
-    assert "`CanonicalGoldTickSourceV1`" in text
-    assert "The four timeframe records come from exact accepted" in text
-    assert "`CanonicalGoldBarSourceV1`" in text
-    assert "`CanonicalGoldSymbolSpecSourceV1`" in text
+    assert (
+        f"`CanonicalGoldTickSourceV1`: "
+        f"{_oxford_backticks(NESTED_SOURCE_FIELDS['CanonicalGoldTickSourceV1'])} "
+        "come from the exact accepted `live_tick.json` fields in that order."
+        in normalized
+    )
+    assert (
+        "The four timeframe records come from exact accepted "
+        "`latest_bars.json.timeframes` in `M15`, `H1`, `H4`, `D1` order. Each "
+        "carries `timeframe`, `period_seconds`, and an exact tuple of bars."
+        in normalized
+    )
+    assert (
+        f"Each `CanonicalGoldBarSourceV1` carries "
+        f"{_oxford_backticks(NESTED_SOURCE_FIELDS['CanonicalGoldBarSourceV1'])} "
+        "from the accepted bar in that order."
+        in normalized
+    )
+    assert (
+        f"`CanonicalGoldSymbolSpecSourceV1` carries "
+        f"{_oxford_backticks(NESTED_SOURCE_FIELDS['CanonicalGoldSymbolSpecSourceV1'])} "
+        "from exact accepted `symbol_spec.json` fields in that order."
+        in normalized
+    )
+    assert tuple(
+        vector.source
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldTickSourceV1"]
+    ) == tuple(
+        f"accepted `live_tick.json.{vector.field}`"
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldTickSourceV1"]
+    )
+    assert tuple(
+        vector.source
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldTimeframeSourceV1"]
+    ) == tuple(
+        f"accepted `latest_bars.json.timeframes[*].{vector.field}`"
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldTimeframeSourceV1"]
+    )
+    assert tuple(
+        vector.source
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldBarSourceV1"]
+    ) == tuple(
+        f"accepted `latest_bars.json.timeframes[*].bars[*].{vector.field}`"
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldBarSourceV1"]
+    )
+    assert tuple(
+        vector.source
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldSymbolSpecSourceV1"]
+    ) == tuple(
+        f"accepted `symbol_spec.json.{vector.field}`"
+        for vector in NESTED_SOURCE_FIELDS["CanonicalGoldSymbolSpecSourceV1"]
+    )
     assert "`bar_count` is validation evidence only and is not copied into G175" in normalized
     assert "No adapter stage converts values to Decimal" in text
 
 
 def test_status_reason_pairs_preserve_first_failure_order() -> None:
     text = _contract_text()
-    rows = tuple(
-        f"| {vector.condition} | {'true' if vector.passed else 'false'} | "
-        f"`{vector.status_code}` | "
-        + ("none" if vector.reason_code is None else f"`{vector.reason_code}`")
-        + " |"
-        for vector in STATUS_REASON_VECTORS
+    normalized = _normalize_whitespace(text)
+    expected_table = (
+        ("Condition", "`passed`", "Status", "Exact reason"),
+        tuple(
+            (
+                vector.condition,
+                "true" if vector.passed else "false",
+                f"`{vector.status_code}`",
+                "none" if vector.reason_code is None else f"`{vector.reason_code}`",
+            )
+            for vector in STATUS_REASON_VECTORS
+        ),
     )
-    _assert_ordered(text, rows)
+    assert _markdown_table(text, "## 8. Result Status", "## 9.") == expected_table
     assert STATUS_REASON_VECTORS[0].source_available is True
     assert all(
         vector.source_available is False for vector in STATUS_REASON_VECTORS[1:]
@@ -952,26 +1386,52 @@ def test_status_reason_pairs_preserve_first_failure_order() -> None:
     assert "A ready result has no reason. Warning codes are always empty in v1." in text
     assert "the first reached step in\nsection 6 wins" in text
     assert "must not continue to collect, reorder, or combine\nreasons" in text
+    assert (
+        "Passed-with-warning reader or Gate results are rejected. Warning codes "
+        "are not copied into a passed source."
+        in normalized
+    )
 
 
 def test_invalid_shape_and_caller_override_vectors_are_concrete() -> None:
     names = tuple(vector.name for vector in INVALID_SHAPE_VECTORS)
     assert names == (
         "missing_authority_field",
-        "extra_result_field",
-        "reordered_accepted_attempt",
+        "extra_reader_envelope_field",
+        "reordered_gate_envelope",
         "duplicate_source_field",
         "aliased_capsule_field",
-        "case_changed_result_field",
+        "case_changed_gate_field",
         "subclassed_authority",
         "wrong_container_payloads",
         "mixed_attempt_token",
         "post_call_mutation",
     )
+    accounting_by_outcome = {vector.outcome: vector for vector in CALL_ACCOUNTING}
+    result_pairs = {
+        (vector.status_code, vector.reason_code)
+        for vector in STATUS_REASON_VECTORS
+        if vector.passed is False
+    }
+    for vector in INVALID_SHAPE_VECTORS:
+        accounting = accounting_by_outcome[vector.accounting_outcome]
+        assert vector.reader_calls == accounting.reader_calls
+        assert vector.gate_calls == accounting.gate_calls
+        assert vector.value_validator_calls == accounting.value_validator_calls
+        assert (vector.expected_status, vector.expected_reason) in result_pairs
+        assert vector.source_available is False
+        assert vector.source_is_none is True
+        assert vector.accepted is False
+
     assert all(vector.accepted is False for vector in INVALID_SHAPE_VECTORS)
     assert INVALID_SHAPE_VECTORS[0].observed_fields != AUTHORITY_FIELD_NAMES
-    assert len(INVALID_SHAPE_VECTORS[1].observed_fields) == len(RESULT_FIELDS) + 1
-    assert INVALID_SHAPE_VECTORS[2].observed_fields != ACCEPTED_FIELD_NAMES
+    assert len(INVALID_SHAPE_VECTORS[1].observed_fields) == 5
+    assert INVALID_SHAPE_VECTORS[2].observed_fields != (
+        "passed",
+        "status_code",
+        "reason_codes",
+        "warning_codes",
+    )
     assert INVALID_SHAPE_VECTORS[3].observed_fields.count("bundle_id") == 2
     assert INVALID_SHAPE_VECTORS[7].observed_container == "list"
 
@@ -985,8 +1445,22 @@ def test_invalid_shape_and_caller_override_vectors_are_concrete() -> None:
         "dependency_override",
         "oracle_override",
     )
-    assert all(vector.expected_reader_calls == 0 for vector in AUTHORITY_OVERRIDES)
-    assert all(vector.accepted is False for vector in AUTHORITY_OVERRIDES)
+    for vector in AUTHORITY_OVERRIDES:
+        accounting = accounting_by_outcome[vector.accounting_outcome]
+        assert accounting.reader_calls == vector.reader_calls == (0,)
+        assert accounting.gate_calls == vector.gate_calls == (0,)
+        assert accounting.value_validator_calls == vector.value_validator_calls == (0,)
+        assert (
+            vector.expected_status,
+            vector.expected_reason,
+        ) == (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+            "GOLD_SOURCE_AUTHORITY_INVALID",
+        )
+        assert (vector.expected_status, vector.expected_reason) in result_pairs
+        assert vector.source_available is False
+        assert vector.source_is_none is True
+        assert vector.accepted is False
 
 
 def test_safety_isolation_and_staged_delivery_remain_closed() -> None:
@@ -1002,8 +1476,25 @@ def test_safety_isolation_and_staged_delivery_remain_closed() -> None:
         "allowed_to_call_ea": False,
         "allowed_to_modify_risk": False,
     }
-    for field, value in SAFETY_FLAGS.items():
-        assert f"| `{field}` | `{'true' if value else 'false'}` |" in text
+    assert _markdown_table(text, "## 9. Fixed Safety Envelope", "## 10.") == (
+        ("Field", "Value"),
+        tuple(
+            (f"`{field}`", f"`{'true' if value else 'false'}`")
+            for field, value in SAFETY_FLAGS.items()
+        ),
+    )
+    assert (
+        "Every adapter result, including ready, has these exact built-in values:"
+        in text
+    )
+    assert _bullet_items(
+        text,
+        "The adapter must fail closed when any of the following occurs:",
+        "The adapter must not:",
+    ) == FAIL_CLOSED_CONDITIONS
+    assert _bullet_items(text, "The adapter must not:", "## 11.") == (
+        FORBIDDEN_BEHAVIORS
+    )
     for term in SENSITIVE_TERMS:
         assert term in normalized
 
