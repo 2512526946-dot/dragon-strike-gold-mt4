@@ -55,6 +55,10 @@ PUBLIC_INTERFACE_LINES = (
     "    ...",
 )
 
+FUTURE_MODULE_LINES = (
+    "backend/app/services/canonical_gold_market_facts_docs_fixture_integration.py",
+)
+
 PUBLIC_EXPORTS = (
     "build_canonical_gold_market_facts_docs_fixture_source_v1",
 )
@@ -91,6 +95,13 @@ PATH_AUTHORITY = MappingProxyType(
     }
 )
 
+ROOT_DERIVATION_LINES = ("Path(__file__).resolve().parents[3]",)
+
+FIXTURE_PATH_LINES = (
+    "allowed_root = <repository root>/docs/architecture/fixtures",
+    "bundle_dir = <allowed_root>/canonical-mt4-demo-readonly-bundle-v1",
+)
+
 FIXTURE_IDENTITY = (
     AuthorityVector("schema_version", '"1.0"'),
     AuthorityVector("bundle_id", '"demo-bundle-000000000001"'),
@@ -121,6 +132,7 @@ AUTHORITY_FIELDS = (
 )
 
 REFERENCE_TIME = "datetime(2026, 7, 10, 2, 30, 5, tzinfo=UTC)"
+REFERENCE_TIME_LINES = (REFERENCE_TIME,)
 
 READ_POLICY = MappingProxyType(
     {
@@ -536,11 +548,12 @@ def test_future_surface_and_private_authority_are_exact() -> None:
     text = _contract_text()
     normalized = _normalize_whitespace(text)
 
-    assert (
-        "backend/app/services/"
-        "canonical_gold_market_facts_docs_fixture_integration.py"
-        in text
-    )
+    assert _fenced_block_lines(
+        text,
+        "The future integration implementation is owned by exactly this module:",
+        "It may expose exactly one production name:",
+        language="text",
+    ) == FUTURE_MODULE_LINES
     assert _fenced_block_lines(
         text,
         "It may expose exactly one production name:",
@@ -578,11 +591,28 @@ def test_fixed_path_time_identity_and_policy_authority_are_exact() -> None:
     text = _contract_text()
     normalized = _normalize_whitespace(text)
 
-    assert PATH_AUTHORITY["repository_root_derivation"] in text
-    assert PATH_AUTHORITY["allowed_root_suffix"] in text
-    assert PATH_AUTHORITY["bundle_dir_name"] in text
+    assert _fenced_block_lines(
+        text,
+        "The future module derives its repository root only by:",
+        "It constructs these server-owned concrete paths with `pathlib.Path`:",
+        language="python",
+    ) == ROOT_DERIVATION_LINES
+    assert _fenced_block_lines(
+        text,
+        "It constructs these server-owned concrete paths with `pathlib.Path`:",
+        "Runtime path types must be the platform's exact concrete",
+        language="text",
+    ) == FIXTURE_PATH_LINES
+    assert PATH_AUTHORITY["repository_root_derivation"] == ROOT_DERIVATION_LINES[0]
+    assert PATH_AUTHORITY["allowed_root_suffix"] in FIXTURE_PATH_LINES[0]
+    assert PATH_AUTHORITY["bundle_dir_name"] in FIXTURE_PATH_LINES[1]
     assert "exact concrete `WindowsPath` or `PosixPath`" in normalized
-    assert REFERENCE_TIME in text
+    assert _fenced_block_lines(
+        text,
+        "The sole reference time is an exact built-in `datetime.datetime`:",
+        "No ambient clock",
+        language="python",
+    ) == REFERENCE_TIME_LINES
 
     expected_identity = tuple(
         f"{vector.field} = {vector.exact_value}" for vector in FIXTURE_IDENTITY
@@ -964,6 +994,66 @@ def test_closed_oracles_reject_reviewed_contract_mutations() -> None:
         "The integration implementation must not import or call:",
         "The G178 prohibition applies",
     ) != ISOLATION_RULES
+
+    extra_module = text.replace(
+        FUTURE_MODULE_LINES[0],
+        FUTURE_MODULE_LINES[0] + "\nbackend/app/services/alternate_fixture_source.py",
+        1,
+    )
+    assert _fenced_block_lines(
+        extra_module,
+        "The future integration implementation is owned by exactly this module:",
+        "It may expose exactly one production name:",
+        language="text",
+    ) != FUTURE_MODULE_LINES
+
+    alternate_root = text.replace(
+        ROOT_DERIVATION_LINES[0],
+        "Path(__file__).resolve().parents[2]",
+        1,
+    )
+    assert _fenced_block_lines(
+        alternate_root,
+        "The future module derives its repository root only by:",
+        "It constructs these server-owned concrete paths with `pathlib.Path`:",
+        language="python",
+    ) != ROOT_DERIVATION_LINES
+
+    alternate_path = text.replace(
+        FIXTURE_PATH_LINES[1],
+        "bundle_dir = <allowed_root>/alternate-canonical-bundle",
+        1,
+    )
+    assert _fenced_block_lines(
+        alternate_path,
+        "It constructs these server-owned concrete paths with `pathlib.Path`:",
+        "Runtime path types must be the platform's exact concrete",
+        language="text",
+    ) != FIXTURE_PATH_LINES
+
+    reordered_paths = text.replace(
+        FIXTURE_PATH_LINES[0] + "\n" + FIXTURE_PATH_LINES[1],
+        FIXTURE_PATH_LINES[1] + "\n" + FIXTURE_PATH_LINES[0],
+        1,
+    )
+    assert _fenced_block_lines(
+        reordered_paths,
+        "It constructs these server-owned concrete paths with `pathlib.Path`:",
+        "Runtime path types must be the platform's exact concrete",
+        language="text",
+    ) != FIXTURE_PATH_LINES
+
+    extra_reference_time = text.replace(
+        REFERENCE_TIME,
+        REFERENCE_TIME + "\ndatetime(2026, 7, 10, 2, 30, 6, tzinfo=UTC)",
+        1,
+    )
+    assert _fenced_block_lines(
+        extra_reference_time,
+        "The sole reference time is an exact built-in `datetime.datetime`:",
+        "No ambient clock",
+        language="python",
+    ) != REFERENCE_TIME_LINES
 
 
 def test_static_vectors_do_not_import_or_implement_future_runtime() -> None:
