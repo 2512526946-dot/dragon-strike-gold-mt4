@@ -893,6 +893,217 @@ INVALID_SHAPE_VECTORS = (
     ),
 )
 
+INVALID_SHAPE_ORACLE = MappingProxyType(
+    {
+        "missing_authority_field": (
+            "authority",
+            AUTHORITY_FIELD_NAMES,
+            AUTHORITY_FIELD_NAMES[:-1],
+            "tuple",
+            "tuple",
+            "Authority invalid or dependency unavailable before reader call",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+            "GOLD_SOURCE_AUTHORITY_INVALID",
+            (0,),
+            (0,),
+            (0,),
+            False,
+            True,
+            False,
+        ),
+        "extra_reader_envelope_field": (
+            "reader_envelope",
+            ("passed", "status_code", "reason_codes", "warning_codes"),
+            ("passed", "status_code", "reason_codes", "warning_codes", "path"),
+            "tuple",
+            "tuple",
+            "Invalid reader envelope or capsule return",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+            (1,),
+            (0,),
+            (0, 1),
+            False,
+            True,
+            False,
+        ),
+        "reordered_gate_envelope": (
+            "gate_envelope",
+            ("passed", "status_code", "reason_codes", "warning_codes"),
+            ("status_code", "passed", "reason_codes", "warning_codes"),
+            "tuple",
+            "tuple",
+            "Invalid Gate envelope",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+            (1,),
+            (1,),
+            (1,),
+            False,
+            True,
+            False,
+        ),
+        "duplicate_source_field": (
+            "source",
+            SOURCE_FIELD_NAMES,
+            SOURCE_FIELD_NAMES + ("bundle_id",),
+            "tuple",
+            "tuple",
+            "Same-attempt identity or source construction invalid",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SOURCE_INVALID",
+            "GOLD_SOURCE_CONSTRUCTION_INVALID",
+            (1,),
+            (1,),
+            (1,),
+            False,
+            True,
+            False,
+        ),
+        "aliased_capsule_field": (
+            "accepted_attempt",
+            ACCEPTED_FIELD_NAMES,
+            ("attempt_token", "manifest_alias", "payloads_by_filename"),
+            "tuple",
+            "tuple",
+            "Invalid reader envelope or capsule return",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+            (1,),
+            (0,),
+            (0, 1),
+            False,
+            True,
+            False,
+        ),
+        "case_changed_gate_field": (
+            "gate_envelope",
+            ("passed", "status_code", "reason_codes", "warning_codes"),
+            ("Passed", "status_code", "reason_codes", "warning_codes"),
+            "tuple",
+            "tuple",
+            "Invalid Gate envelope",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+            (1,),
+            (1,),
+            (1,),
+            False,
+            True,
+            False,
+        ),
+        "subclassed_authority": (
+            "authority",
+            AUTHORITY_FIELD_NAMES,
+            AUTHORITY_FIELD_NAMES,
+            "exact authority dataclass",
+            "authority subclass",
+            "Authority invalid or dependency unavailable before reader call",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+            "GOLD_SOURCE_AUTHORITY_INVALID",
+            (0,),
+            (0,),
+            (0,),
+            False,
+            True,
+            False,
+        ),
+        "wrong_container_payloads": (
+            "accepted_attempt.payloads_by_filename",
+            PAYLOAD_ORDER,
+            PAYLOAD_ORDER,
+            "tuple",
+            "list",
+            "Invalid reader envelope or capsule return",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+            (1,),
+            (0,),
+            (0, 1),
+            False,
+            True,
+            False,
+        ),
+        "mixed_attempt_token": (
+            "same_attempt",
+            ("reader_token", "gate_reader_object", "post_call_token"),
+            ("reader_token", "different_reader_object", "different_token"),
+            "identity tuple",
+            "identity tuple",
+            "Same-attempt identity or source construction invalid",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+            "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+            (1,),
+            (1,),
+            (1,),
+            False,
+            True,
+            False,
+        ),
+        "post_call_mutation": (
+            "same_attempt",
+            ("frozen_authority", "frozen_reader", "frozen_capsule"),
+            ("frozen_authority", "mutated_reader", "frozen_capsule"),
+            "identity tuple",
+            "identity tuple",
+            "Same-attempt identity or source construction invalid",
+            "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+            "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+            (1,),
+            (1,),
+            (1,),
+            False,
+            True,
+            False,
+        ),
+    }
+)
+
+_AUTHORITY_OVERRIDE_RESULT = (
+    "Authority invalid or dependency unavailable before reader call",
+    "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+    "GOLD_SOURCE_AUTHORITY_INVALID",
+    (0,),
+    (0,),
+    (0,),
+    False,
+    True,
+    False,
+)
+
+AUTHORITY_OVERRIDE_ORACLE = MappingProxyType(
+    {
+        "path_override": (
+            "allowed root or bundle directory",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "clock_override": ("reference time or clock", *_AUTHORITY_OVERRIDE_RESULT),
+        "identity_override": (
+            "previous bundle identity",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "policy_override": (
+            "filesystem, freshness, future-skew, or DataQualityGate policy",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "profile_override": (
+            "policy-profile version",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "symbol_override": (
+            "canonical or broker symbol mapping",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "dependency_override": (
+            "reader, validator, Gate, adapter, or fallback dependency",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+        "oracle_override": (
+            "expected result, status, reason, or oracle",
+            *_AUTHORITY_OVERRIDE_RESULT,
+        ),
+    }
+)
+
 SENSITIVE_TERMS = (
     "filesystem path",
     "raw payload",
@@ -1407,6 +1618,41 @@ def test_invalid_shape_and_caller_override_vectors_are_concrete() -> None:
         "mixed_attempt_token",
         "post_call_mutation",
     )
+    assert names == tuple(INVALID_SHAPE_ORACLE)
+    assert tuple(
+        (
+            vector.name,
+            (
+                vector.record,
+                vector.expected_fields,
+                vector.observed_fields,
+                vector.expected_container,
+                vector.observed_container,
+                vector.accounting_outcome,
+                vector.expected_status,
+                vector.expected_reason,
+                vector.reader_calls,
+                vector.gate_calls,
+                vector.value_validator_calls,
+                vector.source_available,
+                vector.source_is_none,
+                vector.accepted,
+            ),
+        )
+        for vector in INVALID_SHAPE_VECTORS
+    ) == tuple(INVALID_SHAPE_ORACLE.items())
+    assert all(
+        (vector.expected_fields, vector.expected_container)
+        != (vector.observed_fields, vector.observed_container)
+        for vector in INVALID_SHAPE_VECTORS
+    )
+    assert len(
+        {
+            (vector.record, vector.observed_fields, vector.observed_container)
+            for vector in INVALID_SHAPE_VECTORS
+        }
+    ) == len(INVALID_SHAPE_VECTORS)
+
     accounting_by_outcome = {vector.outcome: vector for vector in CALL_ACCOUNTING}
     result_pairs = {
         (vector.status_code, vector.reason_code)
@@ -1445,6 +1691,30 @@ def test_invalid_shape_and_caller_override_vectors_are_concrete() -> None:
         "dependency_override",
         "oracle_override",
     )
+    assert tuple(vector.name for vector in AUTHORITY_OVERRIDES) == tuple(
+        AUTHORITY_OVERRIDE_ORACLE
+    )
+    assert tuple(
+        (
+            vector.name,
+            (
+                vector.attempted_authority,
+                vector.accounting_outcome,
+                vector.expected_status,
+                vector.expected_reason,
+                vector.reader_calls,
+                vector.gate_calls,
+                vector.value_validator_calls,
+                vector.source_available,
+                vector.source_is_none,
+                vector.accepted,
+            ),
+        )
+        for vector in AUTHORITY_OVERRIDES
+    ) == tuple(AUTHORITY_OVERRIDE_ORACLE.items())
+    assert len(
+        {vector.attempted_authority for vector in AUTHORITY_OVERRIDES}
+    ) == len(AUTHORITY_OVERRIDES)
     for vector in AUTHORITY_OVERRIDES:
         accounting = accounting_by_outcome[vector.accounting_outcome]
         assert accounting.reader_calls == vector.reader_calls == (0,)
