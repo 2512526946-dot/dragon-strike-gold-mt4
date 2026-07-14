@@ -136,6 +136,23 @@ PREVIOUS_IDENTITY_FIELDS = (
     FieldVector("sequence", "exact built-in `int`", "Previous accepted identity"),
 )
 
+PREVIOUS_IDENTITY_ORACLE = (
+    ("bundle_id", "exact built-in `str`", "Previous accepted identity"),
+    ("sequence", "exact built-in `int`", "Previous accepted identity"),
+)
+
+PUBLIC_INTERFACE_LINES = (
+    "@dataclass(frozen=True, slots=True)",
+    "class CanonicalGoldMarketFactsSourceAdapterResultV1:",
+    "    ...",
+    "",
+    "def build_server_owned_canonical_gold_market_facts_source_v1(",
+    "    *,",
+    "    authority: _CanonicalGoldMarketFactsSourceAuthorityV1,",
+    ") -> CanonicalGoldMarketFactsSourceAdapterResultV1:",
+    "    ...",
+)
+
 ACCEPTED_ATTEMPT_FIELDS = (
     FieldVector(
         "attempt_token",
@@ -477,7 +494,7 @@ NESTED_SOURCE_FIELDS = MappingProxyType(
     }
 )
 
-IMMUTABLE_JSON_ALIASES = (
+IMMUTABLE_JSON_ALIAS_ORACLE = (
     "_CanonicalJsonScalarV1 = exact built-in str | int | float | bool | None",
     "_CanonicalJsonObjectV1 = exact built-in "
     "tuple[tuple[str, _CanonicalJsonValueV1], ...]",
@@ -485,6 +502,7 @@ IMMUTABLE_JSON_ALIASES = (
     "_CanonicalJsonValueV1 = _CanonicalJsonScalarV1 | "
     "_CanonicalJsonObjectV1 | _CanonicalJsonArrayV1",
 )
+IMMUTABLE_JSON_ALIASES = tuple(IMMUTABLE_JSON_ALIAS_ORACLE)
 
 PAYLOAD_ORDER = (
     "live_tick.json",
@@ -1145,13 +1163,13 @@ FORBIDDEN_BEHAVIORS = (
 )
 
 STAGED_DELIVERY = (
-    "immutable tests-only contract vectors for this adapter boundary",
-    "private accepted-attempt reader seam and source-adapter production types",
-    "bounded adapter behavior using the existing reader, value validator, and DataQualityGate",
-    "offline canonical-fixture integration evidence",
-    "deterministic non-activating verification",
-    "separate contracts and vectors for remaining W6 facts and features",
-    "a separately versioned ReplayRunner W6 stage before W7",
+    "immutable tests-only contract vectors for this adapter boundary;",
+    "private accepted-attempt reader seam and source-adapter production types;",
+    "bounded adapter behavior using the existing reader, value validator, and DataQualityGate;",
+    "offline canonical-fixture integration evidence;",
+    "deterministic non-activating verification;",
+    "separate contracts and vectors for remaining W6 facts and features; and",
+    "a separately versioned ReplayRunner W6 stage before W7.",
 )
 
 
@@ -1169,19 +1187,8 @@ def _section(text: str, start: str, end: str) -> str:
     return text[start_index:end_index]
 
 
-def _assert_ordered(text: str, fragments: tuple[str, ...]) -> None:
-    positions = tuple(text.index(fragment) for fragment in fragments)
-    assert positions == tuple(sorted(positions))
-
-
 def _normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
-
-
-def _assert_ordered_normalized(text: str, fragments: tuple[str, ...]) -> None:
-    normalized_text = _normalize_whitespace(text)
-    positions = tuple(normalized_text.index(fragment) for fragment in fragments)
-    assert positions == tuple(sorted(positions))
 
 
 def _markdown_tables(
@@ -1242,6 +1249,40 @@ def _bullet_items(text: str, start: str, end: str) -> tuple[str, ...]:
     return tuple(items)
 
 
+def _fenced_block_lines(
+    text: str,
+    start: str,
+    end: str,
+    *,
+    language: str,
+) -> tuple[str, ...]:
+    section = _section(text, start, end)
+    opening = f"```{language}\n"
+    block_start = section.index(opening) + len(opening)
+    block_end = section.index("\n```", block_start)
+    return tuple(section[block_start:block_end].splitlines())
+
+
+def _numbered_items(text: str, start: str, end: str) -> tuple[str, ...]:
+    items: list[str] = []
+    ordinals: list[int] = []
+    current = ""
+    for line in _section(text, start, end).splitlines():
+        stripped = line.strip()
+        marker, separator, content = stripped.partition(". ")
+        if separator and marker.isascii() and marker.isdigit():
+            if current:
+                items.append(_normalize_whitespace(current))
+            ordinals.append(int(marker))
+            current = content
+        elif current and stripped:
+            current += " " + stripped
+    if current:
+        items.append(_normalize_whitespace(current))
+    assert tuple(ordinals) == tuple(range(1, len(items) + 1))
+    return tuple(items)
+
+
 def _field_table(
     header: tuple[str, ...],
     vectors: tuple[FieldVector, ...],
@@ -1274,6 +1315,10 @@ def _call_cell(values: tuple[int, ...]) -> str:
 def test_vectors_are_immutable_and_have_exact_counts() -> None:
     assert len(AUTHORITY_FIELDS) == 9
     assert len(PREVIOUS_IDENTITY_FIELDS) == 2
+    assert tuple(
+        (vector.field, vector.exact_type, vector.source)
+        for vector in PREVIOUS_IDENTITY_FIELDS
+    ) == PREVIOUS_IDENTITY_ORACLE
     assert len(ACCEPTED_ATTEMPT_FIELDS) == 3
     assert len(RESULT_FIELDS) == 15
     assert len(SOURCE_PROVENANCE) == 13
@@ -1283,6 +1328,9 @@ def test_vectors_are_immutable_and_have_exact_counts() -> None:
     assert len(SAFETY_FLAGS) == 8
     assert len(AUTHORITY_OVERRIDES) == 8
     assert len(INVALID_SHAPE_VECTORS) == 10
+    assert len(IMMUTABLE_JSON_ALIASES) == 4
+    assert IMMUTABLE_JSON_ALIASES == IMMUTABLE_JSON_ALIAS_ORACLE
+    assert len(STAGED_DELIVERY) == 7
     assert tuple(len(fields) for fields in NESTED_SOURCE_FIELDS.values()) == (
         7,
         3,
@@ -1291,6 +1339,9 @@ def test_vectors_are_immutable_and_have_exact_counts() -> None:
     )
 
     assert type(AUTHORITY_FIELDS) is tuple
+    assert type(PREVIOUS_IDENTITY_FIELDS) is tuple
+    assert type(IMMUTABLE_JSON_ALIASES) is tuple
+    assert type(STAGED_DELIVERY) is tuple
     assert type(NESTED_SOURCE_FIELDS) is MappingProxyType
     assert type(SAFETY_FLAGS) is MappingProxyType
     with pytest.raises(FrozenInstanceError):
@@ -1309,10 +1360,12 @@ def test_contract_locks_internal_interface_and_authority_ownership() -> None:
         "backend/app/services/canonical_gold_market_facts_source_adapter.py"
         in text
     )
-    assert "class CanonicalGoldMarketFactsSourceAdapterResultV1:" in text
-    assert "def build_server_owned_canonical_gold_market_facts_source_v1(" in text
-    assert "*,\n    authority: _CanonicalGoldMarketFactsSourceAuthorityV1," in text
-    assert ") -> CanonicalGoldMarketFactsSourceAdapterResultV1:" in text
+    assert _fenced_block_lines(
+        text,
+        "It may expose exactly these production names:",
+        "`_CanonicalGoldMarketFactsSourceAuthorityV1` and every accepted-attempt type",
+        language="python",
+    ) == PUBLIC_INTERFACE_LINES
     assert "are private. They must not be exported through `__all__`" in text
     assert "The function must reject a subclassed or look-alike authority object." in text
     assert "Only an approved server integration may create the private authority capsule." in text
@@ -1343,6 +1396,10 @@ def test_exact_authority_attempt_and_result_tables_match_contract() -> None:
         RESULT_FIELDS,
         include_source=False,
     )
+    assert tuple(
+        (vector.field, vector.exact_type, vector.source)
+        for vector in PREVIOUS_IDENTITY_FIELDS
+    ) == PREVIOUS_IDENTITY_ORACLE
     assert (
         "`_CanonicalBundlePreviousIdentityV1` is frozen and slotted with exact "
         "built-in\n`str bundle_id` followed by exact built-in `int sequence`."
@@ -1376,7 +1433,13 @@ def test_datetime_json_payload_and_same_attempt_rules_are_exact() -> None:
     assert utc_algorithm in text
     assert "six fractional digits and terminal `Z`" in text
     assert "The replacement must occur exactly once at the terminal suffix." in text
-    _assert_ordered(text, IMMUTABLE_JSON_ALIASES)
+    assert IMMUTABLE_JSON_ALIASES == IMMUTABLE_JSON_ALIAS_ORACLE
+    assert _fenced_block_lines(
+        text,
+        "The W1 reader owns these private recursive immutable JSON aliases:",
+        "Every object member is an exact built-in two-item tuple",
+        language="text",
+    ) == IMMUTABLE_JSON_ALIAS_ORACLE
     assert (
         "`payloads_by_filename` has exactly four exact built-in two-item tuples "
         "in this\norder: `live_tick.json`, `latest_bars.json`, "
@@ -1768,12 +1831,52 @@ def test_safety_isolation_and_staged_delivery_remain_closed() -> None:
     for term in SENSITIVE_TERMS:
         assert term in normalized
 
-    _assert_ordered_normalized(text, STAGED_DELIVERY)
+    assert _numbered_items(
+        text,
+        "Later work must remain separately planned and approved:",
+        "No stage silently includes the next.",
+    ) == STAGED_DELIVERY
     assert "No stage silently includes the next." in text
     assert "Contract is not tests, tests are not implementation" in normalized
     assert "W6 remains `TESTS_ONLY`." in text
     assert "Reader activation, real MT4, EA, order, execution" in normalized
     assert "deployment, and trading remain prohibited" in normalized
+
+
+def test_closed_oracles_reject_the_four_reviewed_mutations() -> None:
+    text = _contract_text()
+
+    renamed_previous_identity = (
+        ("bundle_identifier", "exact built-in `str`", "Previous accepted identity"),
+        PREVIOUS_IDENTITY_ORACLE[1],
+    )
+    assert renamed_previous_identity != PREVIOUS_IDENTITY_ORACLE
+    assert IMMUTABLE_JSON_ALIASES[:-1] != IMMUTABLE_JSON_ALIAS_ORACLE
+
+    expanded_signature = text.replace(
+        "    authority: _CanonicalGoldMarketFactsSourceAuthorityV1,\n",
+        "    authority: _CanonicalGoldMarketFactsSourceAuthorityV1,\n"
+        "    caller_override: object,\n",
+        1,
+    )
+    assert _fenced_block_lines(
+        expanded_signature,
+        "It may expose exactly these production names:",
+        "`_CanonicalGoldMarketFactsSourceAuthorityV1` and every accepted-attempt type",
+        language="python",
+    ) != PUBLIC_INTERFACE_LINES
+
+    expanded_stage = text.replace(
+        "1. immutable tests-only contract vectors for this adapter boundary;",
+        "1. immutable tests-only contract vectors and production implementation "
+        "for this adapter boundary;",
+        1,
+    )
+    assert _numbered_items(
+        expanded_stage,
+        "Later work must remain separately planned and approved:",
+        "No stage silently includes the next.",
+    ) != STAGED_DELIVERY
 
 
 def test_static_vectors_do_not_import_or_implement_runtime_adapter() -> None:
