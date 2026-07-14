@@ -87,11 +87,15 @@ authorized to construct the existing exact private
 `_CanonicalGoldMarketFactsSourceAuthorityV1` type. This narrow authorization
 exists only for the fixed zero-argument function in section 3.
 
-The integration module may privately import these existing G182 symbols:
+The integration module may privately import exactly these G182-owned symbols.
+The authority token, authority type, result type, and adapter callable already
+exist; the validator and sanitizer are the future private seams defined below:
 
 ```text
 _AUTHORITY_TOKEN
 _CanonicalGoldMarketFactsSourceAuthorityV1
+_build_canonical_gold_market_facts_source_adapter_safe_failure_v1
+_is_safe_canonical_gold_market_facts_source_adapter_result_v1
 CanonicalGoldMarketFactsSourceAdapterResultV1
 build_server_owned_canonical_gold_market_facts_source_v1
 ```
@@ -103,6 +107,45 @@ accepted-attempt capsule; W1 remains its sole owner.
 No other module receives authority from this contract. A test importing a
 private symbol can inspect the future implementation but does not become a
 production authority source.
+
+### 4.1 G182-owned result authority
+
+The two private helper names above are future G182-owned integration seams.
+They are not implemented by this contract and must not be public or included
+in `__all__`. Their exact future interfaces are:
+
+```python
+def _is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+    *,
+    result: object,
+) -> bool:
+    ...
+
+def _build_canonical_gold_market_facts_source_adapter_safe_failure_v1(
+) -> CanonicalGoldMarketFactsSourceAdapterResultV1:
+    ...
+```
+
+The validator is the sole authority for exact G182 result and nested source
+type validation. It owns the 15-field order, strict built-in and dataclass
+types, closed status/reason/warning combinations, source availability,
+G175-source exact type through G182's existing private G178 alias, and all
+eight safety flags. It is pure memory, does not mutate its input, performs no
+I/O or dependency call, catches validation exceptions, and returns exact
+built-in `False` for every invalid value.
+
+The safe-failure constructor is the sole authority for the fixed sanitized
+adapter failure. It reuses G182's existing private blocked-result construction
+and returns a fresh exact result with
+`CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE` and
+`GOLD_SOURCE_EXCEPTION_SANITIZED`. It performs no I/O or dependency call.
+
+Only G182 may import its private G178 source alias or interpret adapter status
+and reason mappings. The integration module must call these helpers; it must
+not import G178, reconstruct nested source type rules, copy the validator,
+construct an adapter result directly, or reproduce the status mapping. Adding
+these private pure helpers in a later implementation stage does not change the
+existing public G182 interface or its bounded adapter behavior.
 
 ## 5. Exact Fixed Fixture Authority
 
@@ -202,21 +245,28 @@ factory must create fresh policy and authority objects for every invocation.
 
 The future zero-argument function performs these steps in order:
 
-1. Confirm that its fixed constants, exact private imports, and direct G182
-   callable are available and unchanged.
+1. Confirm that its fixed constants, exact private imports, direct G182
+   callable, G182 validator, and G182 safe-failure constructor are available
+   and unchanged.
 2. Construct fresh exact policy objects from section 5.3.
 3. Construct one fresh private G182 authority object from section 5.
 4. Freeze a scalar snapshot of the authority values for post-call comparison.
 5. Call `build_server_owned_canonical_gold_market_facts_source_v1` exactly once
    with only `authority=<fresh authority>`.
-6. Confirm the authority snapshot is unchanged.
-7. Require an exact `CanonicalGoldMarketFactsSourceAdapterResultV1` with the
-   fixed G179/G182 safety envelope and internally consistent source
-   availability.
-8. On READY, additionally require the exact accepted fixture identity from
-   section 5.1 in the detached 13-field source.
-9. Return the exact adapter result only after all applicable checks pass.
-10. Release the private authority and any result-local references when the
+6. Confirm the authority snapshot is unchanged. On drift, return one result
+   from the G182 safe-failure constructor without validating or repairing the
+   adapter result.
+7. Call the G182-owned result validator exactly once with only
+   `result=<adapter result>`. If it returns exact `False` or raises, return one
+   result from the G182 safe-failure constructor.
+8. Return a validated blocked result unchanged without inspecting or
+   reclassifying its status or source internals.
+9. On validated READY, compare only the five fixed scalar fixture identity
+   fields in section 5.1. On mismatch, return one result from the G182
+   safe-failure constructor; do not construct or repair a result locally.
+10. Return the validated exact adapter result only after all applicable checks
+    pass.
+11. Release the private authority and any result-local references when the
     call stack unwinds.
 
 The integration boundary must not call the reader, value validator, or Gate
@@ -226,26 +276,39 @@ second adapter.
 
 ## 7. Call Accounting
 
-| Outcome | G182 adapter calls | Reader/Gate ownership |
-| --- | ---: | --- |
-| Fixed constant, private dependency, or authority construction invalid | 0 | No downstream call |
-| G182 callable unavailable or changed before invocation | 0 | No downstream call |
-| G182 invocation begins and raises | 1 | Reached steps remain G182-owned |
-| G182 returns an invalid or polluted result | 1 | No retry or alternate path |
-| G182 returns a valid blocked result | 1 | Preserve exact blocked result |
-| G182 returns exact READY for the fixed fixture | 1 | Preserve exact READY result |
-| Post-call authority or fixed-oracle drift | 1 | No retry or second call |
+| Outcome | G182 adapter | G182 validator | G182 sanitizer |
+| --- | ---: | ---: | ---: |
+| Fixed constant or authority construction invalid while sanitizer is available | 0 | 0 | 1 |
+| G182 callable unavailable or changed before invocation | 0 | 0 | 1 |
+| G182 validator unavailable or changed before invocation | 0 | 0 | 1 |
+| G182 sanitizer unavailable or changed before invocation | 0 | 0 | 0 |
+| G182 invocation begins and raises | 1 | 0 | 1 |
+| Post-call authority drift | 1 | 0 | 1 |
+| G182 returns an invalid or polluted result | 1 | 1 | 1 |
+| G182 returns a validated blocked result | 1 | 1 | 0 |
+| G182 returns validated READY with fixed identity mismatch | 1 | 1 | 1 |
+| G182 returns validated READY for the fixed fixture | 1 | 1 | 0 |
 
-An invocation consumes its one permitted call when control enters G182. No
-failure permits retry, fallback, a second call, a reread, source switching, or
-result repair.
+An invocation consumes its one permitted adapter call when control enters
+G182. The validator is called at most once and only after post-call authority
+stability passes. The sanitizer is called exactly once only on a failure path.
+No failure permits retry, fallback, another call of the same dependency, a
+reread, source switching, local result construction, or result repair.
+
+The G182 sanitizer is the terminal failure constructor. If it is unavailable,
+changed, raises, or returns an invalid value, the fixture integration is
+unavailable and returns no source. The integration module must not handcraft a
+fallback envelope, expose a partial result, call another dependency, or log
+exception details.
 
 ## 8. Adapter Result Acceptance
 
-The result must have exact runtime type
-`CanonicalGoldMarketFactsSourceAdapterResultV1`. Its 15 fields, order, strict
-types, status/reason/warning mapping, source availability, and eight safety
-flags remain exclusively governed by G179/G182.
+The integration module must submit the opaque adapter return to the exact
+G182-owned validator from section 4.1. It may treat the return as a G182 result
+only after that validator returns exact built-in `True`. The result's exact
+runtime type, 15 fields, order, strict types, status/reason/warning mapping,
+nested G175 source type, source availability, and eight safety flags remain
+exclusively governed by G179/G182.
 
 Every accepted result has exactly:
 
@@ -260,17 +323,18 @@ allowed_to_call_ea = false
 allowed_to_modify_risk = false
 ```
 
-A valid G182 blocked result is returned unchanged. The integration boundary
-must not relabel a reader block, warning rejection, Gate block, identity block,
-source-construction block, or G182 safe failure.
+A validator-approved G182 blocked result is returned unchanged. The
+integration boundary must not inspect or relabel a reader block, warning
+rejection, Gate block, identity block, source-construction block, or G182 safe
+failure.
 
-An invalid type, contradictory field combination, mutable or subclassed
-tuple, non-empty warning tuple, unsafe flag, partial source, or READY source
-whose fixed fixture identity differs from section 5.1 is an integration
-boundary failure. An unexpected exception is also an integration boundary
-failure. Both must return one fresh sanitized
-`CanonicalGoldMarketFactsSourceAdapterResultV1` using the existing exact G182
-safe-failure status and reason:
+An invalid type, contradictory field combination, mutable or subclassed tuple,
+non-empty warning tuple, unsafe flag, partial source, or nested source type
+error is rejected only by the G182-owned validator. A validated READY source
+whose five scalar fixture identity fields differ from section 5.1 is rejected
+by the integration identity comparison. An unexpected integration exception
+is also a boundary failure. Every such path must call the G182-owned
+safe-failure constructor exactly once and return its fresh result:
 
 ```text
 status_code = CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE
@@ -280,10 +344,11 @@ source_available = false
 source = None
 ```
 
-The fixed safety flags remain unchanged. This fixed construction is only an
-outer boundary sanitizer. It must not inspect or classify reader, value, Gate,
-capsule, manifest, or payload details and must not become a parallel G182
-adapter or result-repair algorithm.
+The fixed safety flags remain unchanged. The integration module does not
+construct this envelope and does not import its private status constants. It
+must not inspect or classify reader, value, Gate, capsule, manifest, payload,
+result, or nested source details and must not become a parallel G182 adapter,
+validator, status mapper, or result-repair algorithm.
 
 ## 9. Same-Attempt and W1 Authority
 
@@ -332,8 +397,8 @@ The future boundary fails closed for:
   identity values;
 - a caller-supplied path, clock, previous identity, policy, dependency, source,
   expected status, reason, warning, or oracle;
-- private token, authority type, adapter callable, fixture path, reference
-  time, policy, or expected identity drift;
+- private token, authority type, adapter callable, G182 validator, G182
+  sanitizer, fixture path, reference time, policy, or expected identity drift;
 - dependency unavailability, authority-construction failure, G182 exception,
   invalid G182 result, READY identity mismatch, or post-call authority drift;
 - warning-bearing, partial, unsafe, contradictory, or polluted output; or
@@ -354,6 +419,11 @@ The integration implementation must not import or call:
 - API routers, settings, frontend, plugin, MT4, EA, strategy, risk, order,
   execution, or trading modules.
 
+The G178 prohibition applies to the integration module. The G182-owned
+validator may continue using G182's existing private G178 source-type alias so
+that exact nested source validation remains inside G182. The integration
+module may not import that alias or any G178 symbol directly.
+
 It may read only the approved checked-in fixture through the existing W1
 reader reached inside the single G182 call. It must not read environment
 variables, an ambient clock, the working directory, runtime `data/`, network,
@@ -370,12 +440,13 @@ import or implement the future integration module. It must lock:
 
 - the exact future module, single public function, zero-argument signature,
   return annotation, and `__all__` rule;
-- exact private-import authority and non-re-export rules;
+- exact private-import authority, G182 validator/sanitizer interfaces, and
+  non-re-export rules;
 - exact path derivation, fixture directory, reference time, previous identity,
   policy profile, read policy, filesystem policy, and Gate policy;
 - exact fixture identity and W1 ownership boundary;
 - zero/one G182 call accounting and no direct reader/Gate call;
-- exact adapter-result acceptance and outer sanitized failure envelope;
+- exact G182-owned adapter-result validation and sanitized failure envelope;
 - genuine READY, valid G182 blocked, invalid result, exception, identity drift,
   policy drift, dependency drift, and post-call drift vectors;
 - fixture, authority, result, and nested-source immutability requirements;
@@ -412,6 +483,8 @@ This contract is acceptable only if all statements below remain true:
 - the private G182 authority remains private and is never returned or logged;
 - the integration function calls G182 zero or one time and never calls W1
   dependencies directly;
+- exact result/source validation and sanitized result construction remain
+  G182-owned private pure helpers and are never copied into integration;
 - same-attempt and manifest/payload validation remain exclusively W1/G182
   responsibilities;
 - valid blocked G182 results retain their exact classifications;
