@@ -31,7 +31,7 @@ arithmetic. It does not rewrite the original baseline or authorize W6-W21.
 W6 was re-estimated from repository evidence at:
 
 ```text
-d9fbdcd6f388c7fc5720a54ff471f743bde79a9e
+3c33d874593d321677ec8637580605a461ce0d23
 ```
 
 This checkpoint updates only the W6 evidence, maturity assertion, effort
