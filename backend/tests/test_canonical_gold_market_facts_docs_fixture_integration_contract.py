@@ -328,6 +328,61 @@ W1_OWNERSHIP = (
     "the reader/value/Gate status details consumed by G182.",
 )
 
+IMMUTABILITY_REQUIREMENTS = (
+    "the checked-in fixture tree is byte-for-byte unchanged before and after "
+    "the call without exposing digests in a public result;",
+    "the fixed authority values and direct dependency identities are unchanged;",
+    "repeated genuine executions return equal adapter results;",
+    "every execution returns a fresh result object and a fresh detached source;",
+    "nested source records and tuples are fresh, frozen, and detached;",
+    "mutating or replacing any returned local reference cannot alter fixture "
+    "assets, another result, or a later result; and",
+    "no path, raw payload, checksum, exception text, traceback, internal source "
+    "status, or private token appears in the public result or test diagnostics.",
+)
+
+FAIL_CLOSED_CONDITIONS = (
+    "missing, extra, reordered, subclassed, aliased, mutable, or wrong-container "
+    "fixed constants, policies, authority fields, result fields, source fields, "
+    "or identity values;",
+    "a caller-supplied path, clock, previous identity, policy, dependency, source, "
+    "expected status, reason, warning, or oracle;",
+    "private token, authority type, adapter callable, G182 validator, G182 "
+    "sanitizer, fixture path, reference time, policy, or expected identity drift;",
+    "dependency unavailability, authority-construction failure, G182 exception, "
+    "invalid G182 result, READY identity mismatch, or post-call authority drift;",
+    "warning-bearing, partial, unsafe, contradictory, or polluted output; or",
+    "any attempt to use diagnostics, W5 ReplayRunner, runtime `data/`, environment, "
+    "settings, network, database, cache, API, frontend, MT4, or EA state.",
+)
+
+ISOLATION_RULES = (
+    "`demo_readonly_canonical_docs_fixture_diagnostics_summary_producer`;",
+    "`canonical_bundle_replay_runner`;",
+    "G151 diagnostics adapter or G153 diagnostics pipeline;",
+    "G178 projector;",
+    "API routers, settings, frontend, plugin, MT4, EA, strategy, risk, order, "
+    "execution, or trading modules.",
+)
+
+REQUIRED_CONTRACT_VECTORS = (
+    "the exact future module, single public function, zero-argument signature, "
+    "return annotation, and `__all__` rule;",
+    "exact private-import authority, G182 validator/sanitizer interfaces, and "
+    "non-re-export rules;",
+    "exact path derivation, fixture directory, reference time, previous identity, "
+    "policy profile, read policy, filesystem policy, and Gate policy;",
+    "exact fixture identity and W1 ownership boundary;",
+    "zero/one G182 call accounting and no direct reader/Gate call;",
+    "exact G182-owned adapter-result validation and sanitized failure envelope;",
+    "genuine READY, valid G182 blocked, invalid result, exception, identity drift, "
+    "policy drift, dependency drift, and post-call drift vectors;",
+    "fixture, authority, result, and nested-source immutability requirements;",
+    "repeated execution determinism and fresh-object requirements; and",
+    "no diagnostics producer, W5 ReplayRunner, projector, ambient I/O, API, MT4, "
+    "EA, order, execution, trading, activation, or verification claim.",
+)
+
 STAGED_DELIVERY = (
     "immutable tests-only vectors for this contract;",
     "the zero-argument production fixture integration boundary;",
@@ -470,6 +525,10 @@ def test_vectors_are_frozen_closed_and_strictly_typed() -> None:
     assert len(CALL_ACCOUNTING) == 10
     assert len(OUTCOME_VECTORS) == 8
     assert len(SAFETY_FLAGS) == 8
+    assert len(IMMUTABILITY_REQUIREMENTS) == 7
+    assert len(FAIL_CLOSED_CONDITIONS) == 6
+    assert len(ISOLATION_RULES) == 5
+    assert len(REQUIRED_CONTRACT_VECTORS) == 10
     assert len(STAGED_DELIVERY) == 6
 
 
@@ -548,11 +607,24 @@ def test_fixed_path_time_identity_and_policy_authority_are_exact() -> None:
         ),
     )
 
-    for field, value in READ_POLICY.items():
-        assert f"{field} = {value}" in text
-    for field, value in FILESYSTEM_POLICY.items():
-        assert f"{field} = {value}" in text
-    assert "allow_upstream_warnings = false" in text
+    assert _fenced_block_lines(
+        text,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1ReadPolicy` values are:",
+        "The exact `CanonicalMt4DemoReadonlyBundleV1FilesystemPolicy` values are:",
+        language="text",
+    ) == tuple(f"{field} = {value}" for field, value in READ_POLICY.items())
+    assert _fenced_block_lines(
+        text,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1FilesystemPolicy` values are:",
+        "The exact `CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy` value is:",
+        language="text",
+    ) == tuple(f"{field} = {value}" for field, value in FILESYSTEM_POLICY.items())
+    assert _fenced_block_lines(
+        text,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy` value is:",
+        "Every scalar must have its exact built-in type.",
+        language="text",
+    ) == ("allow_upstream_warnings = false",)
     assert "Every scalar must have its exact built-in type." in text
     assert "fresh policy and authority objects for every invocation" in normalized
 
@@ -639,8 +711,14 @@ def test_g182_validator_sanitizer_and_safe_envelope_remain_authoritative() -> No
         language="text",
     ) == expected_failure_lines
 
-    for field, value in SAFETY_FLAGS.items():
-        assert f"{field} = {_contract_literal(value)}" in text
+    assert _fenced_block_lines(
+        text,
+        "Every accepted result has exactly:",
+        "A validator-approved G182 blocked result",
+        language="text",
+    ) == tuple(
+        f"{field} = {_contract_literal(value)}" for field, value in SAFETY_FLAGS.items()
+    )
     assert "only after that validator returns exact built-in `True`" in text
     assert "15 fields, order, strict types" in normalized
     assert "eight safety flags remain exclusively governed by G179/G182" in normalized
@@ -685,13 +763,7 @@ def test_caller_override_and_fail_closed_vectors_are_concrete() -> None:
         "The future boundary fails closed for:",
         "The boundary must not sort",
     )
-    assert len(fail_closed) == 6
-    assert "missing, extra, reordered, subclassed" in fail_closed[0]
-    assert "caller-supplied path, clock, previous identity" in fail_closed[1]
-    assert "private token, authority type, adapter callable" in fail_closed[2]
-    assert "dependency unavailability" in fail_closed[3]
-    assert "warning-bearing, partial, unsafe" in fail_closed[4]
-    assert "diagnostics, W5 ReplayRunner" in fail_closed[5]
+    assert fail_closed == FAIL_CLOSED_CONDITIONS
     assert "must not sort, normalize, repair, narrow, retry, fallback" in normalized
 
 
@@ -710,10 +782,7 @@ def test_same_attempt_w1_ownership_immutability_and_isolation_are_exact() -> Non
         "Later integration evidence must prove all of the following:",
         "Determinism here is an offline fixture property.",
     )
-    assert len(immutability) == 7
-    assert "byte-for-byte unchanged" in immutability[0]
-    assert "repeated genuine executions return equal adapter results" in immutability[2]
-    assert "fresh result object and a fresh detached source" in immutability[3]
+    assert immutability == IMMUTABILITY_REQUIREMENTS
     for term in SENSITIVE_OUTPUT_TERMS:
         assert term in immutability[-1]
 
@@ -722,7 +791,7 @@ def test_same_attempt_w1_ownership_immutability_and_isolation_are_exact() -> Non
         "The integration implementation must not import or call:",
         "The G178 prohibition applies",
     )
-    assert len(isolation) == 5
+    assert isolation == ISOLATION_RULES
     for module in FORBIDDEN_RUNTIME_IMPORTS:
         assert module in normalized
     assert "must not read environment variables" in normalized
@@ -738,13 +807,7 @@ def test_required_vectors_and_staged_delivery_are_closed() -> None:
         "A later tests-only work order must use immutable static vectors",
         "Static vectors are tests-only evidence.",
     )
-    assert len(required_vectors) == 10
-    assert "exact future module, single public function" in required_vectors[0]
-    assert "exact private-import authority" in required_vectors[1]
-    assert "zero/one G182 call accounting" in required_vectors[4]
-    assert "genuine READY, valid G182 blocked" in required_vectors[6]
-    assert "repeated execution determinism" in required_vectors[8]
-    assert "no diagnostics producer" in required_vectors[9]
+    assert required_vectors == REQUIRED_CONTRACT_VECTORS
 
     assert _numbered_items(
         text,
@@ -818,6 +881,89 @@ def test_closed_oracles_reject_reviewed_contract_mutations() -> None:
     assert "must not import G178" not in _normalize_whitespace(
         weakened_g178_boundary
     )
+
+    extra_policy = text.replace(
+        "max_future_skew_seconds = 5\n```",
+        "max_future_skew_seconds = 5\ncaller_policy_override = true\n```",
+        1,
+    )
+    assert _fenced_block_lines(
+        extra_policy,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1ReadPolicy` values are:",
+        "The exact `CanonicalMt4DemoReadonlyBundleV1FilesystemPolicy` values are:",
+        language="text",
+    ) != tuple(f"{field} = {value}" for field, value in READ_POLICY.items())
+
+    reordered_policy = text.replace(
+        "writer_heartbeat_max_age_seconds = 15\n"
+        "live_tick_max_age_seconds = 10",
+        "live_tick_max_age_seconds = 10\n"
+        "writer_heartbeat_max_age_seconds = 15",
+        1,
+    )
+    assert _fenced_block_lines(
+        reordered_policy,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1ReadPolicy` values are:",
+        "The exact `CanonicalMt4DemoReadonlyBundleV1FilesystemPolicy` values are:",
+        language="text",
+    ) != tuple(f"{field} = {value}" for field, value in READ_POLICY.items())
+
+    unsafe_flag = text.replace(
+        "allowed_to_modify_risk = false\n```",
+        "allowed_to_modify_risk = false\ncan_trade = true\n```",
+        1,
+    )
+    assert _fenced_block_lines(
+        unsafe_flag,
+        "Every accepted result has exactly:",
+        "A validator-approved G182 blocked result",
+        language="text",
+    ) != tuple(
+        f"{field} = {_contract_literal(value)}" for field, value in SAFETY_FLAGS.items()
+    )
+
+    weakened_required_vector = text.replace(
+        "- exact G182-owned adapter-result validation and sanitized failure envelope;",
+        "- adapter-result validation when convenient;",
+        1,
+    )
+    assert _bullet_items(
+        weakened_required_vector,
+        "A later tests-only work order must use immutable static vectors",
+        "Static vectors are tests-only evidence.",
+    ) != REQUIRED_CONTRACT_VECTORS
+
+    extra_fail_closed_entry = text.replace(
+        "- any attempt to use diagnostics, W5 ReplayRunner, runtime `data/`, environment,",
+        "- caller policy may override the fixed fixture;\n"
+        "- any attempt to use diagnostics, W5 ReplayRunner, runtime `data/`, environment,",
+        1,
+    )
+    assert _bullet_items(
+        extra_fail_closed_entry,
+        "The future boundary fails closed for:",
+        "The boundary must not sort",
+    ) != FAIL_CLOSED_CONDITIONS
+
+    reordered_immutability = text.replace(
+        "- repeated genuine executions return equal adapter results;\n"
+        "- every execution returns a fresh result object and a fresh detached source;",
+        "- every execution returns a fresh result object and a fresh detached source;\n"
+        "- repeated genuine executions return equal adapter results;",
+        1,
+    )
+    assert _bullet_items(
+        reordered_immutability,
+        "Later integration evidence must prove all of the following:",
+        "Determinism here is an offline fixture property.",
+    ) != IMMUTABILITY_REQUIREMENTS
+
+    weakened_isolation = text.replace("- G178 projector;", "- G178 projector may run;", 1)
+    assert _bullet_items(
+        weakened_isolation,
+        "The integration implementation must not import or call:",
+        "The G178 prohibition applies",
+    ) != ISOLATION_RULES
 
 
 def test_static_vectors_do_not_import_or_implement_future_runtime() -> None:
