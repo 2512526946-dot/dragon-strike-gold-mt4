@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, TypeAlias
 
 from app.services.canonical_mt4_demo_readonly_bundle_v1_value_validator import (
     CanonicalMt4DemoReadonlyBundleV1ReadPolicy,
@@ -133,6 +133,15 @@ _SAFE_UPSTREAM_STATUS_PATTERN = re.compile(
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _UTF8_BOM = b"\xef\xbb\xbf"
 
+_CanonicalJsonScalarV1: TypeAlias = str | int | float | bool | None
+_CanonicalJsonObjectV1: TypeAlias = tuple[
+    tuple[str, "_CanonicalJsonValueV1"], ...
+]
+_CanonicalJsonArrayV1: TypeAlias = tuple["_CanonicalJsonValueV1", ...]
+_CanonicalJsonValueV1: TypeAlias = (
+    _CanonicalJsonScalarV1 | _CanonicalJsonObjectV1 | _CanonicalJsonArrayV1
+)
+
 
 def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
     *,
@@ -147,6 +156,35 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
 ) -> dict[str, Any]:
     """Read and validate one canonical bundle inside an explicit safe root."""
 
+    reader_envelope, _ = (
+        _read_and_validate_canonical_mt4_demo_readonly_bundle_v1_with_accepted_attempt(
+            allowed_root=allowed_root,
+            bundle_dir=bundle_dir,
+            now_utc=now_utc,
+            previous_identity=previous_identity,
+            read_policy=read_policy,
+            filesystem_policy=filesystem_policy,
+        )
+    )
+    return reader_envelope
+
+
+def _read_and_validate_canonical_mt4_demo_readonly_bundle_v1_with_accepted_attempt(
+    *,
+    allowed_root: object,
+    bundle_dir: object,
+    now_utc: object,
+    previous_identity: object | None = None,
+    read_policy: CanonicalMt4DemoReadonlyBundleV1ReadPolicy | None = None,
+    filesystem_policy: (
+        CanonicalMt4DemoReadonlyBundleV1FilesystemPolicy | None
+    ) = None,
+) -> tuple[
+    dict[str, Any],
+    "_CanonicalMt4DemoReadonlyAcceptedAttemptV1 | None",
+]:
+    """Return one reader envelope and its private accepted-attempt evidence."""
+
     context = _ReaderContext()
     unexpected_component = "filesystem_boundary"
     try:
@@ -157,8 +195,11 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
         )
         if not _is_valid_filesystem_policy(policy):
             context.fail("filesystem_boundary", "FILESYSTEM_POLICY_INVALID")
-            return context.result(
-                status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_POLICY_INVALID
+            return (
+                context.result(
+                    status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_POLICY_INVALID
+                ),
+                None,
             )
 
         resolved_root = _resolve_allowed_root(allowed_root, context)
@@ -180,9 +221,12 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
                 context=attempt_context,
             )
             if attempt is None:
-                return attempt_context.result(
-                    status_code=attempt_context.failure_status_code
-                    or CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE
+                return (
+                    attempt_context.result(
+                        status_code=attempt_context.failure_status_code
+                        or CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE
+                    ),
+                    None,
                 )
             if attempt.manifest_changed:
                 last_changed_context = attempt_context
@@ -192,10 +236,13 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
                     "manifest_consistency",
                     "MANIFEST_UNSTABLE",
                 )
-                return attempt_context.result(
-                    status_code=(
-                        CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_MANIFEST_UNSTABLE
-                    )
+                return (
+                    attempt_context.result(
+                        status_code=(
+                            CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_MANIFEST_UNSTABLE
+                        )
+                    ),
+                    None,
                 )
 
             unexpected_component = "upstream_value_validation"
@@ -224,14 +271,17 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
                     "upstream_value_validation",
                     "UPSTREAM_VALUE_VALIDATION_BLOCKED",
                 )
-                return attempt_context.result(
-                    status_code=(
-                        CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_UPSTREAM_BLOCKED
-                    )
+                return (
+                    attempt_context.result(
+                        status_code=(
+                            CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_UPSTREAM_BLOCKED
+                        )
+                    ),
+                    None,
                 )
 
             attempt_context.pass_component("upstream_value_validation")
-            return attempt_context.result(
+            reader_envelope = attempt_context.result(
                 status_code=(
                     CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID_WITH_WARNINGS
                     if upstream_warnings
@@ -240,21 +290,31 @@ def read_and_validate_canonical_mt4_demo_readonly_bundle_v1(
                 passed=True,
                 reader_status="validated_isolated",
             )
+            return reader_envelope, _accepted_attempt_capsule(attempt)
 
         context = last_changed_context or context
         context.fail("manifest_consistency", "MANIFEST_UNSTABLE")
-        return context.result(
-            status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_MANIFEST_UNSTABLE
+        return (
+            context.result(
+                status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_MANIFEST_UNSTABLE
+            ),
+            None,
         )
     except _ReaderRejected as rejection:
-        return rejection.context.result(status_code=rejection.status_code)
+        return (
+            rejection.context.result(status_code=rejection.status_code),
+            None,
+        )
     except Exception:
         context.fail(
             unexpected_component,
             "FILESYSTEM_READER_EXCEPTION_SANITIZED",
         )
-        return context.result(
-            status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE
+        return (
+            context.result(
+                status_code=CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE
+            ),
+            None,
         )
 
 
@@ -667,6 +727,52 @@ class _ReadAttempt:
     manifest: dict[str, Any]
     payloads: dict[str, dict[str, Any]]
     manifest_changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _CanonicalMt4DemoReadonlyAcceptedAttemptV1:
+    attempt_token: object
+    manifest: _CanonicalJsonObjectV1
+    payloads_by_filename: tuple[tuple[str, _CanonicalJsonObjectV1], ...]
+
+
+def _accepted_attempt_capsule(
+    attempt: _ReadAttempt,
+) -> _CanonicalMt4DemoReadonlyAcceptedAttemptV1:
+    manifest = _freeze_canonical_json_object(attempt.manifest)
+    payloads_by_filename = tuple(
+        (
+            filename,
+            _freeze_canonical_json_object(attempt.payloads[filename]),
+        )
+        for filename in _PAYLOAD_FILENAMES
+    )
+    return _CanonicalMt4DemoReadonlyAcceptedAttemptV1(
+        attempt_token=object(),
+        manifest=manifest,
+        payloads_by_filename=payloads_by_filename,
+    )
+
+
+def _freeze_canonical_json_object(value: object) -> _CanonicalJsonObjectV1:
+    if type(value) is not dict:
+        raise TypeError
+    members: list[tuple[str, _CanonicalJsonValueV1]] = []
+    for key, member_value in value.items():
+        if type(key) is not str:
+            raise TypeError
+        members.append((key, _freeze_canonical_json_value(member_value)))
+    return tuple(members)
+
+
+def _freeze_canonical_json_value(value: object) -> _CanonicalJsonValueV1:
+    if value is None or type(value) in {str, int, float, bool}:
+        return value
+    if type(value) is dict:
+        return _freeze_canonical_json_object(value)
+    if type(value) is list:
+        return tuple(_freeze_canonical_json_value(item) for item in value)
+    raise TypeError
 
 
 class _ReaderRejected(Exception):

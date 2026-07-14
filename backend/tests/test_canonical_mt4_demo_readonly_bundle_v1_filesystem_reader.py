@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import UTC, datetime
 import hashlib
 import inspect
@@ -907,6 +907,185 @@ def test_reader_module_is_isolated_from_api_and_legacy_readers() -> None:
     assert "app.api" not in source
     assert "fastapi" not in source.casefold()
     assert "settings" not in source.casefold()
+    assert "canonical_gold_market_facts" not in source
+
+
+def test_private_seam_returns_exact_immutable_accepted_attempt(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+
+    returned = _private_read(root, bundle)
+
+    assert type(returned) is tuple
+    assert len(returned) == 2
+    reader_envelope, capsule = returned
+    assert reader_envelope["passed"] is True
+    assert type(capsule) is reader_module._CanonicalMt4DemoReadonlyAcceptedAttemptV1
+    assert tuple(field.name for field in fields(type(capsule))) == (
+        "attempt_token",
+        "manifest",
+        "payloads_by_filename",
+    )
+    assert type(capsule.attempt_token) is object
+    assert type(capsule.manifest) is tuple
+    _assert_immutable_json_object(capsule.manifest)
+    assert type(capsule.payloads_by_filename) is tuple
+    assert tuple(pair[0] for pair in capsule.payloads_by_filename) == (
+        "live_tick.json",
+        "latest_bars.json",
+        "symbol_spec.json",
+        "account_snapshot.json",
+    )
+    for pair in capsule.payloads_by_filename:
+        assert type(pair) is tuple
+        assert len(pair) == 2
+        assert type(pair[0]) is str
+        _assert_immutable_json_object(pair[1])
+    assert not hasattr(capsule, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        capsule.attempt_token = object()  # type: ignore[misc]
+
+
+def test_private_seam_capsule_is_fresh_detached_and_deterministic(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    before = _directory_state(bundle)
+
+    first_envelope, first_capsule = _private_read(root, bundle)
+    second_envelope, second_capsule = _private_read(root, bundle)
+
+    assert first_envelope == second_envelope
+    assert first_envelope is not second_envelope
+    assert first_capsule is not None
+    assert second_capsule is not None
+    assert first_capsule is not second_capsule
+    assert first_capsule.attempt_token is not second_capsule.attempt_token
+    assert first_capsule.manifest == second_capsule.manifest
+    assert first_capsule.manifest is not second_capsule.manifest
+    assert first_capsule.payloads_by_filename == second_capsule.payloads_by_filename
+    assert first_capsule.payloads_by_filename is not second_capsule.payloads_by_filename
+    assert _directory_state(bundle) == before
+
+
+def test_private_seam_returns_no_capsule_for_blocked_or_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+
+    blocked_envelope, blocked_capsule = _private_read(None, bundle)
+
+    assert blocked_envelope["passed"] is False
+    assert blocked_capsule is None
+
+    def explode(_: object) -> object:
+        raise ValueError("sensitive capsule detail")
+
+    monkeypatch.setattr(reader_module, "_accepted_attempt_capsule", explode)
+    failed_envelope, failed_capsule = _private_read(root, bundle)
+
+    assert failed_envelope["passed"] is False
+    assert failed_envelope["status_code"] == (
+        CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_SAFE_FAILURE
+    )
+    assert failed_capsule is None
+    assert "sensitive capsule detail" not in repr(failed_envelope)
+
+
+def test_private_seam_warning_keeps_same_attempt_capsule(tmp_path: Path) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    manifest = _load_json(bundle / "snapshot_manifest.json")
+    previous_identity = {
+        "bundle_id": manifest["bundle_id"],
+        "sequence": manifest["sequence"],
+    }
+
+    envelope, capsule = _private_read(
+        root,
+        bundle,
+        previous_identity=previous_identity,
+    )
+
+    assert envelope["passed"] is True
+    assert envelope["status_code"] == (
+        CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID_WITH_WARNINGS
+    )
+    assert envelope["warning_codes"] == ["IDEMPOTENT_REPEAT"]
+    assert type(capsule) is reader_module._CanonicalMt4DemoReadonlyAcceptedAttemptV1
+
+
+def test_private_seam_does_not_add_reader_or_validator_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+    read_names: list[str] = []
+    validator_calls = 0
+    original_read = reader_module._read_file_bytes
+    original_validator = (
+        reader_module.validate_canonical_mt4_demo_readonly_bundle_v1_values
+    )
+
+    def record_read(path: Path) -> bytes:
+        read_names.append(path.name)
+        return original_read(path)
+
+    def record_validator(**kwargs: object) -> dict[str, Any]:
+        nonlocal validator_calls
+        validator_calls += 1
+        return original_validator(**kwargs)
+
+    monkeypatch.setattr(reader_module, "_read_file_bytes", record_read)
+    monkeypatch.setattr(
+        reader_module,
+        "validate_canonical_mt4_demo_readonly_bundle_v1_values",
+        record_validator,
+    )
+
+    envelope, capsule = _private_read(root, bundle)
+
+    assert envelope["passed"] is True
+    assert capsule is not None
+    assert read_names == [
+        "snapshot_manifest.json",
+        "live_tick.json",
+        "latest_bars.json",
+        "symbol_spec.json",
+        "account_snapshot.json",
+        "snapshot_manifest.json",
+    ]
+    assert validator_calls == 1
+
+
+def test_public_reader_remains_envelope_only_and_signature_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    root, bundle = _create_bundle(tmp_path)
+
+    public_result = _read(root, bundle)
+    private_result, capsule = _private_read(root, bundle)
+
+    assert public_result == private_result
+    assert capsule is not None
+    assert set(public_result) == OUTPUT_KEYS
+    assert "accepted_attempt" not in public_result
+    assert "attempt_token" not in public_result
+    assert "manifest" not in public_result
+    assert "payloads_by_filename" not in public_result
+    assert tuple(
+        inspect.signature(
+            read_and_validate_canonical_mt4_demo_readonly_bundle_v1
+        ).parameters
+    ) == (
+        "allowed_root",
+        "bundle_dir",
+        "now_utc",
+        "previous_identity",
+        "read_policy",
+        "filesystem_policy",
+    )
 
 
 def _create_bundle(
@@ -939,6 +1118,53 @@ def _read(
         read_policy=read_policy,
         filesystem_policy=filesystem_policy,
     )
+
+
+def _private_read(
+    allowed_root: object,
+    bundle_dir: object,
+    *,
+    now_utc: object = NOW_UTC,
+    previous_identity: object | None = None,
+    read_policy: object = None,
+    filesystem_policy: object = None,
+) -> tuple[dict[str, Any], object | None]:
+    return (
+        reader_module._read_and_validate_canonical_mt4_demo_readonly_bundle_v1_with_accepted_attempt(
+            allowed_root=allowed_root,
+            bundle_dir=bundle_dir,
+            now_utc=now_utc,
+            previous_identity=previous_identity,
+            read_policy=read_policy,
+            filesystem_policy=filesystem_policy,
+        )
+    )
+
+
+def _assert_immutable_json_object(value: object) -> None:
+    assert type(value) is tuple
+    for member in value:
+        assert type(member) is tuple
+        assert len(member) == 2
+        key, member_value = member
+        assert type(key) is str
+        _assert_immutable_json_value(member_value)
+
+
+def _assert_immutable_json_value(value: object) -> None:
+    if value is None or type(value) in {str, int, float, bool}:
+        return
+    assert type(value) is tuple
+    if all(
+        type(member) is tuple
+        and len(member) == 2
+        and type(member[0]) is str
+        for member in value
+    ):
+        _assert_immutable_json_object(value)
+        return
+    for item in value:
+        _assert_immutable_json_value(item)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
