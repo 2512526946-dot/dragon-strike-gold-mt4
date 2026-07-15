@@ -292,6 +292,80 @@ def test_private_result_validator_rejects_g175_invalid_ready_sources() -> None:
             ready.source,
             symbol_spec=replace(ready.source.symbol_spec, max_lot=float("inf")),
         ),
+        replace(
+            ready.source,
+            live_tick=replace(
+                ready.source.live_tick,
+                ask=ready.source.live_tick.bid - 1.0,
+            ),
+        ),
+        replace(
+            ready.source,
+            live_tick=replace(
+                ready.source.live_tick,
+                spread=ready.source.live_tick.spread + 1.0,
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(first_timeframe, bars=(first_bar, first_bar)),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(
+                        first_bar,
+                        replace(first_bar, open_time_utc="2026-07-13T23:30:00Z"),
+                    ),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, open_time_utc="2026-07-13T23:59:00Z"),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, tick_volume=-1),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, spread_points=-1),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, high=first_bar.low - 1.0),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
     )
     for invalid_source in invalid_sources:
         assert (
@@ -1074,9 +1148,14 @@ def _capsule(
             "timeframe": name,
             "period_seconds": period,
             "bar_count": 1,
-            "bars": [bar],
+            "bars": [{**bar, "open_time_utc": open_time}],
         }
-        for name, period in (("M15", 900), ("H1", 3600), ("H4", 14400), ("D1", 86400))
+        for name, period, open_time in (
+            ("M15", 900, "2026-07-13T23:45:00Z"),
+            ("H1", 3600, "2026-07-13T23:00:00Z"),
+            ("H4", 14400, "2026-07-13T20:00:00Z"),
+            ("D1", 86400, "2026-07-13T00:00:00Z"),
+        )
     ]
     symbol_spec = {
         "spec_time_utc": "2026-07-14T00:00:00Z",

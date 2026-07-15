@@ -207,6 +207,7 @@ _TIMEFRAME_PERIODS = (
 )
 _SAFE_CODE = _re.compile(r"^[A-Z][A-Z0-9_]*$")
 _BUNDLE_ID = _re.compile(r"^[A-Za-z0-9._-]{16,64}$")
+_SAFE_LABEL = _re.compile(r"^[A-Za-z0-9._:-]+$")
 
 _READER_STATUS_CODES = frozenset(
     value
@@ -1483,8 +1484,20 @@ def _source_result_shape_is_safe(source: object) -> bool:
     ):
         return False
 
-    tick = source.live_tick
-    if not (
+    if not _tick_source_is_safe(source.live_tick):
+        return False
+
+    bars_generated_at = _parse_strict_utc_z(source.bars_generated_at_utc)
+    if bars_generated_at is None or not _timeframes_source_is_safe(
+        source.timeframes,
+        bars_generated_at=bars_generated_at,
+    ):
+        return False
+    return _symbol_spec_source_is_safe(source.symbol_spec)
+
+
+def _tick_source_is_safe(tick: object) -> bool:
+    if type(tick) is not _CanonicalGoldTickSourceV1 or not (
         _is_exact_number(tick.bid)
         and _is_exact_number(tick.ask)
         and _is_exact_number(tick.spread)
@@ -1494,37 +1507,89 @@ def _source_result_shape_is_safe(source: object) -> bool:
         and _is_strict_utc_z(tick.tick_time_utc)
     ):
         return False
-
-    if len(source.timeframes) != len(_TIMEFRAME_PERIODS):
+    if not (
+        tick.bid > 0
+        and tick.ask >= tick.bid
+        and tick.spread >= 0
+        and tick.spread_points >= 0
+        and 0 <= tick.digits <= 8
+        and tick.point > 0
+    ):
         return False
-    observed_timeframes: list[tuple[str, int]] = []
-    for timeframe in source.timeframes:
+    tolerance = max(tick.point / 2, 1e-9)
+    return _math.isclose(
+        tick.spread,
+        tick.ask - tick.bid,
+        rel_tol=0,
+        abs_tol=tolerance,
+    ) and _math.isclose(
+        tick.spread,
+        tick.spread_points * tick.point,
+        rel_tol=0,
+        abs_tol=tolerance,
+    )
+
+
+def _timeframes_source_is_safe(
+    timeframes: object,
+    *,
+    bars_generated_at: _datetime,
+) -> bool:
+    if type(timeframes) is not tuple or len(timeframes) != len(_TIMEFRAME_PERIODS):
+        return False
+    for timeframe, expected in zip(timeframes, _TIMEFRAME_PERIODS, strict=True):
         if not (
             type(timeframe) is _CanonicalGoldTimeframeSourceV1
             and type(timeframe.timeframe) is str
             and type(timeframe.period_seconds) is int
+            and (timeframe.timeframe, timeframe.period_seconds) == expected
             and type(timeframe.bars) is tuple
             and 1 <= len(timeframe.bars) <= 500
         ):
             return False
-        observed_timeframes.append((timeframe.timeframe, timeframe.period_seconds))
+        previous_open_time: _datetime | None = None
         for bar in timeframe.bars:
-            if not (
-                type(bar) is _CanonicalGoldBarSourceV1
-                and _is_strict_utc_z(bar.open_time_utc)
-                and _is_exact_number(bar.open)
-                and _is_exact_number(bar.high)
-                and _is_exact_number(bar.low)
-                and _is_exact_number(bar.close)
-                and type(bar.tick_volume) is int
-                and type(bar.spread_points) is int
-            ):
+            open_time = _parse_bar_source(bar)
+            if open_time is None:
                 return False
-    if tuple(observed_timeframes) != _TIMEFRAME_PERIODS:
-        return False
+            if previous_open_time is not None and open_time <= previous_open_time:
+                return False
+            previous_open_time = open_time
+            try:
+                if open_time + _timedelta(seconds=timeframe.period_seconds) > bars_generated_at:
+                    return False
+            except OverflowError:
+                return False
+    return True
 
-    spec = source.symbol_spec
-    return (
+
+def _parse_bar_source(bar: object) -> _datetime | None:
+    if type(bar) is not _CanonicalGoldBarSourceV1 or not (
+        _is_exact_number(bar.open)
+        and _is_exact_number(bar.high)
+        and _is_exact_number(bar.low)
+        and _is_exact_number(bar.close)
+        and type(bar.tick_volume) is int
+        and type(bar.spread_points) is int
+    ):
+        return None
+    open_time = _parse_strict_utc_z(bar.open_time_utc)
+    if open_time is None or not (
+        bar.open > 0
+        and bar.high > 0
+        and bar.low > 0
+        and bar.close > 0
+        and bar.tick_volume >= 0
+        and bar.spread_points >= 0
+        and bar.high >= max(bar.open, bar.close, bar.low)
+        and bar.low <= min(bar.open, bar.close, bar.high)
+    ):
+        return None
+    return open_time
+
+
+def _symbol_spec_source_is_safe(spec: object) -> bool:
+    if type(spec) is not _CanonicalGoldSymbolSpecSourceV1 or not (
         _is_strict_utc_z(spec.spec_time_utc)
         and type(spec.digits) is int
         and _is_exact_number(spec.point)
@@ -1539,6 +1604,29 @@ def _source_result_shape_is_safe(source: object) -> bool:
         and type(spec.margin_currency) is str
         and type(spec.trade_mode_readonly_label) is str
         and type(spec.session_status_readonly_label) is str
+    ):
+        return False
+    return (
+        0 <= spec.digits <= 8
+        and all(
+            value > 0
+            for value in (
+                spec.point,
+                spec.tick_size,
+                spec.tick_value,
+                spec.contract_size,
+                spec.min_lot,
+                spec.lot_step,
+                spec.max_lot,
+            )
+        )
+        and spec.min_lot <= spec.max_lot
+        and spec.lot_step <= spec.max_lot
+        and spec.base_currency == "XAU"
+        and spec.profit_currency == "USD"
+        and _is_safe_label(spec.margin_currency)
+        and _is_safe_label(spec.trade_mode_readonly_label)
+        and _is_safe_label(spec.session_status_readonly_label)
     )
 
 
@@ -1549,6 +1637,10 @@ def _is_exact_number(value: object) -> bool:
 
 
 def _is_strict_utc_z(value: object) -> bool:
+    return _parse_strict_utc_z(value) is not None
+
+
+def _parse_strict_utc_z(value: object) -> _datetime | None:
     if (
         type(value) is not str
         or not value.isascii()
@@ -1558,12 +1650,23 @@ def _is_strict_utc_z(value: object) -> bool:
         )
         is None
     ):
-        return False
+        return None
     try:
         parsed = _datetime.fromisoformat(f"{value[:-1]}+00:00")
     except (ValueError, OverflowError):
-        return False
-    return parsed.tzinfo is not None and parsed.utcoffset() == _timedelta(0)
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() != _timedelta(0):
+        return None
+    return parsed.astimezone(_UTC)
+
+
+def _is_safe_label(value: object) -> bool:
+    return (
+        type(value) is str
+        and 1 <= len(value) <= 64
+        and value.isascii()
+        and _SAFE_LABEL.fullmatch(value) is not None
+    )
 
 
 def _fixed_sanitized_failure_is_safe(result: object) -> bool:

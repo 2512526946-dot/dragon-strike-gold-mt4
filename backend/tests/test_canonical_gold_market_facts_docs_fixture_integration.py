@@ -409,6 +409,124 @@ def test_semantically_invalid_exact_sanitizer_results_return_no_source(
         assert calls == ["adapter", "sanitizer"]
 
 
+def test_g175_polluted_ready_sources_fail_closed_at_public_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready = _ready_result()
+    assert ready.source is not None
+    first_timeframe = ready.source.timeframes[0]
+    first_bar = first_timeframe.bars[0]
+    invalid_sources = (
+        replace(
+            ready.source,
+            live_tick=replace(
+                ready.source.live_tick,
+                ask=ready.source.live_tick.bid - 1.0,
+            ),
+        ),
+        replace(
+            ready.source,
+            live_tick=replace(
+                ready.source.live_tick,
+                spread=ready.source.live_tick.spread + 1.0,
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(first_timeframe, bars=(first_bar, first_bar)),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(
+                        first_bar,
+                        replace(first_bar, open_time_utc="2026-07-10T02:00:00Z"),
+                    ),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, open_time_utc="2026-07-10T02:29:00Z"),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, tick_volume=-1),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, spread_points=-1),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, high=first_bar.low - 1.0),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+    )
+
+    for invalid_source in invalid_sources:
+        calls: list[str] = []
+        invalid_ready = replace(ready, source=invalid_source)
+
+        def adapter_spy(**_: object) -> object:
+            calls.append("adapter")
+            return invalid_ready
+
+        def validator_spy(*, result: object) -> bool:
+            calls.append("validator")
+            return adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+                result=result
+            )
+
+        def sanitizer_spy() -> object:
+            calls.append("sanitizer")
+            return (
+                adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+            )
+
+        with monkeypatch.context() as context:
+            _install_controlled_dependencies(
+                context,
+                adapter=adapter_spy,
+                validator=validator_spy,
+                sanitizer=sanitizer_spy,
+            )
+            result = (
+                integration_module.build_canonical_gold_market_facts_docs_fixture_source_v1()
+            )
+        _assert_sanitized(result)
+        assert calls == ["adapter", "validator", "sanitizer"]
+
+
 def test_module_has_no_parallel_runtime_or_ambient_authority() -> None:
     source = Path(integration_module.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -475,15 +593,6 @@ def _ready_result(
     *,
     bundle_id: str = "demo-bundle-000000000001",
 ) -> adapter_module.CanonicalGoldMarketFactsSourceAdapterResultV1:
-    bar = CanonicalGoldBarSourceV1(
-        open_time_utc="2026-07-10T02:15:00Z",
-        open=2300.0,
-        high=2301.0,
-        low=2299.0,
-        close=2300.5,
-        tick_volume=10,
-        spread_points=30,
-    )
     source = CanonicalGoldMarketFactsSourceV1(
         contract_version="1.0",
         bundle_schema_version="1.0",
@@ -517,13 +626,23 @@ def _ready_result(
             CanonicalGoldTimeframeSourceV1(
                 timeframe=timeframe,
                 period_seconds=period_seconds,
-                bars=(bar,),
+                bars=(
+                    CanonicalGoldBarSourceV1(
+                        open_time_utc=open_time,
+                        open=2300.0,
+                        high=2301.0,
+                        low=2299.0,
+                        close=2300.5,
+                        tick_volume=10,
+                        spread_points=30,
+                    ),
+                ),
             )
-            for timeframe, period_seconds in (
-                ("M15", 900),
-                ("H1", 3600),
-                ("H4", 14400),
-                ("D1", 86400),
+            for timeframe, period_seconds, open_time in (
+                ("M15", 900, "2026-07-10T02:15:00Z"),
+                ("H1", 3600, "2026-07-10T01:00:00Z"),
+                ("H4", 14400, "2026-07-09T22:00:00Z"),
+                ("D1", 86400, "2026-07-09T00:00:00Z"),
             )
         ),
         symbol_spec=CanonicalGoldSymbolSpecSourceV1(
