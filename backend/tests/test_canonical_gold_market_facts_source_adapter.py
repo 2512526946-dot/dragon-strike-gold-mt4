@@ -127,6 +127,158 @@ def test_production_types_and_public_interface_are_exact() -> None:
         result.passed = True  # type: ignore[misc]
 
 
+def test_private_result_authority_interfaces_and_safe_failure_are_exact() -> None:
+    assert str(
+        inspect.signature(
+            adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1
+        )
+    ) == "(*, result: 'object') -> 'bool'"
+    assert str(
+        inspect.signature(
+            adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1
+        )
+    ) == "() -> 'CanonicalGoldMarketFactsSourceAdapterResultV1'"
+
+    first = (
+        adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+    )
+    second = (
+        adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+    )
+    assert first == second
+    assert first is not second
+    _assert_blocked(
+        first,
+        "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+        "GOLD_SOURCE_EXCEPTION_SANITIZED",
+    )
+    assert (
+        adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+            result=first
+        )
+        is True
+    )
+
+
+def test_private_result_validator_fails_closed_on_polluted_envelopes() -> None:
+    ready = _run_ready()
+    blocked = (
+        adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+    )
+    assert ready.source is not None
+    polluted_source = replace(
+        ready.source,
+        timeframes=list(ready.source.timeframes),  # type: ignore[arg-type]
+    )
+    polluted_evidence = replace(
+        ready.source.upstream_evidence,
+        warning_codes=("UNEXPECTED_WARNING",),
+    )
+    result_subclass = type(
+        "ResultSubclass",
+        (adapter_module.CanonicalGoldMarketFactsSourceAdapterResultV1,),
+        {},
+    )
+    subclassed_result = result_subclass(
+        **{field.name: getattr(ready, field.name) for field in fields(type(ready))}
+    )
+
+    assert (
+        adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+            result=ready
+        )
+        is True
+    )
+    invalid_results = (
+        object(),
+        subclassed_result,
+        replace(ready, contract_version="2.0"),
+        replace(ready, passed=1),  # type: ignore[arg-type]
+        replace(ready, status_code="CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE"),
+        replace(ready, reason_codes=("GOLD_SOURCE_EXCEPTION_SANITIZED",)),
+        replace(ready, warning_codes=["UNEXPECTED_WARNING"]),  # type: ignore[arg-type]
+        replace(ready, source_available=False),
+        replace(ready, source=polluted_source),
+        replace(
+            ready,
+            source=replace(ready.source, upstream_evidence=polluted_evidence),
+        ),
+        replace(ready, allowed_to_call_ea=True),
+        replace(blocked, passed=True),
+        replace(blocked, source_available=True),
+        replace(blocked, status_code="CANONICAL_GOLD_SOURCE_ADAPTER_READER_BLOCKED"),
+        replace(blocked, reason_codes=("GOLD_SOURCE_READER_NOT_READY", "EXTRA")),
+    )
+    for invalid in invalid_results:
+        assert (
+            adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+                result=invalid
+            )
+            is False
+        )
+
+
+def test_private_result_validator_accepts_only_closed_blocked_mappings() -> None:
+    valid_pairs = (
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_AUTHORITY_INVALID",
+            "GOLD_SOURCE_AUTHORITY_INVALID",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_READER_BLOCKED",
+            "GOLD_SOURCE_READER_NOT_READY",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_WARNING_BLOCKED",
+            "GOLD_SOURCE_UPSTREAM_WARNING_REJECTED",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_DATA_QUALITY_BLOCKED",
+            "GOLD_SOURCE_DATA_QUALITY_NOT_READY",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_IDENTITY_INVALID",
+            "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SOURCE_INVALID",
+            "GOLD_SOURCE_CONSTRUCTION_INVALID",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_DATA_QUALITY_RESULT_INVALID",
+        ),
+        (
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_EXCEPTION_SANITIZED",
+        ),
+    )
+    for status, reason in valid_pairs:
+        result = adapter_module._blocked(status, reason)
+        assert (
+            adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+                result=result
+            )
+            is True
+        )
+
+    mismatched = adapter_module._blocked(*valid_pairs[0])
+    mismatched = replace(
+        mismatched,
+        reason_codes=("GOLD_SOURCE_READER_NOT_READY",),
+    )
+    assert (
+        adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+            result=mismatched
+        )
+        is False
+    )
+
+
 def test_ready_path_calls_reader_and_gate_once_and_builds_fresh_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

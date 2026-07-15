@@ -58,6 +58,18 @@ _SAME_ATTEMPT_IDENTITY_INVALID = "GOLD_SOURCE_SAME_ATTEMPT_IDENTITY_INVALID"
 _CONSTRUCTION_INVALID = "GOLD_SOURCE_CONSTRUCTION_INVALID"
 _EXCEPTION_SANITIZED = "GOLD_SOURCE_EXCEPTION_SANITIZED"
 
+_BLOCKED_RESULT_COMBINATIONS = (
+    (_AUTHORITY_INVALID_STATUS, (_AUTHORITY_INVALID,)),
+    (_READER_BLOCKED_STATUS, (_READER_NOT_READY,)),
+    (_WARNING_BLOCKED_STATUS, (_UPSTREAM_WARNING_REJECTED,)),
+    (_DATA_QUALITY_BLOCKED_STATUS, (_DATA_QUALITY_NOT_READY,)),
+    (_IDENTITY_INVALID_STATUS, (_SAME_ATTEMPT_IDENTITY_INVALID,)),
+    (_SOURCE_INVALID_STATUS, (_CONSTRUCTION_INVALID,)),
+    (_SAFE_FAILURE_STATUS, (_READER_RESULT_INVALID,)),
+    (_SAFE_FAILURE_STATUS, (_DATA_QUALITY_RESULT_INVALID,)),
+    (_SAFE_FAILURE_STATUS, (_EXCEPTION_SANITIZED,)),
+)
+
 _READER_RESULT_KEYS = (
     "passed",
     "status_code",
@@ -1349,6 +1361,178 @@ def _fixed_safety_flags(value: dict[str, object]) -> bool:
         and value["allowed_to_call_ea"] is False
         and value["allowed_to_modify_risk"] is False
     )
+
+
+def _is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+    *,
+    result: object,
+) -> bool:
+    """Validate the exact G182 result envelope without side effects."""
+
+    try:
+        if type(result) is not CanonicalGoldMarketFactsSourceAdapterResultV1:
+            return False
+        if not (
+            type(result.contract_version) is str
+            and result.contract_version == _CONTRACT_VERSION
+            and type(result.passed) is bool
+            and type(result.status_code) is str
+            and type(result.reason_codes) is tuple
+            and all(type(code) is str for code in result.reason_codes)
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+            and type(result.source_available) is bool
+            and type(result.read_only) is bool
+            and result.read_only is True
+            and type(result.demo_only) is bool
+            and result.demo_only is True
+            and type(result.is_tradable) is bool
+            and result.is_tradable is False
+            and type(result.can_execute) is bool
+            and result.can_execute is False
+            and type(result.is_trading_permission) is bool
+            and result.is_trading_permission is False
+            and type(result.is_execution_instruction) is bool
+            and result.is_execution_instruction is False
+            and type(result.allowed_to_call_ea) is bool
+            and result.allowed_to_call_ea is False
+            and type(result.allowed_to_modify_risk) is bool
+            and result.allowed_to_modify_risk is False
+        ):
+            return False
+
+        if result.passed is True:
+            return (
+                result.status_code == _READY_STATUS
+                and result.reason_codes == ()
+                and result.source_available is True
+                and _source_result_shape_is_safe(result.source)
+            )
+
+        return (
+            result.source_available is False
+            and result.source is None
+            and (result.status_code, result.reason_codes)
+            in _BLOCKED_RESULT_COMBINATIONS
+        )
+    except Exception:
+        return False
+
+
+def _build_canonical_gold_market_facts_source_adapter_safe_failure_v1(
+) -> CanonicalGoldMarketFactsSourceAdapterResultV1:
+    """Return one fresh, sanitized G182 failure envelope."""
+
+    return _blocked(_SAFE_FAILURE_STATUS, _EXCEPTION_SANITIZED)
+
+
+def _source_result_shape_is_safe(source: object) -> bool:
+    if type(source) is not _CanonicalGoldMarketFactsSourceV1:
+        return False
+    if not (
+        type(source.contract_version) is str
+        and source.contract_version == _CONTRACT_VERSION
+        and type(source.bundle_schema_version) is str
+        and type(source.bundle_id) is str
+        and type(source.sequence) is int
+        and type(source.canonical_symbol) is str
+        and source.canonical_symbol == _CANONICAL_SYMBOL
+        and type(source.broker_symbol) is str
+        and source.broker_symbol == _BROKER_SYMBOL
+        and type(source.reference_time_utc) is str
+        and type(source.policy_profile_version) is str
+        and source.policy_profile_version == _POLICY_PROFILE_VERSION
+        and type(source.upstream_evidence) is _CanonicalGoldUpstreamEvidenceV1
+        and type(source.live_tick) is _CanonicalGoldTickSourceV1
+        and type(source.bars_generated_at_utc) is str
+        and type(source.timeframes) is tuple
+        and type(source.symbol_spec) is _CanonicalGoldSymbolSpecSourceV1
+    ):
+        return False
+
+    evidence = source.upstream_evidence
+    if not (
+        type(evidence.reader_passed) is bool
+        and evidence.reader_passed is True
+        and type(evidence.reader_status_code) is str
+        and evidence.reader_status_code
+        == _reader.CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_VALID
+        and type(evidence.value_status_code) is str
+        and evidence.value_status_code == _value.CANONICAL_MT4_BUNDLE_V1_VALUE_VALID
+        and type(evidence.data_quality_passed) is bool
+        and evidence.data_quality_passed is True
+        and type(evidence.data_quality_status_code) is str
+        and evidence.data_quality_status_code
+        == _gate.CANONICAL_MT4_BUNDLE_V1_DATA_QUALITY_PASSED
+        and type(evidence.ready_for_readonly_analysis) is bool
+        and evidence.ready_for_readonly_analysis is True
+        and type(evidence.warning_codes) is tuple
+        and evidence.warning_codes == ()
+        and type(evidence.same_attempt_identity_bound) is bool
+        and evidence.same_attempt_identity_bound is True
+    ):
+        return False
+
+    tick = source.live_tick
+    if not (
+        _is_exact_number(tick.bid)
+        and _is_exact_number(tick.ask)
+        and _is_exact_number(tick.spread)
+        and type(tick.spread_points) is int
+        and type(tick.digits) is int
+        and _is_exact_number(tick.point)
+        and type(tick.tick_time_utc) is str
+    ):
+        return False
+
+    if len(source.timeframes) != len(_TIMEFRAME_PERIODS):
+        return False
+    observed_timeframes: list[tuple[str, int]] = []
+    for timeframe in source.timeframes:
+        if not (
+            type(timeframe) is _CanonicalGoldTimeframeSourceV1
+            and type(timeframe.timeframe) is str
+            and type(timeframe.period_seconds) is int
+            and type(timeframe.bars) is tuple
+        ):
+            return False
+        observed_timeframes.append((timeframe.timeframe, timeframe.period_seconds))
+        for bar in timeframe.bars:
+            if not (
+                type(bar) is _CanonicalGoldBarSourceV1
+                and type(bar.open_time_utc) is str
+                and _is_exact_number(bar.open)
+                and _is_exact_number(bar.high)
+                and _is_exact_number(bar.low)
+                and _is_exact_number(bar.close)
+                and type(bar.tick_volume) is int
+                and type(bar.spread_points) is int
+            ):
+                return False
+    if tuple(observed_timeframes) != _TIMEFRAME_PERIODS:
+        return False
+
+    spec = source.symbol_spec
+    return (
+        type(spec.spec_time_utc) is str
+        and type(spec.digits) is int
+        and _is_exact_number(spec.point)
+        and _is_exact_number(spec.tick_size)
+        and _is_exact_number(spec.tick_value)
+        and _is_exact_number(spec.contract_size)
+        and _is_exact_number(spec.min_lot)
+        and _is_exact_number(spec.lot_step)
+        and _is_exact_number(spec.max_lot)
+        and type(spec.base_currency) is str
+        and type(spec.profit_currency) is str
+        and type(spec.margin_currency) is str
+        and type(spec.trade_mode_readonly_label) is str
+        and type(spec.session_status_readonly_label) is str
+    )
+
+
+def _is_exact_number(value: object) -> bool:
+    return type(value) is int or type(value) is float
 
 
 def _ready(
