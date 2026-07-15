@@ -7,7 +7,7 @@ reader or MT4 activation, execution authority, or trading permission.
 from __future__ import annotations
 
 import ast
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import pytest
@@ -75,13 +75,28 @@ SAFETY_FLAGS = {
 }
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _OpaqueFixtureState:
+    _entries: tuple[tuple[tuple[str, ...], str, bytes, int], ...]
+
+    @property
+    def entry_count(self) -> int:
+        return len(self._entries)
+
+    def matches(self, other: object) -> bool:
+        return type(other) is _OpaqueFixtureState and self._entries == other._entries
+
+    def __repr__(self) -> str:
+        return "<fixture-state:redacted>"
+
+
 def test_fixed_fixture_traverses_real_w1_g182_g185_chain() -> None:
     fixture_before = _fixture_state()
 
     first = integration.build_canonical_gold_market_facts_docs_fixture_source_v1()
     second = integration.build_canonical_gold_market_facts_docs_fixture_source_v1()
 
-    assert _fixture_state() == fixture_before
+    assert fixture_before.matches(_fixture_state())
     assert first == second
     assert first is not second
     _assert_exact_ready_result(first)
@@ -131,7 +146,7 @@ def test_delegating_spies_observe_one_real_adapter_reader_gate_attempt(
 
     result = integration.build_canonical_gold_market_facts_docs_fixture_source_v1()
 
-    assert _fixture_state() == fixture_before
+    assert fixture_before.matches(_fixture_state())
     assert [name for name, _ in calls] == ["adapter", "reader", "gate"]
     assert len(observed_reader_result) == 1
     authority = calls[0][1]
@@ -186,6 +201,16 @@ def test_primary_integration_anchor_has_no_main_chain_patch() -> None:
     assert attributes.isdisjoint({"setattr", "setitem"})
 
 
+def test_fixture_state_evidence_is_opaque_and_covers_complete_tree() -> None:
+    fixture_dir = integration._FIXED_PATHS[2]
+    state = _fixture_state()
+
+    assert state.entry_count == sum(1 for _ in fixture_dir.rglob("*"))
+    assert state.matches(_fixture_state())
+    assert repr(state) == "<fixture-state:redacted>"
+    assert not any(value in repr(state) for value in FIXTURE_FILENAMES)
+
+
 def test_integration_evidence_scope_is_non_activating() -> None:
     scope = (__doc__ or "").casefold()
     tree = ast.parse(Path(__file__).read_text(encoding="ascii"))
@@ -220,16 +245,36 @@ def test_integration_evidence_scope_is_non_activating() -> None:
     )
 
 
-def _fixture_state() -> tuple[tuple[str, bytes, int], ...]:
+def _fixture_state() -> _OpaqueFixtureState:
     fixture_dir = integration._FIXED_PATHS[2]
-    return tuple(
-        (
-            filename,
-            (fixture_dir / filename).read_bytes(),
-            (fixture_dir / filename).stat().st_mtime_ns,
-        )
-        for filename in FIXTURE_FILENAMES
+    entries = sorted(
+        fixture_dir.rglob("*"),
+        key=lambda entry: entry.relative_to(fixture_dir).as_posix(),
     )
+    return _OpaqueFixtureState(
+        tuple(_fixture_entry_state(entry, fixture_dir) for entry in entries)
+    )
+
+
+def _fixture_entry_state(
+    entry: Path,
+    fixture_dir: Path,
+) -> tuple[tuple[str, ...], str, bytes, int]:
+    relative_parts = entry.relative_to(fixture_dir).parts
+    stat = entry.lstat()
+    if entry.is_symlink():
+        kind = "symlink"
+        content = entry.readlink().as_posix().encode("utf-8")
+    elif entry.is_file():
+        kind = "file"
+        content = entry.read_bytes()
+    elif entry.is_dir():
+        kind = "directory"
+        content = b""
+    else:
+        kind = "other"
+        content = b""
+    return relative_parts, kind, content, stat.st_mtime_ns
 
 
 def _assert_exact_ready_result(
