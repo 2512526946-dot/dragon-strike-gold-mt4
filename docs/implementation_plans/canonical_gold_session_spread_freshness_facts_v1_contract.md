@@ -145,10 +145,12 @@ following value rules are mandatory:
   the session rule below.
 - `quote.digits` is in the inclusive range 0 through 8. Its four decimal
   strings are finite, unsigned, non-exponent fixed-point strings that reproduce
-  byte-for-byte under `format(value, f".{digits}f")`; when `digits == 0` they
-  contain no decimal point. Bid and ask are positive, spread is nonnegative,
-  point is positive and equals `Decimal(1).scaleb(-digits)`, `spread_points` is
-  nonnegative, and the two exact identities `ask - bid == spread` and
+  byte-for-byte under `format(value, f".{digits}f")`; each parsed Decimal
+  coefficient tuple has at most 64 digits, matching G175 context-plus
+  acceptance. When `digits == 0` the strings contain no decimal point. Bid and
+  ask are positive, spread is nonnegative, point is positive and equals
+  `Decimal(1).scaleb(-digits)`, `spread_points` is nonnegative, and the two
+  exact identities `ask - bid == spread` and
   `Decimal(spread_points) * point == spread` hold. `tick_time_utc` is strict
   UTC Z.
 - `timeframes` contains exactly `("M15", 900)`, `("H1", 3600)`,
@@ -164,11 +166,12 @@ following value rules are mandatory:
   fixed-point format. `tick_value_decimal`, `contract_size_decimal`,
   `min_lot_decimal`, `lot_step_decimal`, and `max_lot_decimal` are finite,
   positive canonical G175 non-price strings: no exponent, leading plus sign,
-  signed zero, or unnecessary trailing fractional zero, and formatting by the
-  G175 trim-only algorithm reproduces each string byte-for-byte. Min lot and
-  lot step do not exceed max lot. Base currency is `"XAU"`, profit currency is
-  `"USD"`, and margin currency plus both readonly labels are nonempty ASCII
-  strings matching `[A-Za-z0-9._:-]+`.
+  signed zero, or unnecessary trailing fractional zero; each Decimal
+  coefficient tuple has at most 64 digits, and formatting by the G175 trim-only
+  algorithm reproduces each string byte-for-byte. Min lot and lot step do not
+  exceed max lot. Base currency is `"XAU"`, profit currency is `"USD"`, and
+  margin currency plus both readonly labels are nonempty ASCII strings matching
+  `[A-Za-z0-9._:-]+`.
 - All three freshness ages are nonnegative exact built-in integers. The exact
   age from `reference_time_utc` to `quote.tick_time_utc` equals
   `tick_age_microseconds`; the exact age to `symbol_spec.spec_time_utc` equals
@@ -370,42 +373,63 @@ does not mean a market is closed or that trading is blocked.
 
 ## 6. Decimal Spread Algorithm
 
-The builder may parse only the normalized G175 quote strings. It must use
-`Decimal(value)` on the exact built-in strings and must never convert through
-`float`.
+The builder may parse only the normalized G175 quote strings. It constructs
+`Decimal(value)` directly from each exact built-in string, never from `float`,
+and checks the finite, unsigned, fixed-point representation required by Section
+3.2. Decimal construction is exact and context-free. No price arithmetic may
+run under a finite-precision Decimal context.
 
-Use one local Decimal context with:
-
-```text
-precision = 64
-rounding = ROUND_HALF_EVEN
-Emin = -999999
-Emax = 999999
-capitals = 1
-clamp = 0
-```
-
-All parsed values must be finite. Require:
-
-- `bid > 0`, `ask > 0`, `ask >= bid`, `spread >= 0`, and `point > 0`;
-- `ask - bid == spread`;
-- `Decimal(spread_points) * point == spread`; and
-- `digits` is an exact built-in `int` in the G175 range.
-
-Compute:
+After validation, convert each fixed-point string to its exact nonnegative
+base-10 integer coefficient by removing its one decimal point, if present. Let
+`B`, `A`, `S`, and `P` be the bid, ask, spread, and point coefficients at the
+common scale `10 ** -digits`. The conversion must reproduce the original
+string under the fixed-point formatter; it is not normalization. Require:
 
 ```text
-mid = (bid + ask) / Decimal("2")
-spread_to_mid_ppm = (spread / mid) * Decimal("1000000")
+B > 0
+A > 0
+A >= B
+S >= 0
+P == 1
+spread_points >= 0
+A - B == S
+spread_points * P == S
 ```
 
-`mid_decimal` is fixed-point with exactly `digits + 1` fractional digits. This
-operation is exact for two G175 fixed-point prices and must not round away a
-nonzero remainder. `spread_to_mid_ppm_decimal` is quantized exactly once to
-`Decimal("0.000001")` with `ROUND_HALF_EVEN` and emitted with exactly six
-fractional digits. Positive and negative zero emit as unsigned zero. Exponent
-notation, NaN, Infinity, context flags from an invalid operation, a second
-quantization, and silent repair are forbidden.
+All coefficient and intermediate arithmetic uses exact built-in integers.
+Python integer division is used only through the explicit `divmod` rule below;
+binary float arithmetic and Decimal operations subject to a precision context
+are forbidden.
+
+Compute the midpoint coefficient exactly:
+
+```text
+M = 5 * (B + A)
+```
+
+`M` is at scale `10 ** -(digits + 1)`. Emit it as `mid_decimal` with exactly
+`digits + 1` fractional digits, inserting leading fractional zeroes when
+needed. This remains exact when `B + A` has 65 digits and never rounds.
+
+For `spread_to_mid_ppm_decimal`, compute the correctly rounded integer number
+of millionths of one ppm without first forming a non-terminating quotient:
+
+```text
+N = 2 * S * (10 ** 12)
+D = B + A
+q, r = divmod(N, D)
+if 2 * r < D: rounded = q
+if 2 * r > D: rounded = q + 1
+if 2 * r == D: rounded = q when q is even, otherwise q + 1
+```
+
+The factor `10 ** 12` combines ppm's `10 ** 6` scale with the six output
+fractional digits. Format `rounded` at scale `10 ** -6` with exactly six
+fractional digits. This is the unique exact `ROUND_HALF_EVEN` result equivalent
+to quantizing the mathematical ratio to `0.000001`; it does not perform an
+earlier rounded division or a second quantization. Zero emits exactly
+`0.000000`. Exponent notation, signed zero, approximation, overflow fallback,
+and silent repair are forbidden.
 
 The copied `bid_decimal`, `ask_decimal`, `spread_decimal`, and `point_decimal`
 must remain byte-for-byte equal to the accepted G175 strings.
