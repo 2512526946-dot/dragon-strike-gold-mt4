@@ -91,7 +91,13 @@ PATH_AUTHORITY = MappingProxyType(
         "repository_root_derivation": "Path(__file__).resolve().parents[3]",
         "allowed_root_suffix": "docs/architecture/fixtures",
         "bundle_dir_name": "canonical-mt4-demo-readonly-bundle-v1",
-        "runtime_path_type": "exact concrete WindowsPath or PosixPath",
+        "runtime_path_type": (
+            "Runtime path types must be the platform's exact concrete `WindowsPath` "
+            "or `PosixPath` type and must match. A caller string, `PurePath`, "
+            "subclass, wrong-platform path, alternate root, symlink-derived "
+            "replacement, working directory, environment value, or runtime `data/` "
+            "path is invalid."
+        ),
     }
 )
 
@@ -158,6 +164,19 @@ FILESYSTEM_POLICY = MappingProxyType(
 
 DATA_QUALITY_POLICY = MappingProxyType(
     {"allow_upstream_warnings": False}
+)
+
+OUTCOME_DISPOSITIONS = MappingProxyType(
+    {
+        "genuine_ready": "return_validated_result",
+        "valid_blocked": "return_validated_result",
+        "invalid_result": "return_sanitized_failure",
+        "adapter_exception": "return_sanitized_failure",
+        "identity_drift": "return_sanitized_failure",
+        "policy_or_authority_drift": "return_sanitized_failure",
+        "dependency_drift": "return_sanitized_failure",
+        "sanitizer_unavailable": "integration_unavailable_no_source",
+    }
 )
 
 CALL_CHAIN = (
@@ -429,6 +448,13 @@ def _normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
 
 
+def _runtime_path_type_rule(text: str) -> str:
+    marker = "Runtime path types"
+    return marker + " " + _normalize_whitespace(
+        _section(text, marker, "The accepted fixture identity is fixed to:")
+    )
+
+
 def _section(text: str, start: str, end: str) -> str:
     start_index = text.index(start) + len(start)
     end_index = text.index(end, start_index)
@@ -519,6 +545,9 @@ def test_vectors_are_frozen_closed_and_strictly_typed() -> None:
         READ_POLICY["live_tick_max_age_seconds"] = 11  # type: ignore[index]
 
     assert type(PUBLIC_INTERFACE_LINES) is tuple
+    assert PUBLIC_EXPORTS == (
+        "build_canonical_gold_market_facts_docs_fixture_source_v1",
+    )
     assert type(PRIVATE_G182_IMPORTS) is tuple
     assert type(FIXTURE_IDENTITY) is tuple
     assert type(AUTHORITY_FIELDS) is tuple
@@ -529,6 +558,18 @@ def test_vectors_are_frozen_closed_and_strictly_typed() -> None:
     assert type(READ_POLICY) is MappingProxyType
     assert type(FILESYSTEM_POLICY) is MappingProxyType
     assert type(DATA_QUALITY_POLICY) is MappingProxyType
+    assert dict(DATA_QUALITY_POLICY) == {"allow_upstream_warnings": False}
+    assert type(OUTCOME_DISPOSITIONS) is MappingProxyType
+    assert dict(OUTCOME_DISPOSITIONS) == {
+        "genuine_ready": "return_validated_result",
+        "valid_blocked": "return_validated_result",
+        "invalid_result": "return_sanitized_failure",
+        "adapter_exception": "return_sanitized_failure",
+        "identity_drift": "return_sanitized_failure",
+        "policy_or_authority_drift": "return_sanitized_failure",
+        "dependency_drift": "return_sanitized_failure",
+        "sanitizer_unavailable": "integration_unavailable_no_source",
+    }
     assert type(SANITIZED_FAILURE) is MappingProxyType
     assert type(SAFETY_FLAGS) is MappingProxyType
     assert len(PRIVATE_G182_IMPORTS) == 6
@@ -565,7 +606,9 @@ def test_future_surface_and_private_authority_are_exact() -> None:
         "Its `__all__`, if present, is exactly:",
         "No API router",
         language="python",
-    ) == (f'("{PUBLIC_EXPORTS[0]}",)',)
+    ) == (
+        "(" + ", ".join(f'"{name}"' for name in PUBLIC_EXPORTS) + ",)",
+    )
     assert _fenced_block_lines(
         text,
         "The integration module may privately import exactly these G182-owned symbols.",
@@ -606,7 +649,7 @@ def test_fixed_path_time_identity_and_policy_authority_are_exact() -> None:
     assert PATH_AUTHORITY["repository_root_derivation"] == ROOT_DERIVATION_LINES[0]
     assert PATH_AUTHORITY["allowed_root_suffix"] in FIXTURE_PATH_LINES[0]
     assert PATH_AUTHORITY["bundle_dir_name"] in FIXTURE_PATH_LINES[1]
-    assert "exact concrete `WindowsPath` or `PosixPath`" in normalized
+    assert _runtime_path_type_rule(text) == PATH_AUTHORITY["runtime_path_type"]
     assert _fenced_block_lines(
         text,
         "The sole reference time is an exact built-in `datetime.datetime`:",
@@ -654,7 +697,10 @@ def test_fixed_path_time_identity_and_policy_authority_are_exact() -> None:
         "The exact `CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy` value is:",
         "Every scalar must have its exact built-in type.",
         language="text",
-    ) == ("allow_upstream_warnings = false",)
+    ) == tuple(
+        f"{field} = {_contract_literal(value)}"
+        for field, value in DATA_QUALITY_POLICY.items()
+    )
     assert "Every scalar must have its exact built-in type." in text
     assert "fresh policy and authority objects for every invocation" in normalized
 
@@ -703,6 +749,9 @@ def test_outcome_vectors_bind_accounting_and_disposition() -> None:
         "dependency_drift",
         "sanitizer_unavailable",
     )
+    assert tuple(
+        (vector.name, vector.expected_disposition) for vector in OUTCOME_VECTORS
+    ) == tuple(OUTCOME_DISPOSITIONS.items())
     for vector in OUTCOME_VECTORS:
         calls = accounting[vector.accounting_outcome]
         assert calls.adapter_calls in {0, 1}
@@ -710,10 +759,7 @@ def test_outcome_vectors_bind_accounting_and_disposition() -> None:
             assert calls.sanitizer_calls == 0
             assert vector.expected_disposition == "return_validated_result"
         else:
-            assert vector.expected_disposition in {
-                "return_sanitized_failure",
-                "integration_unavailable_no_source",
-            }
+            assert vector.expected_disposition == OUTCOME_DISPOSITIONS[vector.name]
             assert vector.source_available is False
 
     assert accounting[OUTCOME_VECTORS[0].accounting_outcome] == (
@@ -1054,6 +1100,57 @@ def test_closed_oracles_reject_reviewed_contract_mutations() -> None:
         "No ambient clock",
         language="python",
     ) != REFERENCE_TIME_LINES
+
+    extra_export = text.replace(
+        '("build_canonical_gold_market_facts_docs_fixture_source_v1",)',
+        '("build_canonical_gold_market_facts_docs_fixture_source_v1", '
+        '"unauthorized_export")',
+        1,
+    )
+    assert _fenced_block_lines(
+        extra_export,
+        "Its `__all__`, if present, is exactly:",
+        "No API router",
+        language="python",
+    ) != (
+        "(" + ", ".join(f'"{name}"' for name in PUBLIC_EXPORTS) + ",)",
+    )
+
+    weakened_path_type = text.replace(
+        "Runtime path types must be the platform's exact concrete `WindowsPath` or\n"
+        "`PosixPath` type and must match.",
+        "Runtime path types may use any pathlib-compatible value.",
+        1,
+    )
+    assert _runtime_path_type_rule(weakened_path_type) != (
+        PATH_AUTHORITY["runtime_path_type"]
+    )
+
+    enabled_upstream_warnings = text.replace(
+        "allow_upstream_warnings = false",
+        "allow_upstream_warnings = true",
+        1,
+    )
+    assert _fenced_block_lines(
+        enabled_upstream_warnings,
+        "The exact `CanonicalMt4DemoReadonlyBundleV1DataQualityPolicy` value is:",
+        "Every scalar must have its exact built-in type.",
+        language="text",
+    ) != tuple(
+        f"{field} = {_contract_literal(value)}"
+        for field, value in DATA_QUALITY_POLICY.items()
+    )
+
+    remapped_invalid_result = tuple(
+        (
+            vector.name,
+            "integration_unavailable_no_source"
+            if vector.name == "invalid_result"
+            else vector.expected_disposition,
+        )
+        for vector in OUTCOME_VECTORS
+    )
+    assert remapped_invalid_result != tuple(OUTCOME_DISPOSITIONS.items())
 
 
 def test_static_vectors_do_not_import_or_implement_future_runtime() -> None:
