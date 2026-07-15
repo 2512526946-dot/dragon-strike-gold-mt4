@@ -95,6 +95,121 @@ Missing, extra, reordered, subclassed, aliased, wrong-container, polluted, or
 contradictory input fails closed. The builder must not call G178 to repair or
 reproject a value and must not copy G178 projection algorithms.
 
+#### 3.2.1 Closed G175 shape and value predicate
+
+The accepted predicate is closed over the public G175 result. Exact slot order
+is required for each record:
+
+```text
+CanonicalGoldMarketFactsSnapshotV1 =
+  (contract_version, passed, status_code, reason_codes, warning_codes,
+   identity_available, bundle_schema_version, bundle_id, sequence,
+   canonical_symbol, broker_symbol, reference_time_utc, quote, timeframes,
+   symbol_spec, freshness, read_only, demo_only, is_tradable, can_execute,
+   is_trading_permission, is_execution_instruction, allowed_to_call_ea,
+   allowed_to_modify_risk)
+CanonicalGoldQuoteFactsV1 =
+  (bid_decimal, ask_decimal, spread_decimal, spread_points, digits,
+   point_decimal, tick_time_utc)
+CanonicalGoldTimeframeFactsV1 = (timeframe, period_seconds, bars)
+CanonicalGoldBarFactsV1 =
+  (open_time_utc, open_decimal, high_decimal, low_decimal, close_decimal,
+   tick_volume, spread_points)
+CanonicalGoldSymbolFactsV1 =
+  (spec_time_utc, digits, point_decimal, tick_size_decimal,
+   tick_value_decimal, contract_size_decimal, min_lot_decimal,
+   lot_step_decimal, max_lot_decimal, base_currency, profit_currency,
+   margin_currency, trade_mode_readonly_label,
+   session_status_readonly_label)
+CanonicalGoldFreshnessFactsV1 =
+  (tick_age_microseconds, bars_payload_age_microseconds,
+   symbol_spec_age_microseconds)
+```
+
+Every record must have the exact named G175 type; subclasses are invalid.
+Every scalar must have its annotated exact built-in type, `bool` is not an
+`int`, and every tuple must be an exact built-in tuple with exact element
+types. At the top level, textual fields are exact built-in strings, boolean
+fields are exact built-in booleans, `sequence` is an exact built-in integer,
+and reason/warning fields are exact built-in tuples of exact built-in strings.
+Quote decimal and timestamp fields are strings while its count fields are
+integers; timeframe and bar labels/timestamps/decimals are strings while their
+period/count fields are integers; every symbol field except `digits` is a
+string; and all freshness fields are integers. After this shape check, the
+following value rules are mandatory:
+
+- `bundle_schema_version` is exactly `"1.0"`; `bundle_id` is 16 through 64
+  ASCII characters and matches `[A-Za-z0-9._-]+`; `sequence` is positive;
+  `canonical_symbol` is `"XAUUSD"`; and `broker_symbol` is `"GOLD"`.
+  `reference_time_utc` remains an exact built-in string and is validated by
+  the session rule below.
+- `quote.digits` is in the inclusive range 0 through 8. Its four decimal
+  strings are finite, unsigned, non-exponent fixed-point strings that reproduce
+  byte-for-byte under `format(value, f".{digits}f")`; when `digits == 0` they
+  contain no decimal point. Bid and ask are positive, spread is nonnegative,
+  point is positive and equals `Decimal(1).scaleb(-digits)`, `spread_points` is
+  nonnegative, and the two exact identities `ask - bid == spread` and
+  `Decimal(spread_points) * point == spread` hold. `tick_time_utc` is strict
+  UTC Z.
+- `timeframes` contains exactly `("M15", 900)`, `("H1", 3600)`,
+  `("H4", 14400)`, and `("D1", 86400)` in that order. Each bars tuple has 1
+  through 500 records. Bar times are strict UTC Z, unique, and strictly
+  ascending. Each OHLC string obeys the quote fixed-point rule, parses to a
+  positive value, and satisfies `high >= max(open, low, close)` and
+  `low <= min(open, high, close)`. `tick_volume` and `spread_points` are
+  nonnegative.
+- `symbol_spec.spec_time_utc` is strict UTC Z; its `digits` equals
+  `quote.digits`; its `point_decimal` equals `quote.point_decimal`; and point
+  equals the price quantum. `tick_size_decimal` is positive and obeys the same
+  fixed-point format. `tick_value_decimal`, `contract_size_decimal`,
+  `min_lot_decimal`, `lot_step_decimal`, and `max_lot_decimal` are finite,
+  positive canonical G175 non-price strings: no exponent, leading plus sign,
+  signed zero, or unnecessary trailing fractional zero, and formatting by the
+  G175 trim-only algorithm reproduces each string byte-for-byte. Min lot and
+  lot step do not exceed max lot. Base currency is `"XAU"`, profit currency is
+  `"USD"`, and margin currency plus both readonly labels are nonempty ASCII
+  strings matching `[A-Za-z0-9._:-]+`.
+- All three freshness ages are nonnegative exact built-in integers. The exact
+  age from `reference_time_utc` to `quote.tick_time_utc` equals
+  `tick_age_microseconds`; the exact age to `symbol_spec.spec_time_utc` equals
+  `symbol_spec_age_microseconds`. Subtracting
+  `bars_payload_age_microseconds` from the reference instant yields the G175
+  bars-payload instant; every bar is completed only when
+  `open_time + period_seconds <= bars_payload_instant`.
+
+These checks validate a purported G175 result; they do not normalize prices,
+project source values, sort bars, replace G178, or create source authority.
+
+#### 3.2.2 Deterministic invalid-input classification
+
+The closed predicate uses this exact ordered classification:
+
+1. wrong top-level or nested type, slots, field order, scalar type, tuple
+   container, or tuple element type maps to `INPUT_INVALID` /
+   `GOLD_SESSION_SPREAD_FRESHNESS_INPUT_TYPE_INVALID`;
+2. wrong top-level READY status, reason/warning tuple, identity-availability
+   flag, contract version, fixed safety flag, timeframe name/period, bar
+   ordering/OHLC/volume/spread invariant, or non-spread and non-session symbol
+   invariant maps to `UPSTREAM_BLOCKED` /
+   `GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_NOT_READY`;
+3. an invalid bundle-schema, bundle-id, sequence, symbol, or broker-symbol
+   identity value maps to `IDENTITY_INVALID` /
+   `GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_IDENTITY_INVALID`;
+4. an invalid reference-time parse or observed writer session label maps to
+   `SESSION_INVALID` / `GOLD_SESSION_SPREAD_FRESHNESS_SESSION_INVALID`;
+5. an invalid quote value, quote timestamp, fixed-point representation,
+   spread identity, or quote/symbol digits-and-point consistency maps to
+   `SPREAD_INVALID` / `GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID`;
+6. an invalid age, age/timestamp identity, reconstructed bars-payload instant,
+   or completed-bar check maps to `FRESHNESS_INVALID` /
+   `GOLD_SESSION_SPREAD_FRESHNESS_FRESHNESS_INVALID`; and
+7. only an unexpected exception reaching the public boundary maps to
+   `SAFE_FAILURE` / `GOLD_SESSION_SPREAD_FRESHNESS_EXCEPTION_SANITIZED`.
+
+Within one category, fields are checked in the public field order shown above;
+timeframes and bars are checked in tuple order. No invalid value can be moved
+to another category by retry, fallback, repair, or alternate validation.
+
 ### 3.3 Time and session authority
 
 `market_facts_snapshot.reference_time_utc` is the sole clock input. It already
@@ -385,7 +500,8 @@ Later work must remain separately planned and approved:
 
 1. immutable static contract vectors for this exact contract;
 2. production types and the pure-memory builder;
-3. genuine offline integration from the G185 READY snapshot boundary;
+3. genuine offline composition evidence through a G185 READY source, then the
+   G178 projector, then the G189 builder, orchestrated outside the G189 module;
 4. deterministic non-activating verification for this facts stage;
 5. a separate contract and delivery for volatility and structure features;
 6. a separate contract and delivery for economic-window inputs; and
@@ -418,8 +534,8 @@ G189 is acceptable only when:
 - the UTC profile, windows, overlap, endpoint, and writer-label rules are
   deterministic and server-owned;
 - Decimal spread calculations, formatting, and failure rules are complete;
-- source and completed-bar freshness calculations are complete and use no
-  threshold or ambient clock;
+- source freshness aggregation is complete, uses no threshold or ambient
+  clock, and defines no completed-bar or per-timeframe freshness fact;
 - every status/reason pair and first-failure priority is unambiguous;
 - failures clear identity and facts without leakage;
 - no implementation, test vector, runtime integration, ReplayRunner stage,
