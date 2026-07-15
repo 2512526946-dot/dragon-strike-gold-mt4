@@ -870,13 +870,27 @@ def _reader_success_is_consistent(value: dict[str, object]) -> bool:
         and value["reader_status"] == "validated_isolated"
         and value["manifest_consistency_checked"] is True
         and value["manifest_consistency_passed"] is True
-        and value["checksum_checked"] is True
-        and value["checksum_passed"] is True
+        and _reader_checksum_success_is_consistent(value)
         and value["upstream_value_passed"] is True
         and value["upstream_value_status_code"] == expected_value_status
         and value["ready_for_readonly_analysis"] is False
         and value["next_allowed_stage"] == list(_READER_NEXT_ALLOWED)
         and value["next_blocked_stage"] == list(_READER_NEXT_BLOCKED)
+    )
+
+
+def _reader_checksum_success_is_consistent(value: dict[str, object]) -> bool:
+    checksum_component = value["component_statuses"][
+        _READER_COMPONENT_NAMES.index("checksum")
+    ]
+    expected_status = (
+        "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_CHECKSUM_VALID"
+        if value["checksum_checked"]
+        else "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_CHECKSUM_NOT_REQUIRED"
+    )
+    return (
+        value["checksum_passed"] is True
+        and checksum_component["status_code"] == expected_status
     )
 
 

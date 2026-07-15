@@ -503,6 +503,69 @@ def test_ready_path_calls_reader_and_gate_once_and_builds_fresh_source(
     _assert_safety(first)
 
 
+@pytest.mark.parametrize(
+    ("checksum_status_suffix", "checksum_checked", "checksum_passed", "accepted"),
+    (
+        ("VALID", True, True, True),
+        ("VALID", True, False, False),
+        ("VALID", False, True, False),
+        ("VALID", False, False, False),
+        ("NOT_REQUIRED", False, True, True),
+        ("NOT_REQUIRED", False, False, False),
+        ("NOT_REQUIRED", True, True, False),
+        ("NOT_REQUIRED", True, False, False),
+    ),
+)
+def test_reader_checksum_success_semantics_are_closed_before_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    checksum_status_suffix: str,
+    checksum_checked: bool,
+    checksum_passed: bool,
+    accepted: bool,
+) -> None:
+    reader_envelope = _ready_reader_envelope()
+    checksum_component = reader_envelope["component_statuses"][
+        COMPONENT_NAMES.index("checksum")
+    ]
+    checksum_component["status_code"] = (
+        "CANONICAL_MT4_BUNDLE_V1_FILESYSTEM_CHECKSUM_"
+        f"{checksum_status_suffix}"
+    )
+    reader_envelope["checksum_checked"] = checksum_checked
+    reader_envelope["checksum_passed"] = checksum_passed
+    gate_calls = 0
+
+    def reader_spy(**_: object) -> tuple[dict[str, object], object]:
+        return reader_envelope, _capsule()
+
+    def gate_spy(**_: object) -> dict[str, object]:
+        nonlocal gate_calls
+        gate_calls += 1
+        return _ready_gate_result()
+
+    monkeypatch.setattr(adapter_module, "_read_accepted_attempt", reader_spy)
+    monkeypatch.setattr(adapter_module, "_evaluate_data_quality", gate_spy)
+
+    result = adapter_module.build_server_owned_canonical_gold_market_facts_source_v1(
+        authority=_authority()
+    )
+
+    if accepted:
+        assert result.passed is True
+        assert result.status_code == "CANONICAL_GOLD_SOURCE_ADAPTER_READY"
+        assert result.reason_codes == ()
+        assert result.source_available is True
+        assert gate_calls == 1
+    else:
+        _assert_blocked(
+            result,
+            "CANONICAL_GOLD_SOURCE_ADAPTER_SAFE_FAILURE",
+            "GOLD_SOURCE_READER_RESULT_INVALID",
+        )
+        assert gate_calls == 0
+    _assert_safety(result)
+
+
 def test_ready_source_has_exact_same_attempt_provenance() -> None:
     result = _run_ready()
     source = result.source
