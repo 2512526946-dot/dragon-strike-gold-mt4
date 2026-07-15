@@ -269,4 +269,10 @@ def _safe_failure_or_none(
         return None
     if type(result) is not _EXPECTED_RESULT_TYPE:
         return None
+    try:
+        result_is_safe = result._is_fixed_sanitized_failure_v1()
+    except Exception:
+        return None
+    if type(result_is_safe) is not bool or result_is_safe is not True:
+        return None
     return result

@@ -158,6 +158,26 @@ def test_private_result_authority_interfaces_and_safe_failure_are_exact() -> Non
         )
         is True
     )
+    assert first._is_fixed_sanitized_failure_v1() is True
+
+
+def test_fixed_sanitized_failure_rejects_semantically_invalid_exact_results() -> None:
+    failure = (
+        adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+    )
+    ready = _run_ready()
+    assert ready.source is not None
+
+    invalid_results = (
+        replace(failure, passed=True),
+        replace(failure, status_code="CANONICAL_GOLD_SOURCE_ADAPTER_READY"),
+        replace(failure, reason_codes=()),
+        replace(failure, source_available=True, source=ready.source),
+        replace(failure, can_execute=True),
+    )
+    for invalid in invalid_results:
+        assert type(invalid) is type(failure)
+        assert invalid._is_fixed_sanitized_failure_v1() is False
 
 
 def test_private_result_validator_fails_closed_on_polluted_envelopes() -> None:
@@ -213,6 +233,70 @@ def test_private_result_validator_fails_closed_on_polluted_envelopes() -> None:
         assert (
             adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
                 result=invalid
+            )
+            is False
+        )
+
+
+def test_private_result_validator_rejects_g175_invalid_ready_sources() -> None:
+    ready = _run_ready()
+    assert ready.source is not None
+    first_timeframe = ready.source.timeframes[0]
+    first_bar = first_timeframe.bars[0]
+
+    invalid_sources = (
+        replace(ready.source, reference_time_utc="2026-07-10T02:30:05+00:00"),
+        replace(
+            ready.source,
+            live_tick=replace(ready.source.live_tick, bid=float("nan")),
+        ),
+        replace(
+            ready.source,
+            live_tick=replace(ready.source.live_tick, tick_time_utc="not-a-time"),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(first_timeframe, bars=()),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=list(first_timeframe.bars),  # type: ignore[arg-type]
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(first_timeframe, bars=(first_bar,) * 501),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            timeframes=(
+                replace(
+                    first_timeframe,
+                    bars=(replace(first_bar, open_time_utc="2026-07-10"),),
+                ),
+                *ready.source.timeframes[1:],
+            ),
+        ),
+        replace(
+            ready.source,
+            symbol_spec=replace(ready.source.symbol_spec, max_lot=float("inf")),
+        ),
+    )
+    for invalid_source in invalid_sources:
+        assert (
+            adapter_module._is_safe_canonical_gold_market_facts_source_adapter_result_v1(
+                result=replace(ready, source=invalid_source)
             )
             is False
         )

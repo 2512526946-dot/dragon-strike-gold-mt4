@@ -489,6 +489,11 @@ class CanonicalGoldMarketFactsSourceAdapterResultV1:
     allowed_to_call_ea: bool
     allowed_to_modify_risk: bool
 
+    def _is_fixed_sanitized_failure_v1(self) -> bool:
+        """Validate this result as the sole fixed G182 sanitizer output."""
+
+        return _fixed_sanitized_failure_is_safe(self)
+
 
 def build_server_owned_canonical_gold_market_facts_source_v1(
     *,
@@ -1433,18 +1438,23 @@ def _source_result_shape_is_safe(source: object) -> bool:
         type(source.contract_version) is str
         and source.contract_version == _CONTRACT_VERSION
         and type(source.bundle_schema_version) is str
+        and source.bundle_schema_version == _CONTRACT_VERSION
         and type(source.bundle_id) is str
+        and 16 <= len(source.bundle_id) <= 64
+        and source.bundle_id.isascii()
+        and _BUNDLE_ID.fullmatch(source.bundle_id) is not None
         and type(source.sequence) is int
+        and source.sequence > 0
         and type(source.canonical_symbol) is str
         and source.canonical_symbol == _CANONICAL_SYMBOL
         and type(source.broker_symbol) is str
         and source.broker_symbol == _BROKER_SYMBOL
-        and type(source.reference_time_utc) is str
+        and _is_strict_utc_z(source.reference_time_utc)
         and type(source.policy_profile_version) is str
         and source.policy_profile_version == _POLICY_PROFILE_VERSION
         and type(source.upstream_evidence) is _CanonicalGoldUpstreamEvidenceV1
         and type(source.live_tick) is _CanonicalGoldTickSourceV1
-        and type(source.bars_generated_at_utc) is str
+        and _is_strict_utc_z(source.bars_generated_at_utc)
         and type(source.timeframes) is tuple
         and type(source.symbol_spec) is _CanonicalGoldSymbolSpecSourceV1
     ):
@@ -1481,7 +1491,7 @@ def _source_result_shape_is_safe(source: object) -> bool:
         and type(tick.spread_points) is int
         and type(tick.digits) is int
         and _is_exact_number(tick.point)
-        and type(tick.tick_time_utc) is str
+        and _is_strict_utc_z(tick.tick_time_utc)
     ):
         return False
 
@@ -1494,13 +1504,14 @@ def _source_result_shape_is_safe(source: object) -> bool:
             and type(timeframe.timeframe) is str
             and type(timeframe.period_seconds) is int
             and type(timeframe.bars) is tuple
+            and 1 <= len(timeframe.bars) <= 500
         ):
             return False
         observed_timeframes.append((timeframe.timeframe, timeframe.period_seconds))
         for bar in timeframe.bars:
             if not (
                 type(bar) is _CanonicalGoldBarSourceV1
-                and type(bar.open_time_utc) is str
+                and _is_strict_utc_z(bar.open_time_utc)
                 and _is_exact_number(bar.open)
                 and _is_exact_number(bar.high)
                 and _is_exact_number(bar.low)
@@ -1514,7 +1525,7 @@ def _source_result_shape_is_safe(source: object) -> bool:
 
     spec = source.symbol_spec
     return (
-        type(spec.spec_time_utc) is str
+        _is_strict_utc_z(spec.spec_time_utc)
         and type(spec.digits) is int
         and _is_exact_number(spec.point)
         and _is_exact_number(spec.tick_size)
@@ -1532,7 +1543,65 @@ def _source_result_shape_is_safe(source: object) -> bool:
 
 
 def _is_exact_number(value: object) -> bool:
-    return type(value) is int or type(value) is float
+    return type(value) is int or (
+        type(value) is float and _math.isfinite(value)
+    )
+
+
+def _is_strict_utc_z(value: object) -> bool:
+    if (
+        type(value) is not str
+        or not value.isascii()
+        or _re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            value,
+        )
+        is None
+    ):
+        return False
+    try:
+        parsed = _datetime.fromisoformat(f"{value[:-1]}+00:00")
+    except (ValueError, OverflowError):
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() == _timedelta(0)
+
+
+def _fixed_sanitized_failure_is_safe(result: object) -> bool:
+    try:
+        return (
+            type(result) is CanonicalGoldMarketFactsSourceAdapterResultV1
+            and type(result.contract_version) is str
+            and result.contract_version == _CONTRACT_VERSION
+            and type(result.passed) is bool
+            and result.passed is False
+            and type(result.status_code) is str
+            and result.status_code == _SAFE_FAILURE_STATUS
+            and type(result.reason_codes) is tuple
+            and result.reason_codes == (_EXCEPTION_SANITIZED,)
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+            and type(result.source_available) is bool
+            and result.source_available is False
+            and result.source is None
+            and type(result.read_only) is bool
+            and result.read_only is True
+            and type(result.demo_only) is bool
+            and result.demo_only is True
+            and type(result.is_tradable) is bool
+            and result.is_tradable is False
+            and type(result.can_execute) is bool
+            and result.can_execute is False
+            and type(result.is_trading_permission) is bool
+            and result.is_trading_permission is False
+            and type(result.is_execution_instruction) is bool
+            and result.is_execution_instruction is False
+            and type(result.allowed_to_call_ea) is bool
+            and result.allowed_to_call_ea is False
+            and type(result.allowed_to_modify_risk) is bool
+            and result.allowed_to_modify_risk is False
+        )
+    except Exception:
+        return False
 
 
 def _ready(

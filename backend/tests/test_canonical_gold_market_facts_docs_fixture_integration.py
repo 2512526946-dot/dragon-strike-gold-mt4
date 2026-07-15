@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import UTC, datetime
 import inspect
 from pathlib import Path
@@ -362,6 +362,51 @@ def test_invalid_sanitizer_result_returns_no_source(
         is None
     )
     assert calls == ["adapter", "sanitizer"]
+
+
+def test_semantically_invalid_exact_sanitizer_results_return_no_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    valid_failure = (
+        adapter_module._build_canonical_gold_market_facts_source_adapter_safe_failure_v1()
+    )
+    ready = _ready_result()
+    invalid_results = (
+        replace(valid_failure, passed=True),
+        replace(valid_failure, status_code="CANONICAL_GOLD_SOURCE_ADAPTER_READY"),
+        replace(valid_failure, reason_codes=()),
+        replace(valid_failure, source=ready.source),
+        replace(valid_failure, source_available=True, source=ready.source),
+        replace(valid_failure, allowed_to_call_ea=True),
+    )
+
+    for invalid_result in invalid_results:
+        calls: list[str] = []
+
+        def adapter_spy(**_: object) -> object:
+            calls.append("adapter")
+            raise RuntimeError("sensitive adapter detail")
+
+        def validator_spy(*, result: object) -> bool:
+            calls.append("validator")
+            return True
+
+        def invalid_sanitizer_spy() -> object:
+            calls.append("sanitizer")
+            return invalid_result
+
+        with monkeypatch.context() as context:
+            _install_controlled_dependencies(
+                context,
+                adapter=adapter_spy,
+                validator=validator_spy,
+                sanitizer=invalid_sanitizer_spy,
+            )
+            assert (
+                integration_module.build_canonical_gold_market_facts_docs_fixture_source_v1()
+                is None
+            )
+        assert calls == ["adapter", "sanitizer"]
 
 
 def test_module_has_no_parallel_runtime_or_ambient_authority() -> None:
