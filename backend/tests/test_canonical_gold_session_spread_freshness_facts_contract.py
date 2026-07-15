@@ -85,6 +85,15 @@ class StrictValueMutationVector:
     priority: int
 
 
+@dataclass(frozen=True, slots=True)
+class FailurePriorityVector:
+    priority: int
+    category: str
+    status: str
+    reason: str
+    contract_rule: str
+
+
 RESULT_FIELDS = (
     ("contract_version", "str"),
     ("facts_profile_version", "str"),
@@ -317,6 +326,131 @@ STATUS_REASON_VECTORS = (
         False,
         "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_SAFE_FAILURE",
         ("GOLD_SESSION_SPREAD_FRESHNESS_EXCEPTION_SANITIZED",),
+    ),
+)
+
+G175_READY_AUTHORITY_PREDICATES = (
+    '`contract_version == "1.0"`;',
+    "`passed is True`;",
+    '`status_code == "CANONICAL_GOLD_MARKET_FACTS_READY"`;',
+    "`reason_codes == ()` and `warning_codes == ()` as exact built-in tuples;",
+    "`identity_available is True`;",
+    "all six identity fields are present with exact built-in types;",
+    '`canonical_symbol == "XAUUSD"` and `broker_symbol == "GOLD"`;',
+    "`quote`, `symbol_spec`, and `freshness` are exact G175 nested types;",
+    "`timeframes` is the exact ordered M15, H1, H4, D1 tuple and every bars "
+    "tuple is non-empty;",
+    "every nested object has the exact G175 slots, field order, and built-in "
+    "types; and",
+    "all eight G175 safety flags have their fixed safe values.",
+)
+
+G175_READY_VALUE_PREDICATES = (
+    '`bundle_schema_version` is exactly `"1.0"`; `bundle_id` is 16 through 64 '
+    "ASCII characters and matches `[A-Za-z0-9._-]+`; `sequence` is positive; "
+    '`canonical_symbol` is `"XAUUSD"`; and `broker_symbol` is `"GOLD"`. '
+    "`reference_time_utc` remains an exact built-in string and is validated by "
+    "the session rule below.",
+    "`quote.digits` is in the inclusive range 0 through 8. Its four decimal "
+    "strings are finite, unsigned, non-exponent fixed-point strings that "
+    'reproduce byte-for-byte under `format(value, f".{digits}f")`. When '
+    "`digits == 0` the strings contain no decimal point. Bid and ask are "
+    "positive, spread is nonnegative, point is positive and equals "
+    "`Decimal(1).scaleb(-digits)`, `spread_points` is nonnegative, and the two "
+    "exact identities `ask - bid == spread` and "
+    "`Decimal(spread_points) * point == spread` hold. `tick_time_utc` is strict "
+    "UTC Z.",
+    '`timeframes` contains exactly `("M15", 900)`, `("H1", 3600)`, '
+    '`("H4", 14400)`, and `("D1", 86400)` in that order. Each bars tuple has '
+    "1 through 500 records. Bar times are strict UTC Z, unique, and strictly "
+    "ascending. Each OHLC string obeys the quote fixed-point rule, parses to a "
+    "positive value, and satisfies `high >= max(open, low, close)` and "
+    "`low <= min(open, high, close)`. `tick_volume` and `spread_points` are "
+    "nonnegative.",
+    "`symbol_spec.spec_time_utc` is strict UTC Z; its `digits` equals "
+    "`quote.digits`; its `point_decimal` equals `quote.point_decimal`; and "
+    "point equals the price quantum. `tick_size_decimal` is positive and obeys "
+    "the same fixed-point format. `tick_value_decimal`, "
+    "`contract_size_decimal`, `min_lot_decimal`, `lot_step_decimal`, and "
+    "`max_lot_decimal` are finite, positive canonical G175 non-price strings: "
+    "no exponent, leading plus sign, signed zero, or unnecessary trailing "
+    "fractional zero, and formatting by the G175 trim-only algorithm "
+    "reproduces each string byte-for-byte. Min lot and lot step do not exceed "
+    'max lot. Base currency is `"XAU"`, profit currency is `"USD"`, and margin '
+    "currency plus both readonly labels are nonempty ASCII strings matching "
+    "`[A-Za-z0-9._:-]+`.",
+    "All three freshness ages are nonnegative exact built-in integers. The "
+    "exact age from `reference_time_utc` to `quote.tick_time_utc` equals "
+    "`tick_age_microseconds`; the exact age to "
+    "`symbol_spec.spec_time_utc` equals `symbol_spec_age_microseconds`. "
+    "Subtracting `bars_payload_age_microseconds` from the reference instant "
+    "yields the G175 bars-payload instant; every bar is completed only when "
+    "`open_time + period_seconds <= bars_payload_instant`.",
+)
+
+FAILURE_PRIORITY_VECTORS = (
+    FailurePriorityVector(
+        1,
+        "INPUT_INVALID",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_INPUT_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_INPUT_TYPE_INVALID",
+        "1. wrong top-level or nested type, slots, field order, scalar type, tuple "
+        "container, or tuple element type maps to `INPUT_INVALID` / "
+        "`GOLD_SESSION_SPREAD_FRESHNESS_INPUT_TYPE_INVALID`;",
+    ),
+    FailurePriorityVector(
+        2,
+        "UPSTREAM_BLOCKED",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_UPSTREAM_BLOCKED",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_NOT_READY",
+        "2. wrong top-level READY status, reason/warning tuple, "
+        "identity-availability flag, contract version, fixed safety flag, "
+        "timeframe name/period, bar ordering/OHLC/volume/spread invariant, or "
+        "non-spread and non-session symbol invariant maps to `UPSTREAM_BLOCKED` "
+        "/ `GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_NOT_READY`;",
+    ),
+    FailurePriorityVector(
+        3,
+        "IDENTITY_INVALID",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_IDENTITY_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_IDENTITY_INVALID",
+        "3. an invalid bundle-schema, bundle-id, sequence, symbol, or "
+        "broker-symbol identity value maps to `IDENTITY_INVALID` / "
+        "`GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_IDENTITY_INVALID`;",
+    ),
+    FailurePriorityVector(
+        4,
+        "SESSION_INVALID",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_SESSION_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SESSION_INVALID",
+        "4. an invalid reference-time parse or observed writer session label maps "
+        "to `SESSION_INVALID` / `GOLD_SESSION_SPREAD_FRESHNESS_SESSION_INVALID`;",
+    ),
+    FailurePriorityVector(
+        5,
+        "SPREAD_INVALID",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID",
+        "5. an invalid quote value, quote timestamp, fixed-point representation, "
+        "spread identity, or quote/symbol digits-and-point consistency maps to "
+        "`SPREAD_INVALID` / `GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID`;",
+    ),
+    FailurePriorityVector(
+        6,
+        "FRESHNESS_INVALID",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_FRESHNESS_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_FRESHNESS_INVALID",
+        "6. an invalid age, age/timestamp identity, reconstructed bars-payload "
+        "instant, or completed-bar check maps to `FRESHNESS_INVALID` / "
+        "`GOLD_SESSION_SPREAD_FRESHNESS_FRESHNESS_INVALID`; and",
+    ),
+    FailurePriorityVector(
+        7,
+        "SAFE_FAILURE",
+        "CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_SAFE_FAILURE",
+        "GOLD_SESSION_SPREAD_FRESHNESS_EXCEPTION_SANITIZED",
+        "7. only an unexpected exception reaching the public boundary maps to "
+        "`SAFE_FAILURE` / `GOLD_SESSION_SPREAD_FRESHNESS_EXCEPTION_SANITIZED`.",
     ),
 )
 
@@ -690,6 +824,50 @@ def _session_rows(text: str) -> tuple[tuple[str, int, int], ...]:
     )
 
 
+def _ordered_markdown_items(body: str, marker_pattern: str) -> tuple[str, ...]:
+    items: list[str] = []
+    current: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        match = re.match(marker_pattern, stripped)
+        if match is not None:
+            if current:
+                items.append(" ".join(current))
+            current = [match.group(1)]
+        elif current and stripped:
+            current.append(stripped)
+    if current:
+        items.append(" ".join(current))
+    return tuple(items)
+
+
+def _g175_ready_authority_predicates(text: str) -> tuple[str, ...]:
+    body = _section(
+        text,
+        "The input is usable only when all conditions below hold:",
+        "Missing, extra, reordered, subclassed, aliased, wrong-container, polluted, or",
+    )
+    return _ordered_markdown_items(body, r"^-\s+(.*)$")
+
+
+def _g175_ready_value_predicates(text: str) -> tuple[str, ...]:
+    body = _section(
+        text,
+        "following value rules are mandatory:",
+        "These checks validate a purported G175 result;",
+    )
+    return _ordered_markdown_items(body, r"^-\s+(.*)$")
+
+
+def _failure_priority_rules(text: str) -> tuple[str, ...]:
+    body = _section(
+        text,
+        "The closed predicate uses this exact ordered classification:",
+        "Within one category, fields are checked in the public field order shown above;",
+    )
+    return _ordered_markdown_items(body, r"^(\d+\.\s+.*)$")
+
+
 def _assert_closed_contract(text: str) -> None:
     assert PUBLIC_SIGNATURE in text
     assert _schema_rows(text, "### 4.1 ", "### 4.2 ") == RESULT_FIELDS
@@ -697,7 +875,16 @@ def _assert_closed_contract(text: str) -> None:
     assert _schema_rows(text, "### 4.3 ", "### 4.4 ") == SPREAD_FIELDS
     assert _schema_rows(text, "### 4.4 ", "## 5. ") == FRESHNESS_FIELDS
     assert _g175_schema_fields(text) == dict(G175_INPUT_FIELDS)
+    assert _g175_ready_authority_predicates(text) == G175_READY_AUTHORITY_PREDICATES
+    assert _g175_ready_value_predicates(text) == G175_READY_VALUE_PREDICATES
+    assert _failure_priority_rules(text) == tuple(
+        vector.contract_rule for vector in FAILURE_PRIORITY_VECTORS
+    )
     assert _status_rows(text) == STATUS_REASON_VECTORS
+    assert tuple(
+        StatusReasonVector(False, vector.status, (vector.reason,))
+        for vector in FAILURE_PRIORITY_VECTORS
+    ) == STATUS_REASON_VECTORS[1:]
     assert _session_rows(text) == SESSION_WINDOWS
     assert "M = 5 * (B + A)" in text
     assert "N = 2 * S * (10 ** 12)" in text
@@ -717,6 +904,8 @@ def _assert_closed_contract(text: str) -> None:
 def test_contract_vectors_are_frozen_and_use_exact_public_schemas() -> None:
     with pytest.raises(FrozenInstanceError):
         STATUS_REASON_VECTORS[0].passed = False  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        FAILURE_PRIORITY_VECTORS[0].reason = "changed"  # type: ignore[misc]
     with pytest.raises(TypeError):
         PUBLIC_SCHEMAS["unexpected"] = ()  # type: ignore[index]
     with pytest.raises(TypeError):
@@ -726,6 +915,12 @@ def test_contract_vectors_are_frozen_and_use_exact_public_schemas() -> None:
     assert type(SESSION_FIELDS) is tuple and len(SESSION_FIELDS) == 8
     assert type(SPREAD_FIELDS) is tuple and len(SPREAD_FIELDS) == 8
     assert type(FRESHNESS_FIELDS) is tuple and len(FRESHNESS_FIELDS) == 5
+    assert type(G175_READY_AUTHORITY_PREDICATES) is tuple
+    assert len(G175_READY_AUTHORITY_PREDICATES) == 11
+    assert type(G175_READY_VALUE_PREDICATES) is tuple
+    assert len(G175_READY_VALUE_PREDICATES) == 5
+    assert type(FAILURE_PRIORITY_VECTORS) is tuple
+    assert len(FAILURE_PRIORITY_VECTORS) == 7
     assert tuple(PUBLIC_SCHEMAS) == (
         "CanonicalGoldSessionSpreadFreshnessFactsV1",
         "CanonicalGoldSessionFactsV1",
@@ -768,10 +963,8 @@ def test_g175_ready_input_vector_is_complete_strict_and_immutable() -> None:
 
     text = _contract_text()
     assert _g175_schema_fields(text) == dict(G175_INPUT_FIELDS)
-    assert "The accepted predicate is closed over the public G175 result." in text
-    assert "every bars tuple\n  is non-empty" in text
-    assert "1\n  through 500 records" in text
-    assert "open_time + period_seconds <= bars_payload_instant" in text
+    assert _g175_ready_authority_predicates(text) == G175_READY_AUTHORITY_PREDICATES
+    assert _g175_ready_value_predicates(text) == G175_READY_VALUE_PREDICATES
 
 
 def test_session_profile_windows_endpoints_and_writer_label_are_exact() -> None:
@@ -954,13 +1147,47 @@ def test_negative_shape_and_value_vectors_lock_first_failure_priority() -> None:
         "### 3.3 Time and session authority",
     )
     assert re.findall(r"(?m)^(\d+)\.", priority) == [str(index) for index in range(1, 8)]
+    assert _failure_priority_rules(text) == tuple(
+        vector.contract_rule for vector in FAILURE_PRIORITY_VECTORS
+    )
+    assert tuple(
+        (vector.priority, vector.category, vector.status, vector.reason)
+        for vector in FAILURE_PRIORITY_VECTORS
+    ) == (
+        (1, "INPUT_INVALID", STATUS_REASON_VECTORS[1].status, STATUS_REASON_VECTORS[1].reasons[0]),
+        (2, "UPSTREAM_BLOCKED", STATUS_REASON_VECTORS[2].status, STATUS_REASON_VECTORS[2].reasons[0]),
+        (3, "IDENTITY_INVALID", STATUS_REASON_VECTORS[3].status, STATUS_REASON_VECTORS[3].reasons[0]),
+        (4, "SESSION_INVALID", STATUS_REASON_VECTORS[4].status, STATUS_REASON_VECTORS[4].reasons[0]),
+        (5, "SPREAD_INVALID", STATUS_REASON_VECTORS[5].status, STATUS_REASON_VECTORS[5].reasons[0]),
+        (6, "FRESHNESS_INVALID", STATUS_REASON_VECTORS[6].status, STATUS_REASON_VECTORS[6].reasons[0]),
+        (7, "SAFE_FAILURE", STATUS_REASON_VECTORS[7].status, STATUS_REASON_VECTORS[7].reasons[0]),
+    )
     for vector in STRICT_VALUE_MUTATION_VECTORS:
-        assert vector.expected_status in text
-        assert vector.expected_reason in text
+        failure = FAILURE_PRIORITY_VECTORS[vector.priority - 1]
+        assert vector.expected_status == failure.status
+        assert vector.expected_reason == failure.reason
 
 
 def test_contract_mutation_probes_reject_boundary_formula_and_mapping_drift() -> None:
     text = _contract_text()
+    priority = _section(
+        text,
+        "The closed predicate uses this exact ordered classification:",
+        "Within one category, fields are checked in the public field order shown above;",
+    )
+    swapped_priority_reasons = priority.replace(
+        "GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_IDENTITY_INVALID",
+        "__IDENTITY_REASON__",
+        1,
+    ).replace(
+        "GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SNAPSHOT_IDENTITY_INVALID",
+        1,
+    ).replace(
+        "__IDENTITY_REASON__",
+        "GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID",
+        1,
+    )
     mutations = (
         text.replace("market_facts_snapshot: CanonicalGoldMarketFactsSnapshotV1,", "clock: object,"),
         text.replace("| 1 | `contract_version` | `str` |", "| 1 | `passed` | `bool` |"),
@@ -984,6 +1211,14 @@ def test_contract_mutation_probes_reject_boundary_formula_and_mapping_drift() ->
             "| `false` | `CANONICAL_GOLD_SESSION_SPREAD_FRESHNESS_SPREAD_INVALID` | "
             "`(\"GOLD_SESSION_SPREAD_FRESHNESS_FRESHNESS_INVALID\",)` |",
         ),
+        text.replace("ask - bid == spread", "ask >= bid", 1),
+        text.replace(
+            "Decimal(spread_points) * point == spread",
+            "spread_points >= 0",
+            1,
+        ),
+        text.replace("[A-Za-z0-9._-]+", ".+", 1),
+        text.replace(priority, swapped_priority_reasons, 1),
     )
     for mutated in mutations:
         with pytest.raises(AssertionError):
