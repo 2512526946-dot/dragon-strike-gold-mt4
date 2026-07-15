@@ -145,10 +145,9 @@ following value rules are mandatory:
   the session rule below.
 - `quote.digits` is in the inclusive range 0 through 8. Its four decimal
   strings are finite, unsigned, non-exponent fixed-point strings that reproduce
-  byte-for-byte under `format(value, f".{digits}f")`; each parsed Decimal
-  coefficient tuple has at most 64 digits, matching G175 context-plus
-  acceptance. When `digits == 0` the strings contain no decimal point. Bid and
-  ask are positive, spread is nonnegative, point is positive and equals
+  byte-for-byte under `format(value, f".{digits}f")`. When `digits == 0` the
+  strings contain no decimal point. Bid and ask are positive, spread is
+  nonnegative, point is positive and equals
   `Decimal(1).scaleb(-digits)`, `spread_points` is nonnegative, and the two
   exact identities `ask - bid == spread` and
   `Decimal(spread_points) * point == spread` hold. `tick_time_utc` is strict
@@ -166,12 +165,11 @@ following value rules are mandatory:
   fixed-point format. `tick_value_decimal`, `contract_size_decimal`,
   `min_lot_decimal`, `lot_step_decimal`, and `max_lot_decimal` are finite,
   positive canonical G175 non-price strings: no exponent, leading plus sign,
-  signed zero, or unnecessary trailing fractional zero; each Decimal
-  coefficient tuple has at most 64 digits, and formatting by the G175 trim-only
-  algorithm reproduces each string byte-for-byte. Min lot and lot step do not
-  exceed max lot. Base currency is `"XAU"`, profit currency is `"USD"`, and
-  margin currency plus both readonly labels are nonempty ASCII strings matching
-  `[A-Za-z0-9._:-]+`.
+  signed zero, or unnecessary trailing fractional zero, and formatting by the
+  G175 trim-only algorithm reproduces each string byte-for-byte. Min lot and
+  lot step do not exceed max lot. Base currency is `"XAU"`, profit currency is
+  `"USD"`, and margin currency plus both readonly labels are nonempty ASCII
+  strings matching `[A-Za-z0-9._:-]+`.
 - All three freshness ages are nonnegative exact built-in integers. The exact
   age from `reference_time_utc` to `quote.tick_time_utc` equals
   `tick_age_microseconds`; the exact age to `symbol_spec.spec_time_utc` equals
@@ -378,6 +376,14 @@ The builder may parse only the normalized G175 quote strings. It constructs
 and checks the finite, unsigned, fixed-point representation required by Section
 3.2. Decimal construction is exact and context-free. No price arithmetic may
 run under a finite-precision Decimal context.
+
+The builder must not impose an independent digit-count limit on a formatted
+G175 Decimal coefficient. G178 applies its precision check before fixed-point
+formatting; that formatting may append fractional zeroes or expand an accepted
+positive exponent. Those output digits do not prove that the pre-format source
+coefficient exceeded G175 authority. G189 validates the canonical public
+fixed-point representation and must not attempt to reconstruct or reclassify
+the private pre-format coefficient.
 
 After validation, convert each fixed-point string to its exact nonnegative
 base-10 integer coefficient by removing its one decimal point, if present. Let
