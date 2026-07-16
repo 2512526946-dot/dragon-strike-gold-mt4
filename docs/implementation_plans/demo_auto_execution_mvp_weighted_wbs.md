@@ -4,7 +4,8 @@ Status: WF-4A planning baseline, with the W5 estimate updated after G174 and
 the W6 estimate updated after the accepted G175/G176 contract-vector stage,
 the G177 production-type stage, the G178 pure-memory projector stage, and the
 G179-G188 source-adapter, docs-fixture boundary, genuine integration, and
-deterministic non-activating verification stages.
+deterministic non-activating verification stages, plus the G189-G191 session
+and spread/freshness contract, vector, and isolated implementation stages.
 This document establishes an engineering-hour weighted work breakdown
 structure for the Dragon Strike Demo auto-execution MVP and the separately
 frozen Live auto-execution goal. It does not implement, integrate, activate,
@@ -32,7 +33,7 @@ arithmetic. It does not rewrite the original baseline or authorize W6-W21.
 W6 was re-estimated from repository evidence at:
 
 ```text
-e4ae619b67df399bbc0309a5e25efef3138f5b19
+73895b9ffc55aa27f0b9f32274c8e306c25e4153
 ```
 
 This checkpoint updates only the W6 evidence, maturity assertion, effort
@@ -195,7 +196,7 @@ Critical-path values are:
 | W3 | Canonical docs fixture producer | Deterministic checked-in default source for canonical diagnostics. | `VERIFIED` | Canonical assets, zero-argument producer, strict envelope validation, and fail-closed tests exist. | Connect the approved producer only through the separately reviewed diagnostics migration boundary. | W1 -> W2, W5 | Medium | `PRO_REQUIRED` | CRITICAL | 1-2 | 35-55 / 5-10 | Low | No |
 | W4 | TradeMax MT4 Demo Writer and real Bundle bridge | MT4 Demo publishes atomic canonical bundles through one approved bridge. | `CONTRACT_ONLY` | Read-only bridge and Bundle writer requirements are documented. | MQL4 writer, manifest-last atomic publish, symbol mapping, sandbox integration, and real Demo evidence. | W1 -> W6, W14, W20 | High | `PRO_REQUIRED` | PARALLEL_CRITICAL | 8-12 | 15-25 / 80-140 | High | Yes, estimated 2-4 weeks of broker-terminal observation |
 | W5 | ReplayRunner | Versioned deterministic offline replay infrastructure; v1 covers the canonical diagnostics chain. | `VERIFIED` | Frozen public types and server-owned registry, strict summary validation, bounded production runner, genuine ReplayRunner -> G153 -> G151 integration, and deterministic regression evidence exist for v1. | After W6-W13 are separately implemented and integrated, add separately contracted replay stages for the complete decision chain and W18 linkage. Current v1 grants no activation or runtime execution authority. | W1, W3 -> W6-W13, W18 | High | `PRO_REQUIRED` | CRITICAL | 4-7 | 40-80 / 20-40 | Medium | No |
-| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | G175 and G176 establish the accepted snapshot contract and immutable vectors. G177 implements the 12 frozen, slotted production types. G178 implements the isolated pure-memory projector with strict source validation, Decimal normalization, deterministic status behavior, and safe immutable results. G179 defines the server-owned same-attempt source-adapter contract, G180 locks its immutable contract vectors, and G181 adds the private accepted-attempt reader seam and source-adapter production types. G182 implements bounded same-attempt reader-to-Gate orchestration, strict fail-closed envelope validation, drift detection, and detached 13-field source construction. G183 defines the fixed docs-fixture integration contract, G184 locks its immutable vectors, G185 implements the controlled zero-argument production boundary, and G186 aligns its optional-checksum success semantics with W1. G187 proves genuine offline G185 -> G182 -> W1 reader/value/DataQualityGate integration with fixed authority, immutable fixtures, exact READY identity, deterministic repeated results, and fresh detached source objects. G188 adds deterministic non-activating regression verification for that fixed offline fixture boundary. | Separately contract and deliver session, spread/freshness, volatility/structure, and economic-window facts and features; then add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 2-5 | 105-165 / 15-50 | Medium | No |
+| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | G175 and G176 establish the accepted snapshot contract and immutable vectors. G177 implements the 12 frozen, slotted production types. G178 implements the isolated pure-memory projector with strict source validation, Decimal normalization, deterministic status behavior, and safe immutable results. G179 defines the server-owned same-attempt source-adapter contract, G180 locks its immutable contract vectors, and G181 adds the private accepted-attempt reader seam and source-adapter production types. G182 implements bounded same-attempt reader-to-Gate orchestration, strict fail-closed envelope validation, drift detection, and detached 13-field source construction. G183 defines the fixed docs-fixture integration contract, G184 locks its immutable vectors, G185 implements the controlled zero-argument production boundary, and G186 aligns its optional-checksum success semantics with W1. G187 proves genuine offline G185 -> G182 -> W1 reader/value/DataQualityGate integration with fixed authority, immutable fixtures, exact READY identity, deterministic repeated results, and fresh detached source objects. G188 adds deterministic non-activating regression verification for that fixed offline fixture boundary. G189 defines the session and spread/freshness facts contract, G190 locks immutable contract vectors, and G191 implements the isolated deterministic pure-memory public types and builder with strict G175 READY validation, fixed UTC session authority, exact integer spread arithmetic, source-freshness aggregation, sanitized failures, and immutable safe results. | Add genuine G185 -> G178 -> G191 composition evidence and deterministic non-activating verification. Separately contract and deliver volatility/structure and economic-window facts and features, then add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 2-4 | 125-195 / 10-40 | Medium | No |
 | W7 | Deterministic analysis and opportunity assessment | One explainable, versioned, non-LLM decision path. | `POLICY_ONLY` | Advice authority and explanation boundaries are documented; placeholder observation logic exists. | Strategy contract, deterministic candidate logic, invalidation conditions, reason codes, and replay evidence. | W6 -> W10 | High | `PRO_REQUIRED` | CRITICAL | 6-10 | 10-20 / 50-90 | High | No |
 | W8 | RiskGate | One server-owned fail-closed risk decision. | `CONTRACT_ONLY` | Safety-gate and execution-authority contracts define veto semantics and major prohibitions. | Typed policy, daily loss, consecutive loss, spread, freshness, event, stop-loss, leverage, and no-overnight enforcement. | W10 -> W9, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 10-20 / 45-80 | Medium | No |
 | W9 | PositionSizing | Hard-calculated GOLD lot size within approved loss limits. | `CONTRACT_ONLY` | Position sizing authority and required inputs are documented. | Contract math, broker precision, min/max/step handling, loss caps, invalid contract handling, and regression vectors. | W8, W10 -> W11, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 8-15 / 40-70 | High | No |
@@ -234,7 +235,7 @@ produce reviewed upstream boundaries, plus later W18 linkage. Those upstream
 packages retain their own engineering-hour estimates; their work is not
 double-counted in W5.
 
-### 5.2 W6 post-deterministic-verification re-estimation
+### 5.2 W6 post-session-and-spread/freshness implementation re-estimation
 
 W6 remains `TESTS_ONLY`. G175 and G176 establish the accepted Canonical Gold
 Market Facts Snapshot v1 contract and immutable static vectors. G177 adds the
@@ -269,31 +270,42 @@ repeatability, detached-result isolation, immutable inputs and fixtures,
 fail-closed invalid-case behavior, and fixed read-only safety semantics. This
 verification does not activate a reader or MT4 source, grant execution or
 trading authority, or implement a ReplayRunner W6 stage. W6 as a package also
-still lacks the separately staged facts and features required by its full
-target, so its package maturity remains `TESTS_ONLY` and does not advance to
-`VERIFIED`.
+still lacks the separately staged later facts and features required by its
+full target. G189 defines the separately versioned Canonical Gold Session and
+Spread/Freshness Facts v1 contract, G190 locks its immutable static vectors,
+and G191 implements the frozen public types and deterministic pure-memory
+builder. G191 validates the complete G175 READY predicate, uses one fixed
+server-owned UTC session profile, computes midpoint and half-even ppm values
+with exact integer arithmetic, aggregates source freshness, clears failed
+identity and facts, and returns immutable Demo-only, Read-only results. It does
+not compose G185, G178, and G191 into a genuine production path, provide
+deterministic verification for that composition, implement later features, or
+add a ReplayRunner W6 stage. W6 package maturity therefore remains
+`TESTS_ONLY` and does not advance to `IMPLEMENTED`, `INTEGRATED`, or `VERIFIED`.
 
-The invested range moves from 100-155 to 105-165 equivalent engineering
-hours. The merged G188 evidence closes the previously explicit deterministic
-non-activating verification gap for the fixed docs-fixture boundary. G188's
-engineering-hour estimate is supporting engineering evidence, not a
-mechanical increment. The new range is an independent uncertainty estimate
-and is not derived from commits, tests, files, lines, versions, or documents.
+The invested range moves from 105-165 to 125-195 equivalent engineering
+hours. The merged G189-G191 evidence closes the contract, immutable-vector,
+production-type, and isolated-builder portions of the session and
+spread/freshness sub-capability. G191's 12-16 hour work-order estimate is
+supporting engineering evidence, not a mechanical increment. The new range is
+an independent uncertainty estimate and is not derived from commits, tests,
+files, lines, versions, documents, or a direct sum of work-order estimates.
 
-The remaining range moves from 20-55 to 15-50 hours. Deterministic
-non-activating verification for the fixed docs-fixture boundary is no longer a
-remaining gap. The estimate deliberately retains uncertainty for separate
-session and spread/freshness facts, separate volatility and structure
+The remaining range moves from 15-50 to 10-40 hours. Session and
+spread/freshness contract vectors and isolated builder behavior are no longer
+remaining gaps. The estimate deliberately retains uncertainty for genuine
+G185 -> G178 -> G191 composition evidence, deterministic non-activating
+verification for that composition, separate volatility and structure
 features, economic-window inputs, and a versioned ReplayRunner W6 stage before
 W7. This is an independent remaining-effort estimate, not a mechanical
-subtraction of G188 artifacts or activity.
+subtraction of G189-G191 artifacts or activity.
 
-The estimate of remaining minimal work orders narrows from 3-6 to 2-5. Later
-feature delivery and ReplayRunner W6 staging remain materially separate. The
-upper bound retains uncertainty because later facts and features may require
-more than one independently reviewed stage. This is a planning estimate of
-remaining engineering stages, not a count of repository artifacts already
-produced.
+The estimate of remaining minimal work orders narrows from 2-5 to 2-4. Genuine
+composition and verification, later feature delivery, and ReplayRunner W6
+staging remain materially separate. The upper bound retains uncertainty
+because later facts and features may require more than one independently
+reviewed stage. This is a planning estimate of remaining engineering stages,
+not a count of repository artifacts already produced.
 
 ## 6. Endpoint progress baseline
 
@@ -302,10 +314,10 @@ produced.
 W0 through W20 sum to:
 
 ```text
-estimated invested hours: 602-981
-estimated remaining hours: 890-1580
-central weighted progress: 39.1%
-mathematical estimate bounds: 27.6%-52.4%
+estimated invested hours: 622-1011
+estimated remaining hours: 885-1570
+central weighted progress: 39.9%
+mathematical estimate bounds: 28.4%-53.3%
 reporting range after judgment: approximately 25%-40%
 ```
 
@@ -314,21 +326,24 @@ uncertainty lies in the real TradeMax bridge, EA integration, recovery,
 circuit-breaker behavior, and calendar-based Demo evidence. W5 verification
 and the W6 contract, vector, projector, source-adapter, and docs-fixture
 production-boundary, genuine integration, and deterministic verification
-evidence raise invested effort. The still-undelivered W6 feature and replay
-stages remain in the denominator. G188's delivered evidence is engineering
-evidence, not a mechanical increment derived from commits, tests, files,
-versions, documents, or lines of code. Those larger execution-chain
-uncertainties do not justify narrowing or raising the reporting range.
+evidence, plus the G189-G191 session and spread/freshness contract, vectors,
+and isolated implementation, raise invested effort. The still-undelivered W6
+composition, verification, later-feature, and replay stages remain in the
+denominator. G191's delivered evidence is engineering evidence, not a
+mechanical increment derived from commits, tests, files, versions, documents,
+lines of code, or a direct sum of work-order estimates. Those larger
+execution-chain uncertainties do not justify narrowing or raising the
+reporting range.
 
 ### 6.2 Live Auto-Execution
 
 W0 through W21 sum to:
 
 ```text
-estimated invested hours: 607-991
-estimated remaining hours: 1030-1830
-central engineering progress: 35.8%
-mathematical estimate bounds: 24.9%-49.0%
+estimated invested hours: 627-1021
+estimated remaining hours: 1025-1820
+central engineering progress: 36.7%
+mathematical estimate bounds: 25.6%-49.9%
 reporting range after judgment: approximately 20%-40%
 Live activation readiness: 0%
 ```
