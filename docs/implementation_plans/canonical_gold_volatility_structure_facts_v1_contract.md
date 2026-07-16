@@ -214,8 +214,9 @@ An accepted input must satisfy all of the following:
    dedicated history failure in Section 10.
 4. Bar open times are strict UTC `Z`, strictly increasing within each
    timeframe, and each bar is complete at the snapshot reference time.
-5. Every price string is finite, canonical fixed-point text with exactly the
-   quote `digits`. Bid and ask are positive, ask is not below bid, and
+5. Every price string is finite, canonical fixed-point text in the exact G175
+   `digits` format. Every bar open, high, low, and close is strictly greater
+   than zero. Bid and ask are positive, ask is not below bid, and
    `ask - bid == spread == spread_points * point`. Quote and symbol digits and
    point are identical; point is the exact price quantum. Tick size is
    positive; tick value, contract size, min lot, lot step, and max lot are
@@ -268,10 +269,24 @@ Decimal value:
    `int` in the G175 range. Construct `quantum` exactly as
    `Decimal((0, (1,), -digits))`; this tuple constructor does not consult an
    ambient Decimal context.
-2. Construct the strict ASCII pattern exactly as
-   `re.compile(rf"^(?:0|[1-9][0-9]*)\.[0-9]{{{digits}}}$", re.ASCII)` and accept
-   a source price only when it matches fully. Scientific notation, whitespace,
-   signs, commas, `NaN`, and infinities are invalid.
+2. Construct exactly one strict ASCII source-price pattern according to
+   `digits` and accept a source price only when it matches fully:
+
+   ```python
+   source_price_pattern = (
+       re.compile(r"^(?:0|[1-9][0-9]*)$", re.ASCII)
+       if digits == 0
+       else re.compile(
+           rf"^(?:0|[1-9][0-9]*)\.[0-9]{{{digits}}}$",
+           re.ASCII,
+       )
+   )
+   ```
+
+   With `digits == 0`, canonical source text has no decimal point; `"1"` is
+   valid and `"1."` is invalid. With `digits > 0`, the decimal point and
+   exactly `digits` trailing fractional digits are mandatory. Scientific
+   notation, whitespace, signs, commas, `NaN`, and infinities are invalid.
 3. Convert source text with exact `Decimal(source_text)`. Do not use float,
    `Decimal(float_value)`, or an ambient Decimal context.
 4. Let `coefficient_digits` be the maximum number of coefficient digits among
@@ -286,19 +301,48 @@ Decimal value:
 6. Require every derived value to be finite and exactly representable at
    `quantum`. A result whose exponent or value would require rounding is
    invalid; it must not be quantized into acceptance.
-7. Render with fixed-point notation and exactly `digits` fractional digits.
-   Preserve trailing zeros. Normalize any mathematical zero, including a
-   negative zero produced by subtraction, to the unsigned canonical zero.
+7. Render with `format(value, f".{digits}f")`. With `digits == 0`, the result
+   contains no decimal point. With `digits > 0`, the result contains a decimal
+   point and exactly `digits` fractional digits, preserving trailing zeros.
+   Normalize any mathematical zero, including a negative zero produced by
+   subtraction, to the unsigned canonical zero for that branch: `"0"` when
+   `digits == 0`, otherwise `"0." + ("0" * digits)`.
 8. Parse the rendered text again with `Decimal(rendered)` and require exact
    equality with the unrendered result. Any conversion, arithmetic, exponent,
    formatting, or round-trip ambiguity fails closed.
 
 Unsigned derived fields (`previous_range_decimal`, `current_range_decimal`,
-`true_range_decimal`, `body_absolute_decimal`, and both wick fields) use the
-same unsigned fixed-point pattern as source prices and may be canonical zero.
-Signed change/body fields use exact pattern
-`^-?(?:0|[1-9][0-9]*)\.[0-9]{digits}$`; a leading plus is forbidden and a
-negative mathematical zero must be rendered without the minus sign.
+`true_range_decimal`, `body_absolute_decimal`, and both wick fields) may be
+canonical zero and use exactly:
+
+```python
+unsigned_derived_pattern = (
+    re.compile(r"^(?:0|[1-9][0-9]*)$", re.ASCII)
+    if digits == 0
+    else re.compile(
+        rf"^(?:0|[1-9][0-9]*)\.[0-9]{{{digits}}}$",
+        re.ASCII,
+    )
+)
+```
+
+Signed change/body fields use exactly:
+
+```python
+signed_derived_pattern = (
+    re.compile(r"^-?(?:0|[1-9][0-9]*)$", re.ASCII)
+    if digits == 0
+    else re.compile(
+        rf"^-?(?:0|[1-9][0-9]*)\.[0-9]{{{digits}}}$",
+        re.ASCII,
+    )
+)
+```
+
+A leading plus is forbidden in both branches. A negative mathematical zero
+must be rendered without the minus sign. For `digits == 0`, both derived
+patterns reject a trailing decimal point; for `digits > 0`, both require the
+point and exact fractional width.
 
 The `ROUND_HALF_EVEN` setting is frozen defensive context authority. V1 has no
 operation that is allowed to round, so either `Rounded` or `Inexact` is a
@@ -465,10 +509,12 @@ import or implement the future production module. It must lock at least:
 4. range, true range, signed/absolute body, wick, and adjacent-change values;
 5. all finite direction, range, containment, high, low, and close codes;
 6. equality boundaries, signed-zero normalization, very long fixed-point
-   coefficients, and exact trailing zeros;
+   coefficients, exact trailing zeros, and both `digits == 0` and
+   `digits > 0` source/unsigned/signed formatting branches;
 7. missing, extra, reordered, duplicate, alias, case-change, subclass,
    wrong-container, wrong-element, timestamp, OHLC, history, and Decimal
-   failures;
+   failures, including explicit mutations for a `digits == 0` trailing decimal
+   point, a `digits > 0` missing decimal point, and zero-valued OHLC;
 8. all eight ordered status/reason mappings and category-swap probes;
 9. failure identity/facts clearing and all fixed safety flags;
 10. input and result immutability, fresh-object requirements, and repeated
