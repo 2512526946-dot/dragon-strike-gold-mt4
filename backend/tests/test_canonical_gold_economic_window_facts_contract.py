@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import FrozenInstanceError, dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from types import MappingProxyType
@@ -70,7 +71,11 @@ class WindowVector:
 @dataclass(frozen=True, slots=True)
 class SummaryVector:
     name: str
+    reference_time_utc: str
+    calendar_generated_at_utc: str
+    calendar_age_microseconds: int
     event_ids: tuple[str, ...]
+    event_impacts: tuple[str, ...]
     event_offsets: tuple[int, ...]
     active_event_ids: tuple[str, ...]
     relevant_event_count: int
@@ -85,6 +90,7 @@ class SummaryVector:
 
 @dataclass(frozen=True, slots=True)
 class ShapeMutationVector:
+    schema: str
     mutation: str
     original: tuple[str, ...]
     mutated: object
@@ -113,6 +119,46 @@ class ObjectGraphExpectationVector:
     summary_identity_distinct: bool
     caller_reference_isolated: bool
     exception_text_absent: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EventSourceFixtureVector:
+    event_id: str
+    scheduled_at_utc: str
+    country_code: str
+    currency_code: str
+    event_category_code: str
+    impact_code: str
+    source_revision: int
+    event_status_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpstreamEvidenceFixtureVector:
+    adapter_passed: bool
+    adapter_status_code: str
+    schema_validated: bool
+    identity_validated: bool
+    timestamps_normalized: bool
+    same_snapshot_bound: bool
+    warning_codes: tuple[str, ...]
+    raw_payload_discarded: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarSnapshotFixtureVector:
+    contract_version: str
+    calendar_schema_version: str
+    calendar_snapshot_id: str
+    source_profile_version: str
+    generated_at_utc: str
+    coverage_start_utc: str
+    coverage_end_utc: str
+    events: tuple[EventSourceFixtureVector, ...]
+    upstream_evidence: UpstreamEvidenceFixtureVector
+    read_only: bool
+    demo_only: bool
+    contains_raw_provider_payload: bool
 
 
 class StrictStringSubclass(str):
@@ -371,12 +417,64 @@ TIMESTAMP_VECTORS = (
     TimestampVector("2026-07-17T12:00:00Z", True),
     TimestampVector("2026-07-17T12:00:00.1Z", True),
     TimestampVector("2026-07-17T12:00:00.123456Z", True),
+    TimestampVector("2024-02-29T12:00:00Z", True),
+    TimestampVector("2025-02-29T12:00:00Z", False),
+    TimestampVector("2026-02-31T12:00:00Z", False),
+    TimestampVector("2026-04-31T12:00:00Z", False),
+    TimestampVector("0000-01-01T00:00:00Z", False),
     TimestampVector("2026-07-17T12:00:00.1234567Z", False),
     TimestampVector("2026-07-17T12:00:00+00:00", False),
     TimestampVector("2026-07-17T12:00:00z", False),
     TimestampVector(" 2026-07-17T12:00:00Z", False),
     TimestampVector("2026-07-17 12:00:00Z", False),
     TimestampVector("2026-07-17T12:00:60Z", False),
+)
+
+REFERENCE_TIME_UTC = "2026-07-17T12:00:00Z"
+VALID_UPSTREAM_FIXTURE = UpstreamEvidenceFixtureVector(
+    adapter_passed=True,
+    adapter_status_code="CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_READY",
+    schema_validated=True,
+    identity_validated=True,
+    timestamps_normalized=True,
+    same_snapshot_bound=True,
+    warning_codes=(),
+    raw_payload_discarded=True,
+)
+VALID_EVENT_FIXTURE = EventSourceFixtureVector(
+    event_id="event.0000",
+    scheduled_at_utc=REFERENCE_TIME_UTC,
+    country_code="US",
+    currency_code="USD",
+    event_category_code="US_CPI",
+    impact_code="HIGH",
+    source_revision=1,
+    event_status_code="SCHEDULED",
+)
+VALID_CALENDAR_FIXTURE = CalendarSnapshotFixtureVector(
+    contract_version="1.0",
+    calendar_schema_version="1.0",
+    calendar_snapshot_id="calendar.snap.0001",
+    source_profile_version="canonical_gold_economic_calendar_source_v1",
+    generated_at_utc="2026-07-17T11:59:59Z",
+    coverage_start_utc="2026-07-16T12:00:00Z",
+    coverage_end_utc="2026-07-19T12:00:00Z",
+    events=(VALID_EVENT_FIXTURE,),
+    upstream_evidence=VALID_UPSTREAM_FIXTURE,
+    read_only=True,
+    demo_only=True,
+    contains_raw_provider_payload=False,
+)
+COVERAGE_OVERFLOW_CALENDAR_FIXTURE = replace(
+    VALID_CALENDAR_FIXTURE,
+    coverage_end_utc="2026-07-19T12:00:00.000001Z",
+)
+EVENT_COUNT_OVERFLOW_CALENDAR_FIXTURE = replace(
+    VALID_CALENDAR_FIXTURE,
+    events=tuple(
+        replace(VALID_EVENT_FIXTURE, event_id=f"event.{index:04d}")
+        for index in range(513)
+    ),
 )
 
 BOUND_VECTORS = (
@@ -454,6 +552,10 @@ WINDOW_VECTORS = (
 SUMMARY_VECTORS = (
     SummaryVector(
         "empty",
+        REFERENCE_TIME_UTC,
+        "2026-07-17T11:55:00Z",
+        300000000,
+        (),
         (),
         (),
         (),
@@ -467,22 +569,44 @@ SUMMARY_VECTORS = (
         "NONE",
     ),
     SummaryVector(
-        "overlapping_active_high_wins",
-        ("event.med.0001", "event.high.0001", "event.next.0001"),
-        (-1000000, 0, 600000000),
-        ("event.med.0001", "event.high.0001"),
-        3,
-        2,
+        "high_medium_and_ascii_ties",
+        REFERENCE_TIME_UTC,
+        "2026-07-17T11:59:59Z",
+        1000000,
+        (
+            "event.high.a",
+            "event.high.b",
+            "event.med.a",
+            "event.next.high.a",
+            "event.next.high.b",
+            "event.next.med.a",
+        ),
+        ("HIGH", "HIGH", "MEDIUM", "HIGH", "HIGH", "MEDIUM"),
+        (0, 0, 0, 600000000, 600000000, 600000000),
+        (
+            "event.high.a",
+            "event.high.b",
+            "event.med.a",
+            "event.next.high.a",
+            "event.next.high.b",
+            "event.next.med.a",
+        ),
+        6,
+        6,
         True,
-        "event.high.0001",
+        "event.high.a",
         0,
-        "event.next.0001",
+        "event.next.high.a",
         600000000,
         "HIGH",
     ),
     SummaryVector(
         "elapsed_and_upcoming",
+        REFERENCE_TIME_UTC,
+        REFERENCE_TIME_UTC,
+        0,
         ("event.prev.0001", "event.next.0001"),
+        ("MEDIUM", "HIGH"),
         (-3600000000, 3600000000),
         (),
         2,
@@ -601,62 +725,83 @@ FAILURE_CLEARED_FIELDS = MappingProxyType(
     }
 )
 
-RESULT_FIELD_NAMES = tuple(name for name, _ in RESULT_FIELDS)
-SHAPE_MUTATION_VECTORS = (
-    ShapeMutationVector(
-        "missing",
-        RESULT_FIELD_NAMES,
-        RESULT_FIELD_NAMES[:-1],
-        1,
-    ),
-    ShapeMutationVector(
-        "extra",
-        RESULT_FIELD_NAMES,
-        RESULT_FIELD_NAMES + ("unexpected",),
-        1,
-    ),
-    ShapeMutationVector(
-        "reordered",
-        RESULT_FIELD_NAMES,
-        (RESULT_FIELD_NAMES[1], RESULT_FIELD_NAMES[0]) + RESULT_FIELD_NAMES[2:],
-        1,
-    ),
-    ShapeMutationVector(
-        "duplicate",
-        RESULT_FIELD_NAMES,
-        RESULT_FIELD_NAMES[:-1] + (RESULT_FIELD_NAMES[-2],),
-        1,
-    ),
-    ShapeMutationVector(
-        "alias",
-        RESULT_FIELD_NAMES,
-        RESULT_FIELD_NAMES[:3] + ("status",) + RESULT_FIELD_NAMES[4:],
-        1,
-    ),
-    ShapeMutationVector(
-        "case_change",
-        RESULT_FIELD_NAMES,
-        ("Contract_version",) + RESULT_FIELD_NAMES[1:],
-        1,
-    ),
-    ShapeMutationVector(
-        "subclassed_key",
-        RESULT_FIELD_NAMES,
-        (StrictStringSubclass("contract_version"),) + RESULT_FIELD_NAMES[1:],
-        1,
-    ),
-    ShapeMutationVector(
-        "wrong_container",
-        RESULT_FIELD_NAMES,
-        list(RESULT_FIELD_NAMES),
-        1,
-    ),
-    ShapeMutationVector(
-        "wrong_element",
-        RESULT_FIELD_NAMES,
-        (object(),) + RESULT_FIELD_NAMES[1:],
-        1,
-    ),
+SCHEMA_FIELD_NAMES = MappingProxyType(
+    {
+        schema: tuple(name for name, _ in fields)
+        for schema, fields in PUBLIC_SCHEMAS.items()
+    }
+)
+
+
+def _shape_vectors_for(
+    schema: str,
+    original: tuple[str, ...],
+) -> tuple[ShapeMutationVector, ...]:
+    return (
+        ShapeMutationVector(schema, "missing", original, original[:-1], 1),
+        ShapeMutationVector(
+            schema,
+            "extra",
+            original,
+            original + ("unexpected",),
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "reordered",
+            original,
+            (original[1], original[0]) + original[2:],
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "duplicate",
+            original,
+            original[:-1] + (original[-2],),
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "alias",
+            original,
+            original[:1] + (f"{original[1]}_alias",) + original[2:],
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "case_change",
+            original,
+            (original[0].swapcase(),) + original[1:],
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "subclassed_key",
+            original,
+            (StrictStringSubclass(original[0]),) + original[1:],
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "wrong_container",
+            original,
+            list(original),
+            1,
+        ),
+        ShapeMutationVector(
+            schema,
+            "wrong_element",
+            original,
+            (object(),) + original[1:],
+            1,
+        ),
+    )
+
+
+SHAPE_MUTATION_VECTORS = tuple(
+    vector
+    for schema, original in SCHEMA_FIELD_NAMES.items()
+    for vector in _shape_vectors_for(schema, original)
 )
 
 
@@ -717,15 +862,15 @@ VALUE_MUTATION_VECTORS = (
     ),
     ValueMutationVector(
         "coverage_over_maximum",
-        ("economic_calendar_snapshot", "coverage_end_utc"),
-        259200000001,
+        ("economic_calendar_snapshot",),
+        COVERAGE_OVERFLOW_CALENDAR_FIXTURE,
         8,
         *_failure(8),
     ),
     ValueMutationVector(
         "event_count_513",
-        ("economic_calendar_snapshot", "events"),
-        tuple(range(513)),
+        ("economic_calendar_snapshot",),
+        EVENT_COUNT_OVERFLOW_CALENDAR_FIXTURE,
         9,
         *_failure(9),
     ),
@@ -850,17 +995,86 @@ def _staged_delivery(text: str) -> tuple[str, ...]:
     return tuple(stages)
 
 
-def _assert_strict_timestamp(vector: TimestampVector) -> None:
+def _parse_strict_utc_z(value: str) -> datetime:
     pattern = re.compile(
         r"\d{4}-\d{2}-\d{2}T"
         r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d"
         r"(?:\.\d{1,6})?Z"
     )
-    matched = pattern.fullmatch(vector.value) is not None
-    if matched:
-        year, month, day = (int(part) for part in vector.value[:10].split("-"))
-        matched = year >= 1 and 1 <= month <= 12 and 1 <= day <= 31
+    if type(value) is not str or pattern.fullmatch(value) is None:
+        raise ValueError
+    parsed = datetime.fromisoformat(f"{value[:-1]}+00:00")
+    if parsed.tzinfo is not timezone.utc:
+        raise ValueError
+    return parsed
+
+
+def _assert_strict_timestamp(vector: TimestampVector) -> None:
+    try:
+        _parse_strict_utc_z(vector.value)
+    except ValueError:
+        matched = False
+    else:
+        matched = True
     assert matched is vector.accepted
+
+
+def _delta_microseconds(later: str, earlier: str) -> int:
+    delta = _parse_strict_utc_z(later) - _parse_strict_utc_z(earlier)
+    return (
+        delta.days * 86400 * 1000000
+        + delta.seconds * 1000000
+        + delta.microseconds
+    )
+
+
+def _assert_event_fixture_types(event: EventSourceFixtureVector) -> None:
+    assert type(event) is EventSourceFixtureVector
+    assert type(event.event_id) is str
+    assert type(event.scheduled_at_utc) is str
+    assert type(event.country_code) is str
+    assert type(event.currency_code) is str
+    assert type(event.event_category_code) is str
+    assert type(event.impact_code) is str
+    assert type(event.source_revision) is int
+    assert type(event.event_status_code) is str
+
+
+def _assert_upstream_fixture_types(
+    upstream: UpstreamEvidenceFixtureVector,
+) -> None:
+    assert type(upstream) is UpstreamEvidenceFixtureVector
+    assert type(upstream.adapter_passed) is bool
+    assert type(upstream.adapter_status_code) is str
+    assert type(upstream.schema_validated) is bool
+    assert type(upstream.identity_validated) is bool
+    assert type(upstream.timestamps_normalized) is bool
+    assert type(upstream.same_snapshot_bound) is bool
+    assert type(upstream.warning_codes) is tuple
+    assert all(type(code) is str for code in upstream.warning_codes)
+    assert type(upstream.raw_payload_discarded) is bool
+
+
+def _assert_calendar_fixture_types(calendar: CalendarSnapshotFixtureVector) -> None:
+    assert type(calendar) is CalendarSnapshotFixtureVector
+    for value in (
+        calendar.contract_version,
+        calendar.calendar_schema_version,
+        calendar.calendar_snapshot_id,
+        calendar.source_profile_version,
+        calendar.generated_at_utc,
+        calendar.coverage_start_utc,
+        calendar.coverage_end_utc,
+    ):
+        assert type(value) is str
+    assert type(calendar.events) is tuple
+    assert type(calendar.upstream_evidence) is UpstreamEvidenceFixtureVector
+    _assert_upstream_fixture_types(calendar.upstream_evidence)
+    assert type(calendar.read_only) is bool
+    assert type(calendar.demo_only) is bool
+    assert type(calendar.contains_raw_provider_payload) is bool
+    for event in calendar.events:
+        _assert_event_fixture_types(event)
 
 
 def _assert_window_vector(vector: WindowVector) -> None:
@@ -882,29 +1096,87 @@ def _assert_window_vector(vector: WindowVector) -> None:
 
 
 def _assert_summary_vector(vector: SummaryVector) -> None:
+    assert vector.calendar_age_microseconds == _delta_microseconds(
+        vector.reference_time_utc,
+        vector.calendar_generated_at_utc,
+    )
+    assert 0 <= vector.calendar_age_microseconds <= 300000000
     assert vector.relevant_event_count == len(vector.event_ids)
     assert len(vector.event_ids) == len(vector.event_offsets)
+    assert len(vector.event_ids) == len(vector.event_impacts)
+    assert all(impact in {"MEDIUM", "HIGH"} for impact in vector.event_impacts)
+    assert len(vector.event_ids) == len(set(vector.event_ids))
     assert vector.active_window_count == len(vector.active_event_ids)
     assert vector.inside_any_observation_window is (
         vector.active_window_count > 0
     )
-    if vector.nearest_previous_event_id is None:
+    expected_active_ids = tuple(
+        event_id
+        for event_id, impact, offset in zip(
+            vector.event_ids,
+            vector.event_impacts,
+            vector.event_offsets,
+            strict=True,
+        )
+        if offset - (1800000000 if impact == "HIGH" else 900000000) <= 0
+        < offset + (1800000000 if impact == "HIGH" else 900000000)
+    )
+    assert vector.active_event_ids == expected_active_ids
+
+    records = tuple(
+        zip(
+            vector.event_ids,
+            vector.event_impacts,
+            vector.event_offsets,
+            strict=True,
+        )
+    )
+    impact_priority = {"HIGH": 0, "MEDIUM": 1}
+
+    previous = tuple(record for record in records if record[2] <= 0)
+    if previous:
+        selected_offset = max(record[2] for record in previous)
+        candidates = tuple(
+            record for record in previous if record[2] == selected_offset
+        )
+        selected = min(
+            candidates,
+            key=lambda record: (impact_priority[record[1]], record[0]),
+        )
+        assert vector.nearest_previous_event_id == selected[0]
+        assert vector.nearest_previous_event_offset_microseconds == selected[2]
+    else:
+        assert vector.nearest_previous_event_id is None
         assert vector.nearest_previous_event_offset_microseconds is None
-    else:
-        previous_index = vector.event_ids.index(vector.nearest_previous_event_id)
-        assert vector.nearest_previous_event_offset_microseconds == (
-            vector.event_offsets[previous_index]
+
+    next_events = tuple(record for record in records if record[2] > 0)
+    if next_events:
+        selected_offset = min(record[2] for record in next_events)
+        candidates = tuple(
+            record for record in next_events if record[2] == selected_offset
         )
-        assert vector.nearest_previous_event_offset_microseconds <= 0
-    if vector.nearest_next_event_id is None:
+        selected = min(
+            candidates,
+            key=lambda record: (impact_priority[record[1]], record[0]),
+        )
+        assert vector.nearest_next_event_id == selected[0]
+        assert vector.nearest_next_event_offset_microseconds == selected[2]
+    else:
+        assert vector.nearest_next_event_id is None
         assert vector.nearest_next_event_offset_microseconds is None
-    else:
-        next_index = vector.event_ids.index(vector.nearest_next_event_id)
-        assert vector.nearest_next_event_offset_microseconds == (
-            vector.event_offsets[next_index]
-        )
-        assert vector.nearest_next_event_offset_microseconds > 0
-    assert vector.highest_active_impact_code in HIGHEST_IMPACT_CODES
+
+    active_impacts = tuple(
+        vector.event_impacts[vector.event_ids.index(event_id)]
+        for event_id in vector.active_event_ids
+    )
+    expected_highest = (
+        "HIGH"
+        if "HIGH" in active_impacts
+        else "MEDIUM"
+        if "MEDIUM" in active_impacts
+        else "NONE"
+    )
+    assert vector.highest_active_impact_code == expected_highest
 
 
 def _assert_contract_oracle(text: str) -> None:
@@ -947,6 +1219,12 @@ def test_vectors_are_frozen_and_public_schemas_are_exact() -> None:
         WINDOW_VECTORS[0].active = True  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         OBJECT_GRAPH_EXPECTATIONS.result_identity_distinct = False  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        VALID_EVENT_FIXTURE.event_id = "changed"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        VALID_UPSTREAM_FIXTURE.adapter_passed = False  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        VALID_CALENDAR_FIXTURE.events = ()  # type: ignore[misc]
     with pytest.raises(TypeError):
         PUBLIC_SCHEMAS["unexpected"] = ()  # type: ignore[index]
     with pytest.raises(TypeError):
@@ -1061,6 +1339,20 @@ def test_calendar_authority_identifiers_codes_and_source_order_are_exact() -> No
 def test_utc_integer_microseconds_and_bounded_calendar_vectors_are_exact() -> None:
     for vector in TIMESTAMP_VECTORS:
         _assert_strict_timestamp(vector)
+    assert next(
+        vector
+        for vector in TIMESTAMP_VECTORS
+        if vector.value == "2024-02-29T12:00:00Z"
+    ).accepted is True
+    for impossible in (
+        "2025-02-29T12:00:00Z",
+        "2026-02-31T12:00:00Z",
+        "2026-04-31T12:00:00Z",
+        "0000-01-01T00:00:00Z",
+    ):
+        assert next(
+            vector for vector in TIMESTAMP_VECTORS if vector.value == impossible
+        ).accepted is False
 
     assert tuple(vector.name for vector in BOUND_VECTORS) == (
         "event_count_zero",
@@ -1084,6 +1376,54 @@ def test_utc_integer_microseconds_and_bounded_calendar_vectors_are_exact() -> No
     ) == BoundVector("coverage_span_overflow", 259200000001, False, 8)
     assert 259200 * 1000000 == 259200000000
     assert 259200000000 + 1 == 259200000001
+
+    for calendar in (
+        VALID_CALENDAR_FIXTURE,
+        COVERAGE_OVERFLOW_CALENDAR_FIXTURE,
+        EVENT_COUNT_OVERFLOW_CALENDAR_FIXTURE,
+    ):
+        _assert_calendar_fixture_types(calendar)
+        assert calendar.contract_version == "1.0"
+        assert calendar.calendar_schema_version == "1.0"
+        assert calendar.source_profile_version == (
+            "canonical_gold_economic_calendar_source_v1"
+        )
+        assert calendar.upstream_evidence == VALID_UPSTREAM_FIXTURE
+        assert calendar.read_only is True
+        assert calendar.demo_only is True
+        assert calendar.contains_raw_provider_payload is False
+        assert _delta_microseconds(
+            REFERENCE_TIME_UTC,
+            calendar.generated_at_utc,
+        ) == 1000000
+
+    assert _delta_microseconds(
+        VALID_CALENDAR_FIXTURE.coverage_end_utc,
+        VALID_CALENDAR_FIXTURE.coverage_start_utc,
+    ) == 259200000000
+    assert _delta_microseconds(
+        COVERAGE_OVERFLOW_CALENDAR_FIXTURE.coverage_end_utc,
+        COVERAGE_OVERFLOW_CALENDAR_FIXTURE.coverage_start_utc,
+    ) == 259200000001
+    assert COVERAGE_OVERFLOW_CALENDAR_FIXTURE.events == (
+        VALID_EVENT_FIXTURE,
+    )
+
+    overflow_events = EVENT_COUNT_OVERFLOW_CALENDAR_FIXTURE.events
+    assert len(overflow_events) == 513
+    assert len({event.event_id for event in overflow_events}) == 513
+    assert tuple(event.event_id for event in overflow_events) == tuple(
+        sorted(event.event_id for event in overflow_events)
+    )
+    for event in overflow_events:
+        assert re.fullmatch(r"[A-Za-z0-9._-]{8,64}", event.event_id)
+        assert event.scheduled_at_utc == REFERENCE_TIME_UTC
+        assert event.country_code == "US"
+        assert event.currency_code == "USD"
+        assert event.event_category_code in EVENT_CATEGORY_CODES
+        assert event.impact_code in IMPACT_CODES
+        assert event.source_revision > 0
+        assert event.event_status_code in EVENT_STATUS_CODES
 
     text = _contract_text()
     normalized = _normalized(text)
@@ -1131,6 +1471,10 @@ def test_summary_nearest_tie_and_empty_result_vectors_are_closed() -> None:
     empty = SUMMARY_VECTORS[0]
     assert empty == SummaryVector(
         "empty",
+        REFERENCE_TIME_UTC,
+        "2026-07-17T11:55:00Z",
+        300000000,
+        (),
         (),
         (),
         (),
@@ -1143,12 +1487,20 @@ def test_summary_nearest_tie_and_empty_result_vectors_are_closed() -> None:
         None,
         "NONE",
     )
-    overlapping = SUMMARY_VECTORS[1]
-    assert overlapping.active_event_ids == (
-        "event.med.0001",
-        "event.high.0001",
+    ties = SUMMARY_VECTORS[1]
+    assert ties.event_offsets.count(0) == 3
+    assert ties.event_offsets.count(600000000) == 3
+    assert ties.nearest_previous_event_id == "event.high.a"
+    assert ties.nearest_next_event_id == "event.next.high.a"
+    assert ties.active_event_ids == (
+        "event.high.a",
+        "event.high.b",
+        "event.med.a",
+        "event.next.high.a",
+        "event.next.high.b",
+        "event.next.med.a",
     )
-    assert overlapping.highest_active_impact_code == "HIGH"
+    assert ties.highest_active_impact_code == "HIGH"
 
     text = _contract_text()
     normalized = _normalized(text)
@@ -1214,7 +1566,7 @@ def test_status_reason_priority_failure_clearing_and_safety_are_exact() -> None:
 
 
 def test_negative_shape_and_value_vectors_cover_all_failure_categories() -> None:
-    assert tuple(vector.mutation for vector in SHAPE_MUTATION_VECTORS) == (
+    expected_mutations = (
         "missing",
         "extra",
         "reordered",
@@ -1225,16 +1577,30 @@ def test_negative_shape_and_value_vectors_cover_all_failure_categories() -> None
         "wrong_container",
         "wrong_element",
     )
-    for vector in SHAPE_MUTATION_VECTORS:
-        assert vector.expected_priority == 1
-        if vector.mutation == "subclassed_key":
-            assert vector.mutated == vector.original
-            assert type(vector.mutated[0]) is StrictStringSubclass
-        else:
-            assert vector.mutated != vector.original
-    assert type(SHAPE_MUTATION_VECTORS[6].mutated[0]) is StrictStringSubclass
-    assert type(SHAPE_MUTATION_VECTORS[7].mutated) is list
-    assert type(SHAPE_MUTATION_VECTORS[8].mutated[0]) is object
+    assert len(SHAPE_MUTATION_VECTORS) == len(PUBLIC_SCHEMAS) * len(
+        expected_mutations
+    )
+    assert {vector.schema for vector in SHAPE_MUTATION_VECTORS} == set(
+        PUBLIC_SCHEMAS
+    )
+    for schema, original in SCHEMA_FIELD_NAMES.items():
+        schema_vectors = tuple(
+            vector for vector in SHAPE_MUTATION_VECTORS if vector.schema == schema
+        )
+        assert tuple(vector.mutation for vector in schema_vectors) == (
+            expected_mutations
+        )
+        assert all(vector.original == original for vector in schema_vectors)
+        assert all(vector.expected_priority == 1 for vector in schema_vectors)
+        for vector in schema_vectors:
+            if vector.mutation == "subclassed_key":
+                assert vector.mutated == vector.original
+                assert type(vector.mutated[0]) is StrictStringSubclass
+            else:
+                assert vector.mutated != vector.original
+        assert type(schema_vectors[6].mutated[0]) is StrictStringSubclass
+        assert type(schema_vectors[7].mutated) is list
+        assert type(schema_vectors[8].mutated[0]) is object
 
     assert tuple(vector.expected_priority for vector in VALUE_MUTATION_VECTORS) == (
         1,
@@ -1255,6 +1621,23 @@ def test_negative_shape_and_value_vectors_cover_all_failure_categories() -> None
         assert vector.expected_reason == expected.reason
         assert type(vector.field_path) is tuple
         assert all(type(part) is str for part in vector.field_path)
+
+    coverage_vector = next(
+        vector
+        for vector in VALUE_MUTATION_VECTORS
+        if vector.mutation == "coverage_over_maximum"
+    )
+    event_count_vector = next(
+        vector
+        for vector in VALUE_MUTATION_VECTORS
+        if vector.mutation == "event_count_513"
+    )
+    assert type(coverage_vector.invalid_value) is CalendarSnapshotFixtureVector
+    assert type(event_count_vector.invalid_value) is CalendarSnapshotFixtureVector
+    assert all(
+        type(event) is EventSourceFixtureVector
+        for event in event_count_vector.invalid_value.events
+    )
 
     swapped = tuple(
         replace(
