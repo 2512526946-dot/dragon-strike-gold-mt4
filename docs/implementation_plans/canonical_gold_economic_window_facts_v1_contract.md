@@ -424,6 +424,8 @@ facts_profile_version = "canonical_gold_economic_window_profile_v1"
 calendar_source_profile_version = "canonical_gold_economic_calendar_source_v1"
 calendar_maximum_age_microseconds = 300000000
 search_horizon_seconds = 86400
+maximum_calendar_events = 512
+maximum_coverage_span_seconds = 259200
 ```
 
 Calendar validity requires:
@@ -433,13 +435,27 @@ Calendar validity requires:
 3. `coverage_start_utc < coverage_end_utc`;
 4. `coverage_start_utc <= reference_time_utc - 86400 seconds`;
 5. `coverage_end_utc > reference_time_utc + 86400 seconds`; and
-6. every event timestamp is inside the half-open calendar coverage interval
+6. the exact integer-microsecond coverage span is no greater than
+   `259200 * 1000000`; and
+7. every event timestamp is inside the half-open calendar coverage interval
    `[coverage_start_utc, coverage_end_utc)`.
 
-The source `events` tuple may be empty. When nonempty, it must already be in
-strict ascending `(scheduled_at_utc, event_id)` order. Timestamp comparison is
-chronological; equal timestamps use ASCII event-id order. Event ids are unique
-across the whole tuple.
+The coverage span is exactly:
+
+```text
+coverage_span_microseconds = coverage_end_utc - coverage_start_utc
+```
+
+using the Section 9.2 integer-microsecond algorithm. A span of exactly
+`259200000000` microseconds is accepted. A span one microsecond greater is
+`CALENDAR_COVERAGE_INVALID`. No duration is rounded to whole seconds.
+
+The source `events` tuple contains exactly 0 through 512 events. Event count is
+the built-in tuple length. An exact 512-item tuple is accepted; a 513-item
+tuple is `EVENT_INVALID`. When nonempty, it must already be in strict ascending
+`(scheduled_at_utc, event_id)` order. Timestamp comparison is chronological;
+equal timestamps use ASCII event-id order. Event ids are unique across the
+whole tuple.
 
 The builder must validate this order and reject duplicates. It must not sort,
 deduplicate, merge, truncate, reorder, or repair events.
@@ -499,6 +515,22 @@ Therefore:
 - before window start is `UPCOMING`; and
 - no endpoint is widened by a tolerance.
 
+The relation, offsets, and boolean are one closed invariant:
+
+```text
+UPCOMING iff window_start_offset_microseconds > 0
+ACTIVE iff (
+    window_start_offset_microseconds <= 0
+    and window_end_offset_microseconds > 0
+)
+ELAPSED iff window_end_offset_microseconds <= 0
+is_active_observation_window iff window_relation_code == "ACTIVE"
+```
+
+Exactly one relation predicate is true for every event fact. The builder must
+reject a result with a relation, offset, or active boolean that contradicts
+another member of this invariant.
+
 Overlapping windows remain separate event facts. `active_event_ids` contains
 all active event ids in the preserved `event_windows` order.
 `active_window_count == len(active_event_ids)`, and
@@ -521,8 +553,50 @@ The selected previous offset is nonpositive. The selected next offset is
 strictly positive. When a side has no candidate, both its id and offset are
 `None`.
 
+Each nearest offset is exactly the `event_offset_microseconds` of the selected
+event fact with the same event id. A nearest id without its exact offset, an
+offset without its id, an offset copied from another event, or a selected event
+that fails the side predicate is contradictory.
+
 `highest_active_impact_code` is `HIGH` if any active event is HIGH, otherwise
 `MEDIUM` if any active event is MEDIUM, otherwise `NONE`.
+
+The summary is closed by these exact equalities:
+
+```text
+calendar_age_microseconds = reference_time_utc - calendar_generated_at_utc
+relevant_event_count = len(event_windows)
+active_event_ids = tuple(
+    event.event_id
+    for event in event_windows
+    if event.is_active_observation_window
+)
+active_window_count = len(active_event_ids)
+inside_any_observation_window = active_window_count > 0
+```
+
+`calendar_age_microseconds` uses the Section 9.2 integer-microsecond algorithm,
+is nonnegative, and is no greater than `300000000`. It is not copied from the
+calendar source and is not rounded.
+
+When `event_windows == ()`, the exact summary is:
+
+```text
+calendar_age_microseconds = reference_time_utc - calendar_generated_at_utc
+relevant_event_count = 0
+active_window_count = 0
+inside_any_observation_window = False
+active_event_ids = ()
+nearest_previous_event_id = None
+nearest_previous_event_offset_microseconds = None
+nearest_next_event_id = None
+nearest_next_event_offset_microseconds = None
+highest_active_impact_code = "NONE"
+```
+
+An empty relevant-event result is valid only when the accepted source and
+filtering rules genuinely produce no included event. It is not proof that no
+real-world event exists and is not permission to trade.
 
 ## 13. Fixed Safety Flags and Meaning
 
@@ -576,8 +650,8 @@ mapping is:
 | 5 | `CANONICAL_GOLD_ECONOMIC_WINDOW_CALENDAR_AUTHORITY_INVALID` | `GOLD_ECONOMIC_WINDOW_CALENDAR_AUTHORITY_INVALID` | upstream evidence, Read-only/Demo-only flags, or raw-payload isolation invalid |
 | 6 | `CANONICAL_GOLD_ECONOMIC_WINDOW_CALENDAR_IDENTITY_INVALID` | `GOLD_ECONOMIC_WINDOW_CALENDAR_IDENTITY_INVALID` | calendar contract/schema/source-profile version or snapshot id invalid |
 | 7 | `CANONICAL_GOLD_ECONOMIC_WINDOW_CALENDAR_FRESHNESS_INVALID` | `GOLD_ECONOMIC_WINDOW_CALENDAR_FRESHNESS_INVALID` | generated time is future, stale, or malformed |
-| 8 | `CANONICAL_GOLD_ECONOMIC_WINDOW_CALENDAR_COVERAGE_INVALID` | `GOLD_ECONOMIC_WINDOW_CALENDAR_COVERAGE_INVALID` | coverage interval or required horizon invalid |
-| 9 | `CANONICAL_GOLD_ECONOMIC_WINDOW_EVENT_INVALID` | `GOLD_ECONOMIC_WINDOW_EVENT_INPUT_INVALID` | event identity, code, revision, timestamp, uniqueness, order, or coverage invalid |
+| 8 | `CANONICAL_GOLD_ECONOMIC_WINDOW_CALENDAR_COVERAGE_INVALID` | `GOLD_ECONOMIC_WINDOW_CALENDAR_COVERAGE_INVALID` | coverage interval, required horizon, or maximum coverage span invalid |
+| 9 | `CANONICAL_GOLD_ECONOMIC_WINDOW_EVENT_INVALID` | `GOLD_ECONOMIC_WINDOW_EVENT_INPUT_INVALID` | event count, identity, code, revision, timestamp, uniqueness, order, or coverage invalid |
 | 10 | `CANONICAL_GOLD_ECONOMIC_WINDOW_RESULT_INVALID` | `GOLD_ECONOMIC_WINDOW_RESULT_INVALID` | derived order, count, offset, relation, nearest selection, tie, or summary contradictory |
 | 11 | `CANONICAL_GOLD_ECONOMIC_WINDOW_SAFE_FAILURE` | `GOLD_ECONOMIC_WINDOW_EXCEPTION_SANITIZED` | unexpected public-boundary exception |
 
@@ -663,9 +737,11 @@ import or implement the future production module. It must lock at least:
 4. calendar and event identifier regex, lengths, uniqueness, code vocabulary,
    source revision, status, and canonical source order;
 5. strict UTC parsing, exact integer-microsecond algorithm, future/stale
-   calendar cases, required coverage horizon, and event coverage;
+   calendar cases, required coverage horizon, exact 259200-second accepted
+   coverage span, one-microsecond-over rejection, and event coverage;
 6. HIGH/MEDIUM relevance, LOW/CANCELLED exclusion, fixed pre/post durations,
-   search horizon, and no writer-boolean fallback;
+   search horizon, exact 0/512 accepted event-count boundaries, 513-item
+   rejection, and no writer-boolean fallback;
 7. half-open start/scheduled/end endpoints, overlapping windows, active-event
    order, previous/next selection, exact-at-reference behavior, and
    HIGH/MEDIUM/event-id tie priority;
@@ -673,7 +749,9 @@ import or implement the future production module. It must lock at least:
    swaps, empty warning tuple, failure clearing, and fixed safety flags;
 9. missing, extra, reordered, duplicate, alias, case-change, subclass,
    wrong-container, wrong-element, timestamp, identity, code, order, coverage,
-   and contradiction mutations;
+   and contradiction mutations, including calendar-age, relevant-count,
+   relation/offset/active-boolean, active-id/count/inside, nearest-id/offset,
+   empty-summary, and highest-active-impact consistency swaps;
 10. input immutability, fresh detached result graphs, repeated deterministic
     equality, pollution isolation, and sanitized exceptions; and
 11. absence of free text, provider detail, path, payload, checksum, exception,
