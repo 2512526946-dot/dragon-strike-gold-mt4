@@ -420,6 +420,103 @@ def test_ordered_failure_mappings_clear_identity_facts_and_sensitive_input(
     assert snapshot.bundle_id not in repr(failure)
 
 
+def test_result_validator_rejects_valid_but_contradictory_pair_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _snapshot()
+    original = facts._build_pair
+    mutations = {
+        "previous_range_decimal": "999.00",
+        "current_range_decimal": "999.00",
+        "true_range_decimal": "999.00",
+        "body_signed_decimal": "999.00",
+        "body_absolute_decimal": "999.00",
+        "upper_wick_decimal": "999.00",
+        "lower_wick_decimal": "999.00",
+        "close_change_decimal": "999.00",
+        "high_change_decimal": "999.00",
+        "low_change_decimal": "999.00",
+        "direction_code": "DOWN",
+        "range_relation_code": "EXPANDED",
+        "range_containment_code": "OUTSIDE",
+        "current_high_vs_previous_high_code": "ABOVE_PREVIOUS_HIGH",
+        "current_low_vs_previous_low_code": "BELOW_PREVIOUS_LOW",
+        "current_close_vs_previous_range_code": "ABOVE_PREVIOUS_HIGH",
+    }
+    for field_name, invalid_value in mutations.items():
+        def polluted_pair(
+            *args: object,
+            _field_name: str = field_name,
+            _invalid_value: str = invalid_value,
+            **kwargs: object,
+        ) -> object:
+            pair = original(*args, **kwargs)
+            return replace(pair, **{_field_name: _invalid_value})
+
+        monkeypatch.setattr(facts, "_build_pair", polluted_pair)
+        _assert_failure(
+            facts.build_canonical_gold_volatility_structure_facts_v1(
+                market_facts_snapshot=snapshot
+            ),
+            "CANONICAL_GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+            "GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+        )
+
+
+def test_timeframe_failures_keep_priority_over_malformed_decimal_siblings() -> None:
+    snapshot = _snapshot()
+    cases = (
+        _replace_bar(
+            snapshot,
+            0,
+            0,
+            open_decimal="0.00",
+            high_decimal="bad",
+        ),
+        _replace_bar(
+            snapshot,
+            0,
+            0,
+            high_decimal="99.00",
+            low_decimal="bad",
+        ),
+    )
+    for invalid in cases:
+        _assert_failure(
+            facts.build_canonical_gold_volatility_structure_facts_v1(
+                market_facts_snapshot=invalid
+            ),
+            "CANONICAL_GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INVALID",
+            "GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INPUT_INVALID",
+        )
+
+
+def test_decimal_context_uses_quote_and_bar_coefficients_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[dict[str, object]] = []
+    original_context = facts.Context
+
+    def recording_context(*args: object, **kwargs: object) -> object:
+        recorded.append(dict(kwargs))
+        return original_context(*args, **kwargs)
+
+    monkeypatch.setattr(facts, "Context", recording_context)
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        symbol_spec=replace(
+            snapshot.symbol_spec,
+            tick_size_decimal=f"{'9' * 72}.00",
+        ),
+    )
+    result = facts.build_canonical_gold_volatility_structure_facts_v1(
+        market_facts_snapshot=snapshot
+    )
+    assert result.passed is True
+    assert recorded == [{"prec": 7, "rounding": facts.ROUND_HALF_EVEN}]
+
+
 def test_first_failure_priority_is_not_swappable() -> None:
     snapshot = _snapshot()
     invalid = replace(
@@ -533,6 +630,8 @@ def test_production_module_is_ascii_pure_memory_and_isolated() -> None:
                 call_names.add(f"{node.func.value.id}.{node.func.attr}")
             call_names.add(node.func.attr)
     assert call_names.isdisjoint(forbidden_calls)
+    assert "multiply" not in call_names
+    assert "quantize" not in call_names
     assert all(ord(character) < 128 for character in source)
 
 

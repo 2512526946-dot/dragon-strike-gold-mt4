@@ -257,6 +257,26 @@ class _DecimalInput:
     bar_values: tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _DerivedPairFacts:
+    previous_range_decimal: str
+    current_range_decimal: str
+    true_range_decimal: str
+    body_signed_decimal: str
+    body_absolute_decimal: str
+    upper_wick_decimal: str
+    lower_wick_decimal: str
+    close_change_decimal: str
+    high_change_decimal: str
+    low_change_decimal: str
+    direction_code: str
+    range_relation_code: str
+    range_containment_code: str
+    current_high_vs_previous_high_code: str
+    current_low_vs_previous_low_code: str
+    current_close_vs_previous_range_code: str
+
+
 class _DecimalInvalid(Exception):
     pass
 
@@ -284,7 +304,12 @@ def build_canonical_gold_volatility_structure_facts_v1(
         except _DecimalInvalid:
             return _failure(_DECIMAL_INVALID_STATUS, _DECIMAL_INPUT_INVALID)
         result = _ready_result(market_facts_snapshot, timeframes)
-        if not _is_valid_ready_result(result, market_facts_snapshot, timeframes):
+        if not _is_valid_ready_result(
+            result,
+            market_facts_snapshot,
+            timeframes,
+            decimal_input,
+        ):
             return _failure(_RESULT_INVALID_STATUS, _RESULT_INVALID)
         return result
     except Exception:
@@ -504,14 +529,19 @@ def _has_valid_timeframes(snapshot: CanonicalGoldMarketFactsSnapshotV1) -> bool:
                         bar.close_decimal,
                     )
                 )
-                if all(value is not None for value in values):
-                    open_value, high_value, low_value, close_value = values
-                    if any(value <= 0 for value in values):
-                        return False
-                    if high_value < max(open_value, close_value):
-                        return False
-                    if low_value > min(open_value, close_value):
-                        return False
+                if any(value is not None and value <= 0 for value in values):
+                    return False
+                open_value, high_value, low_value, close_value = values
+                if high_value is not None and any(
+                    value is not None and high_value < value
+                    for value in (open_value, low_value, close_value)
+                ):
+                    return False
+                if low_value is not None and any(
+                    value is not None and low_value > value
+                    for value in (open_value, high_value, close_value)
+                ):
+                    return False
     return True
 
 
@@ -524,24 +554,34 @@ def _validate_decimal_input(
     if not 0 <= digits <= 8 or symbol.digits != digits:
         return None
     pattern = _source_price_pattern(digits)
-    price_texts = [
+    quote_price_texts = (
         quote.bid_decimal,
         quote.ask_decimal,
         quote.spread_decimal,
         quote.point_decimal,
-        symbol.point_decimal,
-        symbol.tick_size_decimal,
-    ]
+    )
+    bar_price_texts: list[str] = []
     for timeframe in snapshot.timeframes:
         for bar in timeframe.bars:
-            price_texts.extend(
+            bar_price_texts.extend(
                 (bar.open_decimal, bar.high_decimal, bar.low_decimal, bar.close_decimal)
             )
-    parsed = tuple(_parse_source_price(text, pattern) for text in price_texts)
-    if any(value is None for value in parsed):
+    stage_price_texts = quote_price_texts + tuple(bar_price_texts)
+    parsed_stage_prices = tuple(
+        _parse_source_price(text, pattern) for text in stage_price_texts
+    )
+    symbol_prices = tuple(
+        _parse_source_price(text, pattern)
+        for text in (symbol.point_decimal, symbol.tick_size_decimal)
+    )
+    if any(value is None for value in parsed_stage_prices + symbol_prices):
         return None
-    values = tuple(value for value in parsed if value is not None)
-    bid, ask, spread, point, symbol_point, tick_size = values[:6]
+    stage_values = tuple(
+        value for value in parsed_stage_prices if value is not None
+    )
+    symbol_values = tuple(value for value in symbol_prices if value is not None)
+    bid, ask, spread, point = stage_values[:4]
+    symbol_point, tick_size = symbol_values
     quantum = Decimal((0, (1,), -digits))
     positive_values = tuple(
         _parse_positive_decimal(text)
@@ -567,7 +607,9 @@ def _validate_decimal_input(
     ):
         return None
 
-    coefficient_digits = max(len(value.as_tuple().digits) for value in values)
+    coefficient_digits = max(
+        len(value.as_tuple().digits) for value in stage_values
+    )
     context = Context(prec=coefficient_digits + 2, rounding=ROUND_HALF_EVEN)
     for signal in (
         InvalidOperation,
@@ -578,11 +620,9 @@ def _validate_decimal_input(
         Rounded,
     ):
         context.traps[signal] = True
-    try:
-        spread_from_prices = context.subtract(ask, bid)
-        spread_from_points = context.multiply(Decimal(quote.spread_points), point)
-    except DecimalException:
-        return None
+    bid_coefficient, ask_coefficient, spread_coefficient, point_coefficient = (
+        _fixed_price_coefficient(text) for text in quote_price_texts
+    )
     if not (
         bid > 0
         and ask > 0
@@ -591,23 +631,23 @@ def _validate_decimal_input(
         and point == symbol_point == quantum
         and tick_size > 0
         and quote.spread_points >= 0
-        and spread_from_prices == spread
-        and spread_from_points == spread
+        and ask_coefficient - bid_coefficient == spread_coefficient
+        and quote.spread_points * point_coefficient == spread_coefficient
     ):
         return None
 
-    offset = 6
+    offset = 4
     bar_values: list[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]] = []
     for timeframe in snapshot.timeframes:
         timeframe_values: list[tuple[Decimal, Decimal, Decimal, Decimal]] = []
         for _bar in timeframe.bars:
-            bar_tuple = values[offset : offset + 4]
+            bar_tuple = stage_values[offset : offset + 4]
             if len(bar_tuple) != 4:
                 return None
             timeframe_values.append((bar_tuple[0], bar_tuple[1], bar_tuple[2], bar_tuple[3]))
             offset += 4
         bar_values.append(tuple(timeframe_values))
-    if offset != len(values):
+    if offset != len(stage_values):
         return None
     return _DecimalInput(digits=digits, context=context, bar_values=tuple(bar_values))
 
@@ -653,6 +693,39 @@ def _build_pair(
     digits: int,
     context: Context,
 ) -> CanonicalGoldBarPairVolatilityStructureFactsV1:
+    derived = _derive_pair_facts(previous, current, digits, context)
+    return CanonicalGoldBarPairVolatilityStructureFactsV1(
+        previous_open_time_utc=previous_bar.open_time_utc,
+        current_open_time_utc=current_bar.open_time_utc,
+        previous_range_decimal=derived.previous_range_decimal,
+        current_range_decimal=derived.current_range_decimal,
+        true_range_decimal=derived.true_range_decimal,
+        body_signed_decimal=derived.body_signed_decimal,
+        body_absolute_decimal=derived.body_absolute_decimal,
+        upper_wick_decimal=derived.upper_wick_decimal,
+        lower_wick_decimal=derived.lower_wick_decimal,
+        close_change_decimal=derived.close_change_decimal,
+        high_change_decimal=derived.high_change_decimal,
+        low_change_decimal=derived.low_change_decimal,
+        direction_code=derived.direction_code,
+        range_relation_code=derived.range_relation_code,
+        range_containment_code=derived.range_containment_code,
+        current_high_vs_previous_high_code=(
+            derived.current_high_vs_previous_high_code
+        ),
+        current_low_vs_previous_low_code=derived.current_low_vs_previous_low_code,
+        current_close_vs_previous_range_code=(
+            derived.current_close_vs_previous_range_code
+        ),
+    )
+
+
+def _derive_pair_facts(
+    previous: tuple[Decimal, Decimal, Decimal, Decimal],
+    current: tuple[Decimal, Decimal, Decimal, Decimal],
+    digits: int,
+    context: Context,
+) -> _DerivedPairFacts:
     try:
         _, previous_high, previous_low, previous_close = previous
         current_open, current_high, current_low, current_close = current
@@ -685,9 +758,7 @@ def _build_pair(
         _render_derived(value, digits, signed=True)
         for value in (body_signed, close_change, high_change, low_change)
     )
-    return CanonicalGoldBarPairVolatilityStructureFactsV1(
-        previous_open_time_utc=previous_bar.open_time_utc,
-        current_open_time_utc=current_bar.open_time_utc,
+    return _DerivedPairFacts(
         previous_range_decimal=unsigned[0],
         current_range_decimal=unsigned[1],
         true_range_decimal=unsigned[2],
@@ -749,6 +820,7 @@ def _is_valid_ready_result(
     result: object,
     snapshot: CanonicalGoldMarketFactsSnapshotV1,
     expected_timeframes: tuple[CanonicalGoldTimeframeVolatilityStructureFactsV1, ...],
+    decimal_input: _DecimalInput,
 ) -> bool:
     try:
         if not _is_exact_record(result, CanonicalGoldVolatilityStructureFactsV1, _RESULT_FIELDS):
@@ -801,8 +873,12 @@ def _is_valid_ready_result(
         ):
             return False
         expected_total = 0
-        for output, source, authority in zip(
-            result.timeframes, snapshot.timeframes, _TIMEFRAME_PERIODS, strict=True
+        for output, source, authority, source_values in zip(
+            result.timeframes,
+            snapshot.timeframes,
+            _TIMEFRAME_PERIODS,
+            decimal_input.bar_values,
+            strict=True,
         ):
             if not _is_exact_record(
                 output,
@@ -823,7 +899,15 @@ def _is_valid_ready_result(
             ):
                 return False
             for index, pair in enumerate(output.bar_pairs):
-                if not _is_valid_pair(pair, source.bars[index], source.bars[index + 1]):
+                if not _is_valid_pair(
+                    pair,
+                    source.bars[index],
+                    source.bars[index + 1],
+                    source_values[index],
+                    source_values[index + 1],
+                    decimal_input.digits,
+                    decimal_input.context,
+                ):
                     return False
             expected_total += output.pair_count
         return result.total_pair_count == expected_total
@@ -835,6 +919,10 @@ def _is_valid_pair(
     pair: object,
     previous_bar: CanonicalGoldBarFactsV1,
     current_bar: CanonicalGoldBarFactsV1,
+    previous_values: tuple[Decimal, Decimal, Decimal, Decimal],
+    current_values: tuple[Decimal, Decimal, Decimal, Decimal],
+    digits: int,
+    context: Context,
 ) -> bool:
     if not _is_exact_record(
         pair, CanonicalGoldBarPairVolatilityStructureFactsV1, _RESULT_PAIR_FIELDS
@@ -842,25 +930,16 @@ def _is_valid_pair(
         return False
     if not all(type(getattr(pair, field)) is str for field in _RESULT_PAIR_FIELDS):
         return False
-    return (
-        pair.previous_open_time_utc == previous_bar.open_time_utc
-        and pair.current_open_time_utc == current_bar.open_time_utc
-        and pair.direction_code in ("UP", "DOWN", "FLAT")
-        and pair.range_relation_code in ("EXPANDED", "CONTRACTED", "EQUAL")
-        and pair.range_containment_code
-        in ("EXACT_MATCH", "INSIDE", "OUTSIDE", "SHIFTED_UP", "SHIFTED_DOWN")
-        and pair.current_high_vs_previous_high_code
-        in ("ABOVE_PREVIOUS_HIGH", "BELOW_PREVIOUS_HIGH", "AT_PREVIOUS_HIGH")
-        and pair.current_low_vs_previous_low_code
-        in ("ABOVE_PREVIOUS_LOW", "BELOW_PREVIOUS_LOW", "AT_PREVIOUS_LOW")
-        and pair.current_close_vs_previous_range_code
-        in (
-            "ABOVE_PREVIOUS_HIGH",
-            "AT_PREVIOUS_HIGH",
-            "INSIDE_PREVIOUS_RANGE",
-            "AT_PREVIOUS_LOW",
-            "BELOW_PREVIOUS_LOW",
-        )
+    expected = _derive_pair_facts(
+        previous_values,
+        current_values,
+        digits,
+        context,
+    )
+    return tuple(getattr(pair, field) for field in _RESULT_PAIR_FIELDS) == (
+        previous_bar.open_time_utc,
+        current_bar.open_time_utc,
+        *(getattr(expected, field) for field in expected.__slots__),
     )
 
 
@@ -927,6 +1006,10 @@ def _parse_positive_decimal(value: str) -> Decimal | None:
     except (DecimalException, ValueError, OverflowError):
         return None
     return parsed if parsed.is_finite() and parsed > 0 else None
+
+
+def _fixed_price_coefficient(value: str) -> int:
+    return int(value.replace(".", ""))
 
 
 def _render_derived(value: Decimal, digits: int, *, signed: bool) -> str:
