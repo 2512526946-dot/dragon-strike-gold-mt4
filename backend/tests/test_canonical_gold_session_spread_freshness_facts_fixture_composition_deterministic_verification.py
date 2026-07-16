@@ -148,12 +148,16 @@ def test_real_composition_is_deterministic_detached_and_fresh_for_five_runs(
     for _ in range(REAL_RUN_COUNT):
         source_result = g185.build_canonical_gold_market_facts_docs_fixture_source_v1()
         assert source_result.source is not None
+        frozen_source = deepcopy(source_result.source)
         snapshot = g178.build_canonical_gold_market_facts_snapshot_v1(
             validated_source=source_result.source
         )
+        assert source_result.source == frozen_source
+        frozen_snapshot = deepcopy(snapshot)
         result = g191.build_canonical_gold_session_spread_freshness_facts_v1(
             market_facts_snapshot=snapshot
         )
+        assert snapshot == frozen_snapshot
         runs.append((source_result, snapshot, result))
 
     assert all(run == runs[0] for run in runs)
@@ -256,6 +260,81 @@ def test_delegating_spies_confirm_one_ordered_call_after_genuine_anchor(
     assert calls == ["G185", "G178", "G191"]
     assert observed == genuine_anchor
     assert _detached_graph_ids(observed).isdisjoint(
+        _detached_graph_ids(genuine_anchor)
+    )
+    assert fixture_before.matches(_fixture_state())
+
+
+def test_projector_source_mutation_bypass_is_rejected_after_genuine_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture_before = _fixture_state()
+    genuine_anchor = _run_real_composition()
+    original_projector = g178.build_canonical_gold_market_facts_snapshot_v1
+    mutation_calls: list[str] = []
+
+    def mutating_projector(*, validated_source: object) -> object:
+        snapshot = original_projector(  # type: ignore[arg-type]
+            validated_source=validated_source
+        )
+        mutation_calls.append("source")
+        object.__setattr__(validated_source.live_tick, "bid", -1.0)
+        return snapshot
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            g178,
+            "build_canonical_gold_market_facts_snapshot_v1",
+            mutating_projector,
+        )
+        with pytest.raises(AssertionError):
+            _run_real_composition()
+
+    assert mutation_calls == ["source"]
+    subsequent = _run_real_composition()
+    assert subsequent == genuine_anchor
+    assert _detached_graph_ids(subsequent).isdisjoint(
+        _detached_graph_ids(genuine_anchor)
+    )
+    assert fixture_before.matches(_fixture_state())
+
+
+def test_facts_snapshot_mutation_bypass_is_rejected_after_genuine_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture_before = _fixture_state()
+    genuine_anchor = _run_real_composition()
+    original_facts_builder = (
+        g191.build_canonical_gold_session_spread_freshness_facts_v1
+    )
+    mutation_calls: list[str] = []
+
+    def mutating_facts_builder(*, market_facts_snapshot: object) -> object:
+        result = original_facts_builder(  # type: ignore[arg-type]
+            market_facts_snapshot=market_facts_snapshot
+        )
+        assert market_facts_snapshot.quote is not None
+        mutation_calls.append("snapshot")
+        object.__setattr__(
+            market_facts_snapshot.quote,
+            "bid_decimal",
+            "caller-local-mutation",
+        )
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            g191,
+            "build_canonical_gold_session_spread_freshness_facts_v1",
+            mutating_facts_builder,
+        )
+        with pytest.raises(AssertionError):
+            _run_real_composition()
+
+    assert mutation_calls == ["snapshot"]
+    subsequent = _run_real_composition()
+    assert subsequent == genuine_anchor
+    assert _detached_graph_ids(subsequent).isdisjoint(
         _detached_graph_ids(genuine_anchor)
     )
     assert fixture_before.matches(_fixture_state())
@@ -396,12 +475,16 @@ def test_verification_scope_is_offline_non_activating_and_bounded() -> None:
 def _run_real_composition() -> tuple[object, object, object]:
     source_result = g185.build_canonical_gold_market_facts_docs_fixture_source_v1()
     assert source_result.source is not None
+    frozen_source = deepcopy(source_result.source)
     snapshot = g178.build_canonical_gold_market_facts_snapshot_v1(
         validated_source=source_result.source
     )
+    assert source_result.source == frozen_source
+    frozen_snapshot = deepcopy(snapshot)
     result = g191.build_canonical_gold_session_spread_freshness_facts_v1(
         market_facts_snapshot=snapshot
     )
+    assert snapshot == frozen_snapshot
     return source_result, snapshot, result
 
 
