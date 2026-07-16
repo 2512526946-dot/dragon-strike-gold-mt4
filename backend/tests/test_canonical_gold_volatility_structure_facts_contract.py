@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import FrozenInstanceError, dataclass
+from dataclasses import FrozenInstanceError, dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 import re
@@ -77,6 +77,30 @@ class ValueMutationVector:
     field_path: tuple[str, ...]
     invalid_value: object
     expected_priority: int
+    expected_status: str
+    expected_reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class AdjacentPairIdentityVector:
+    timeframe: str
+    source_open_times: tuple[str, ...]
+    expected_pair_times: tuple[tuple[str, str], ...]
+    expected_source_bar_count: int
+    expected_pair_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectGraphExpectationVector:
+    input_snapshot_unchanged: bool
+    nested_input_records_unchanged: bool
+    repeated_values_equal: bool
+    result_identity_distinct: bool
+    timeframe_identity_distinct: bool
+    pair_tuple_identity_distinct: bool
+    pair_record_identity_distinct: bool
+    caller_reference_isolated: bool
+    hidden_mutable_state_absent: bool
 
 
 class StrictStringSubclass(str):
@@ -452,6 +476,128 @@ PAIR_VECTORS = (
             "BELOW_PREVIOUS_LOW",
         ),
     ),
+    PairVector(
+        "gap_up_true_range_uses_previous_close",
+        2,
+        ("100.00", "110.00", "90.00", "100.00"),
+        ("120.00", "125.00", "118.00", "122.00"),
+        (
+            "20.00",
+            "7.00",
+            "25.00",
+            "2.00",
+            "2.00",
+            "3.00",
+            "2.00",
+            "22.00",
+            "15.00",
+            "28.00",
+        ),
+        (
+            "UP",
+            "CONTRACTED",
+            "SHIFTED_UP",
+            "ABOVE_PREVIOUS_HIGH",
+            "ABOVE_PREVIOUS_LOW",
+            "ABOVE_PREVIOUS_HIGH",
+        ),
+    ),
+    PairVector(
+        "gap_down_true_range_uses_previous_close",
+        2,
+        ("100.00", "110.00", "90.00", "100.00"),
+        ("80.00", "82.00", "75.00", "78.00"),
+        (
+            "20.00",
+            "7.00",
+            "25.00",
+            "-2.00",
+            "2.00",
+            "2.00",
+            "3.00",
+            "-22.00",
+            "-28.00",
+            "-15.00",
+        ),
+        (
+            "DOWN",
+            "CONTRACTED",
+            "SHIFTED_DOWN",
+            "BELOW_PREVIOUS_HIGH",
+            "BELOW_PREVIOUS_LOW",
+            "BELOW_PREVIOUS_LOW",
+        ),
+    ),
+)
+
+ADJACENT_PAIR_IDENTITY_VECTORS = (
+    AdjacentPairIdentityVector(
+        "M15",
+        (
+            "2026-01-02T00:00:00Z",
+            "2026-01-02T00:15:00Z",
+            "2026-01-02T00:30:00Z",
+            "2026-01-02T00:45:00Z",
+        ),
+        (
+            ("2026-01-02T00:00:00Z", "2026-01-02T00:15:00Z"),
+            ("2026-01-02T00:15:00Z", "2026-01-02T00:30:00Z"),
+            ("2026-01-02T00:30:00Z", "2026-01-02T00:45:00Z"),
+        ),
+        4,
+        3,
+    ),
+    AdjacentPairIdentityVector(
+        "H1",
+        (
+            "2026-01-02T00:00:00Z",
+            "2026-01-02T01:00:00Z",
+            "2026-01-02T02:00:00Z",
+        ),
+        (
+            ("2026-01-02T00:00:00Z", "2026-01-02T01:00:00Z"),
+            ("2026-01-02T01:00:00Z", "2026-01-02T02:00:00Z"),
+        ),
+        3,
+        2,
+    ),
+    AdjacentPairIdentityVector(
+        "H4",
+        ("2026-01-01T20:00:00Z", "2026-01-02T00:00:00Z"),
+        (("2026-01-01T20:00:00Z", "2026-01-02T00:00:00Z"),),
+        2,
+        1,
+    ),
+    AdjacentPairIdentityVector(
+        "D1",
+        (
+            "2025-12-30T00:00:00Z",
+            "2025-12-31T00:00:00Z",
+            "2026-01-01T00:00:00Z",
+            "2026-01-02T00:00:00Z",
+            "2026-01-03T00:00:00Z",
+        ),
+        (
+            ("2025-12-30T00:00:00Z", "2025-12-31T00:00:00Z"),
+            ("2025-12-31T00:00:00Z", "2026-01-01T00:00:00Z"),
+            ("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
+            ("2026-01-02T00:00:00Z", "2026-01-03T00:00:00Z"),
+        ),
+        5,
+        4,
+    ),
+)
+
+OBJECT_GRAPH_EXPECTATIONS = ObjectGraphExpectationVector(
+    input_snapshot_unchanged=True,
+    nested_input_records_unchanged=True,
+    repeated_values_equal=True,
+    result_identity_distinct=True,
+    timeframe_identity_distinct=True,
+    pair_tuple_identity_distinct=True,
+    pair_record_identity_distinct=True,
+    caller_reference_isolated=True,
+    hidden_mutable_state_absent=True,
 )
 
 CLOSE_BOUNDARY_VECTORS = (
@@ -602,24 +748,168 @@ VALUE_MUTATION_VECTORS = (
         ("contract_version",),
         StrictStringSubclass("1.0"),
         1,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_INPUT_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_INPUT_TYPE_INVALID",
     ),
-    ValueMutationVector("wrong_container", ("timeframes",), [], 1),
-    ValueMutationVector("wrong_element", ("timeframes", 0), object(), 1),
-    ValueMutationVector("not_ready", ("passed",), False, 2),
-    ValueMutationVector("warning_present", ("warning_codes",), ("WARNING",), 2),
-    ValueMutationVector("bundle_regex", ("bundle_id",), "short", 3),
-    ValueMutationVector("reference_timestamp", ("reference_time_utc",), "2026-01-01", 3),
-    ValueMutationVector("timeframe_order", ("timeframes",), ("H1", "M15", "H4", "D1"), 4),
-    ValueMutationVector("bar_timestamp", ("timeframes", 0, "bars", 0, "open_time_utc"), "bad", 4),
-    ValueMutationVector("zero_ohlc", ("timeframes", 0, "bars", 0, "open_decimal"), "0.00", 4),
-    ValueMutationVector("ohlc_relation", ("timeframes", 0, "bars", 0, "high_decimal"), "1.00", 4),
-    ValueMutationVector("history", ("timeframes", 0, "bars"), ("one_bar",), 5),
-    ValueMutationVector("digits_zero_trailing_point", ("quote", "bid_decimal"), "1.", 6),
-    ValueMutationVector("digits_positive_missing_point", ("quote", "bid_decimal"), "100", 6),
-    ValueMutationVector("nonfinite_decimal", ("quote", "bid_decimal"), "NaN", 6),
-    ValueMutationVector("result_count", ("total_pair_count",), -1, 7),
-    ValueMutationVector("result_code", ("timeframes", 0, "bar_pairs", 0, "direction_code"), "BUY", 7),
-    ValueMutationVector("unexpected_exception", ("public_boundary",), RuntimeError, 8),
+    ValueMutationVector(
+        "wrong_container",
+        ("timeframes",),
+        [],
+        1,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_INPUT_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_INPUT_TYPE_INVALID",
+    ),
+    ValueMutationVector(
+        "wrong_element",
+        ("timeframes", 0),
+        object(),
+        1,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_INPUT_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_INPUT_TYPE_INVALID",
+    ),
+    ValueMutationVector(
+        "not_ready",
+        ("passed",),
+        False,
+        2,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_UPSTREAM_BLOCKED",
+        "GOLD_VOLATILITY_STRUCTURE_SNAPSHOT_NOT_READY",
+    ),
+    ValueMutationVector(
+        "warning_present",
+        ("warning_codes",),
+        ("WARNING",),
+        2,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_UPSTREAM_BLOCKED",
+        "GOLD_VOLATILITY_STRUCTURE_SNAPSHOT_NOT_READY",
+    ),
+    ValueMutationVector(
+        "bundle_regex",
+        ("bundle_id",),
+        "short",
+        3,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_IDENTITY_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_SNAPSHOT_IDENTITY_INVALID",
+    ),
+    ValueMutationVector(
+        "reference_timestamp",
+        ("reference_time_utc",),
+        "2026-01-01",
+        3,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_IDENTITY_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_SNAPSHOT_IDENTITY_INVALID",
+    ),
+    ValueMutationVector(
+        "timeframe_order",
+        ("timeframes",),
+        ("H1", "M15", "H4", "D1"),
+        4,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "bar_timestamp",
+        ("timeframes", 0, "bars", 0, "open_time_utc"),
+        "bad",
+        4,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "zero_ohlc",
+        ("timeframes", 0, "bars", 0, "open_decimal"),
+        "0.00",
+        4,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "ohlc_relation",
+        ("timeframes", 0, "bars", 0, "high_decimal"),
+        "1.00",
+        4,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_TIMEFRAME_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "history",
+        ("timeframes", 0, "bars"),
+        ("one_bar",),
+        5,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_HISTORY_INSUFFICIENT",
+        "GOLD_VOLATILITY_STRUCTURE_HISTORY_INSUFFICIENT",
+    ),
+    ValueMutationVector(
+        "digits_zero_trailing_point",
+        ("quote", "bid_decimal"),
+        "1.",
+        6,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_DECIMAL_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_DECIMAL_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "digits_positive_missing_point",
+        ("quote", "bid_decimal"),
+        "100",
+        6,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_DECIMAL_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_DECIMAL_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "nonfinite_decimal",
+        ("quote", "bid_decimal"),
+        "NaN",
+        6,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_DECIMAL_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_DECIMAL_INPUT_INVALID",
+    ),
+    ValueMutationVector(
+        "result_count",
+        ("total_pair_count",),
+        -1,
+        7,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+    ),
+    ValueMutationVector(
+        "result_code",
+        ("timeframes", 0, "bar_pairs", 0, "direction_code"),
+        "BUY",
+        7,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+        "GOLD_VOLATILITY_STRUCTURE_RESULT_INVALID",
+    ),
+    ValueMutationVector(
+        "unexpected_exception",
+        ("public_boundary",),
+        RuntimeError,
+        8,
+        "CANONICAL_GOLD_VOLATILITY_STRUCTURE_SAFE_FAILURE",
+        "GOLD_VOLATILITY_STRUCTURE_EXCEPTION_SANITIZED",
+    ),
+)
+
+EXPECTED_VALUE_MUTATION_PRIORITIES = MappingProxyType(
+    {
+        "subclass": 1,
+        "wrong_container": 1,
+        "wrong_element": 1,
+        "not_ready": 2,
+        "warning_present": 2,
+        "bundle_regex": 3,
+        "reference_timestamp": 3,
+        "timeframe_order": 4,
+        "bar_timestamp": 4,
+        "zero_ohlc": 4,
+        "ohlc_relation": 4,
+        "history": 5,
+        "digits_zero_trailing_point": 6,
+        "digits_positive_missing_point": 6,
+        "nonfinite_decimal": 6,
+        "result_count": 7,
+        "result_code": 7,
+        "unexpected_exception": 8,
+    }
 )
 
 STAGED_DELIVERY = (
@@ -856,6 +1146,43 @@ def _calculated_codes(vector: PairVector) -> tuple[str, ...]:
     )
 
 
+def _assert_value_mutation_vector(vector: ValueMutationVector) -> None:
+    expected_priority = EXPECTED_VALUE_MUTATION_PRIORITIES[vector.mutation]
+    expected_failure = STATUS_REASON_VECTORS[expected_priority - 1]
+    assert (
+        vector.expected_priority,
+        vector.expected_status,
+        vector.expected_reason,
+    ) == (
+        expected_priority,
+        expected_failure.status,
+        expected_failure.reason,
+    )
+
+
+def _assert_adjacent_pair_identity_vector(vector: AdjacentPairIdentityVector) -> None:
+    assert type(vector.timeframe) is str
+    assert vector.timeframe in dict(TIMEFRAME_AUTHORITY)
+    assert type(vector.source_open_times) is tuple
+    assert all(type(value) is str for value in vector.source_open_times)
+    assert type(vector.expected_pair_times) is tuple
+    assert vector.expected_source_bar_count == len(vector.source_open_times)
+    assert vector.expected_pair_count == vector.expected_source_bar_count - 1
+    assert vector.expected_pair_times == tuple(
+        zip(vector.source_open_times, vector.source_open_times[1:])
+    )
+
+
+def _assert_object_graph_expectations(
+    vector: ObjectGraphExpectationVector,
+) -> None:
+    assert all(
+        type(getattr(vector, field_name)) is bool
+        and getattr(vector, field_name) is True
+        for field_name in vector.__slots__
+    )
+
+
 def _assert_closed_contract(text: str) -> None:
     assert PUBLIC_SIGNATURE in text
     assert _public_exports(text) == PUBLIC_EXPORTS
@@ -885,6 +1212,11 @@ def _assert_closed_contract(text: str) -> None:
     assert "passed = False" in text
     assert "timeframes = ()" in text
     assert "total_pair_count = 0" in text
+    assert "must not modify the input snapshot, any nested record, tuple, or\nstring" in text
+    assert "A READY result is a fresh detached frozen object graph." in text
+    assert "Every\ntimeframe, pair tuple, and pair record is newly constructed for that call." in text
+    assert "Repeated calls with equal exact inputs return equal values but distinct result\nand nested object identities." in text
+    assert "no\nambient I/O and has no hidden mutable registry or cache." in text
 
 
 def test_vectors_are_frozen_and_public_schemas_are_exact() -> None:
@@ -892,6 +1224,10 @@ def test_vectors_are_frozen_and_public_schemas_are_exact() -> None:
         STATUS_REASON_VECTORS[0].reason = "changed"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         PAIR_VECTORS[0].digits = 4  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        ADJACENT_PAIR_IDENTITY_VECTORS[0].timeframe = "H1"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        OBJECT_GRAPH_EXPECTATIONS.result_identity_distinct = False  # type: ignore[misc]
     with pytest.raises(TypeError):
         PUBLIC_SCHEMAS["unexpected"] = ()  # type: ignore[index]
     with pytest.raises(TypeError):
@@ -933,12 +1269,28 @@ def test_all_adjacent_pair_arithmetic_and_counts_are_closed() -> None:
         "outside_down",
         "shifted_up_close_above",
         "shifted_down_close_below",
+        "gap_up_true_range_uses_previous_close",
+        "gap_down_true_range_uses_previous_close",
     )
     for vector in PAIR_VECTORS:
         assert type(vector.previous) is tuple and len(vector.previous) == 4
         assert type(vector.current) is tuple and len(vector.current) == 4
         assert _calculated_decimals(vector) == vector.expected_decimals
         assert _calculated_codes(vector) == vector.expected_codes
+
+    gap_vectors = PAIR_VECTORS[-2:]
+    assert tuple(vector.expected_decimals[1] for vector in gap_vectors) == (
+        "7.00",
+        "7.00",
+    )
+    assert tuple(vector.expected_decimals[2] for vector in gap_vectors) == (
+        "25.00",
+        "25.00",
+    )
+    assert all(
+        vector.expected_decimals[2] != vector.expected_decimals[1]
+        for vector in gap_vectors
+    )
 
     for bar_count in (2, 3, 25, 500):
         assert bar_count - 1 == len(tuple(zip(range(bar_count), range(1, bar_count))))
@@ -948,6 +1300,54 @@ def test_all_adjacent_pair_arithmetic_and_counts_are_closed() -> None:
     assert "must process every accepted bar in the existing G175 order" in text
     assert "must not select a shorter window, drop an endpoint, sort, deduplicate" in text
     assert "Output pair `i` is derived only from input bars\n`i` and `i + 1`" in text
+
+
+def test_adjacent_pair_identity_and_object_graph_expectations_are_closed() -> None:
+    assert tuple(vector.timeframe for vector in ADJACENT_PAIR_IDENTITY_VECTORS) == (
+        "M15",
+        "H1",
+        "H4",
+        "D1",
+    )
+    for vector in ADJACENT_PAIR_IDENTITY_VECTORS:
+        _assert_adjacent_pair_identity_vector(vector)
+
+    m15 = ADJACENT_PAIR_IDENTITY_VECTORS[0]
+    with pytest.raises(AssertionError):
+        _assert_adjacent_pair_identity_vector(
+            replace(m15, expected_pair_times=m15.expected_pair_times[:-1])
+        )
+    with pytest.raises(AssertionError):
+        _assert_adjacent_pair_identity_vector(
+            replace(
+                m15,
+                expected_pair_times=(
+                    m15.expected_pair_times[1],
+                    m15.expected_pair_times[0],
+                    m15.expected_pair_times[2],
+                ),
+            )
+        )
+
+    _assert_object_graph_expectations(OBJECT_GRAPH_EXPECTATIONS)
+    first = replace(OBJECT_GRAPH_EXPECTATIONS)
+    second = replace(OBJECT_GRAPH_EXPECTATIONS)
+    assert first == second == OBJECT_GRAPH_EXPECTATIONS
+    assert first is not second
+    for field_name in OBJECT_GRAPH_EXPECTATIONS.__slots__:
+        with pytest.raises(AssertionError):
+            _assert_object_graph_expectations(
+                replace(OBJECT_GRAPH_EXPECTATIONS, **{field_name: False})
+            )
+
+    text = _contract_text()
+    assert "The two timestamps are copied from the exact adjacent input bars." in text
+    assert "must not modify the input snapshot, any nested record, tuple, or\nstring" in text
+    assert "A READY result is a fresh detached frozen object graph." in text
+    assert "Every\ntimeframe, pair tuple, and pair record is newly constructed for that call." in text
+    assert "Repeated calls with equal exact inputs return equal values but distinct result\nand nested object identities." in text
+    assert "Mutating or replacing a caller-owned reference\ncannot alter another result or a later execution." in text
+    assert "no\nambient I/O and has no hidden mutable registry or cache." in text
 
 
 def test_decimal_vectors_lock_both_digit_branches_and_long_coefficients() -> None:
@@ -1059,6 +1459,9 @@ def test_negative_vectors_cover_shape_value_and_category_swap_failures() -> None
     assert type(VALUE_MUTATION_VECTORS[1].invalid_value) is list
     assert type(VALUE_MUTATION_VECTORS[2].invalid_value) is object
     assert {vector.expected_priority for vector in VALUE_MUTATION_VECTORS} == set(range(1, 9))
+    assert tuple(EXPECTED_VALUE_MUTATION_PRIORITIES) == tuple(
+        vector.mutation for vector in VALUE_MUTATION_VECTORS
+    )
     assert {vector.mutation for vector in VALUE_MUTATION_VECTORS} >= {
         "subclass",
         "wrong_container",
@@ -1076,8 +1479,32 @@ def test_negative_vectors_cover_shape_value_and_category_swap_failures() -> None
         "unexpected_exception",
     }
     for vector in VALUE_MUTATION_VECTORS:
-        failure = STATUS_REASON_VECTORS[vector.expected_priority - 1]
-        assert failure.priority == vector.expected_priority
+        _assert_value_mutation_vector(vector)
+
+    identity_vector = next(
+        vector for vector in VALUE_MUTATION_VECTORS if vector.mutation == "bundle_regex"
+    )
+    timeframe_vector = next(
+        vector for vector in VALUE_MUTATION_VECTORS if vector.mutation == "timeframe_order"
+    )
+    with pytest.raises(AssertionError):
+        _assert_value_mutation_vector(
+            replace(
+                identity_vector,
+                expected_priority=timeframe_vector.expected_priority,
+                expected_status=timeframe_vector.expected_status,
+                expected_reason=timeframe_vector.expected_reason,
+            )
+        )
+    with pytest.raises(AssertionError):
+        _assert_value_mutation_vector(
+            replace(
+                timeframe_vector,
+                expected_priority=identity_vector.expected_priority,
+                expected_status=identity_vector.expected_status,
+                expected_reason=identity_vector.expected_reason,
+            )
+        )
 
 
 def test_contract_mutation_probes_reject_predicate_formula_mapping_and_stage_drift() -> None:
