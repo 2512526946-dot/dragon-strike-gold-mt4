@@ -16,6 +16,7 @@ from app.services.canonical_gold_market_facts_snapshot_projector import (
     CanonicalGoldQuoteFactsV1,
     CanonicalGoldSymbolFactsV1,
     CanonicalGoldTimeframeFactsV1,
+    build_canonical_gold_market_facts_snapshot_v1,
 )
 
 
@@ -425,8 +426,61 @@ def test_first_failure_priority_is_not_swappable() -> None:
     )
     _assert_failure(_build(market=market, calendar=calendar), *_FAILURES[1])
 
-    market = replace(_market_snapshot(), bundle_id="short", quote=None)  # type: ignore[arg-type]
+    market = replace(_market_snapshot(), bundle_id="short", quote=object())  # type: ignore[arg-type]
     _assert_failure(_build(market=market, calendar=calendar), *_FAILURES[0])
+
+
+def test_genuine_g178_failure_envelope_maps_to_upstream_blocked() -> None:
+    failed_market = build_canonical_gold_market_facts_snapshot_v1(
+        validated_source=object(),  # type: ignore[arg-type]
+    )
+    assert failed_market.status_code == "CANONICAL_GOLD_MARKET_FACTS_INPUT_INVALID"
+    assert failed_market.quote is None
+    assert failed_market.timeframes == ()
+    assert failed_market.symbol_spec is None
+    assert failed_market.freshness is None
+
+    _assert_failure(_build(market=failed_market), *_FAILURES[1])
+
+    later_calendar_failure = replace(
+        _calendar_snapshot(),
+        upstream_evidence=replace(_upstream(), warning_codes=("warning",)),
+    )
+    _assert_failure(
+        _build(market=failed_market, calendar=later_calendar_failure),
+        *_FAILURES[1],
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("quote", object()),
+        ("timeframes", (object(),)),
+        ("symbol_spec", object()),
+        ("freshness", object()),
+    ),
+)
+def test_g178_failure_envelope_with_malformed_present_nested_record_is_input_invalid(
+    field: str,
+    value: object,
+) -> None:
+    failed_market = build_canonical_gold_market_facts_snapshot_v1(
+        validated_source=object(),  # type: ignore[arg-type]
+    )
+    polluted_market = replace(failed_market, **{field: value})
+    _assert_failure(_build(market=polluted_market), *_FAILURES[0])
+
+
+def test_ready_envelope_with_missing_nested_facts_is_market_value_invalid() -> None:
+    market = replace(
+        _market_snapshot(),
+        quote=None,
+        timeframes=(),
+        symbol_spec=None,
+        freshness=None,
+    )
+    _assert_failure(_build(market=market), *_FAILURES[3])
 
 
 def test_result_contradiction_and_unexpected_exception_fail_closed(

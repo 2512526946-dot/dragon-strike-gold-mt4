@@ -467,11 +467,11 @@ def _has_exact_market_shape(value: object) -> bool:
         and _is_optional_str(value.canonical_symbol)
         and _is_optional_str(value.broker_symbol)
         and _is_optional_str(value.reference_time_utc)
-        and _has_exact_quote_shape(value.quote)
+        and (value.quote is None or _has_exact_quote_shape(value.quote))
         and type(value.timeframes) is tuple
         and all(_has_exact_timeframe_shape(item) for item in value.timeframes)
-        and _has_exact_symbol_shape(value.symbol_spec)
-        and _has_exact_freshness_shape(value.freshness)
+        and (value.symbol_spec is None or _has_exact_symbol_shape(value.symbol_spec))
+        and (value.freshness is None or _has_exact_freshness_shape(value.freshness))
         and type(value.read_only) is bool
         and type(value.demo_only) is bool
         and type(value.is_tradable) is bool
@@ -627,6 +627,8 @@ def _has_valid_market_values(snapshot: CanonicalGoldMarketFactsSnapshotV1) -> bo
     quote = snapshot.quote
     symbol = snapshot.symbol_spec
     freshness = snapshot.freshness
+    if quote is None or symbol is None or freshness is None:
+        return False
     reference = _parse_utc_z(snapshot.reference_time_utc)
     if reference is None or not 0 <= quote.digits <= 8 or symbol.digits != quote.digits:
         return False
