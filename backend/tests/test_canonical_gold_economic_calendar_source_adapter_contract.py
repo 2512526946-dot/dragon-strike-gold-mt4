@@ -96,7 +96,33 @@ class CallerOverrideVector:
     accepted: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ContractClauseVector:
+    name: str
+    required_text: str
+    invalid_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionBoundaryVector:
+    name: str
+    validator_result: bool | None
+    expected_status: str
+    expected_reason: str
+    snapshot_available: bool
+    snapshot: None
+    leaks_internal_state: bool
+
+
 class StrictStringSubclass(str):
+    pass
+
+
+class StrictIntSubclass(int):
+    pass
+
+
+class StrictTupleSubclass(tuple):
     pass
 
 
@@ -464,7 +490,6 @@ def _shape_mutations(
     container: str,
 ) -> tuple[ShapeMutationVector, ...]:
     fields = _field_names(vectors)
-    reordered = fields[::-1] if len(fields) > 1 else fields + fields
     return (
         ShapeMutationVector(
             schema,
@@ -488,16 +513,22 @@ def _shape_mutations(
             status,
             reason,
         ),
-        ShapeMutationVector(
-            schema,
-            "reordered",
-            fields,
-            reordered,
-            container,
-            container,
-            priority,
-            status,
-            reason,
+        *(
+            (
+                ShapeMutationVector(
+                    schema,
+                    "reordered",
+                    fields,
+                    fields[::-1],
+                    container,
+                    container,
+                    priority,
+                    status,
+                    reason,
+                ),
+            )
+            if len(fields) > 1
+            else ()
         ),
         ShapeMutationVector(
             schema,
@@ -631,6 +662,14 @@ VALUE_MUTATION_VECTORS = (
         STATUS_REASON_VECTORS[0].reason,
     ),
     ValueMutationVector(
+        "read_policy_integer_subclass",
+        ("authority", "read_policy", "maximum_calendar_events"),
+        StrictIntSubclass(512),
+        1,
+        STATUS_REASON_VECTORS[0].status,
+        STATUS_REASON_VECTORS[0].reason,
+    ),
+    ValueMutationVector(
         "fixture_contract_wrong_type",
         ("fixture", "fixture_contract_version"),
         1,
@@ -679,6 +718,116 @@ VALUE_MUTATION_VECTORS = (
         STATUS_REASON_VECTORS[6].reason,
     ),
     ValueMutationVector(
+        "event_revision_integer_subclass",
+        ("fixture", "events", "source_revision"),
+        StrictIntSubclass(1),
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_revision_negative",
+        ("fixture", "events", "source_revision"),
+        -1,
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_timestamp_invalid_date",
+        ("fixture", "events", "scheduled_at_utc"),
+        "2026-02-30T00:00:00Z",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_country_unknown",
+        ("fixture", "events", "country_code"),
+        "USA",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_currency_case_change",
+        ("fixture", "events", "currency_code"),
+        "usd",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_impact_unknown",
+        ("fixture", "events", "impact_code"),
+        "CRITICAL",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_status_unknown",
+        ("fixture", "events", "event_status_code"),
+        "POSTPONED",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_duplicate_ids",
+        ("fixture", "events"),
+        ("event-001", "event-001"),
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_order_descending",
+        ("fixture", "events"),
+        (
+            ("2026-07-10T03:00:00Z", "event-002"),
+            ("2026-07-10T02:00:00Z", "event-001"),
+        ),
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_tie_order_descending",
+        ("fixture", "events"),
+        (
+            ("2026-07-10T03:00:00Z", "event-002"),
+            ("2026-07-10T03:00:00Z", "event-001"),
+        ),
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_outside_coverage",
+        ("fixture", "events", "scheduled_at_utc"),
+        "2026-07-13T02:30:05.000001Z",
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "event_wrong_element",
+        ("fixture", "events"),
+        ("not-an-event-record",),
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
+        "result_reason_tuple_subclass",
+        ("result", "reason_codes"),
+        StrictTupleSubclass(("GOLD_ECONOMIC_CALENDAR_RESULT_INVALID",)),
+        8,
+        STATUS_REASON_VECTORS[7].status,
+        STATUS_REASON_VECTORS[7].reason,
+    ),
+    ValueMutationVector(
         "warning_pollution",
         ("result", "warning_codes"),
         ("warning",),
@@ -721,6 +870,108 @@ SENSITIVE_TERMS = (
     "account",
     "order",
     "execution instruction",
+)
+
+FROZEN_SLOTTED_CLAUSES = (
+    ContractClauseVector(
+        "expected_identity_frozen_slotted",
+        "`_CanonicalGoldEconomicCalendarExpectedIdentityV1` is a frozen, slotted",
+        "`_CanonicalGoldEconomicCalendarExpectedIdentityV1` is mutable and unslotted",
+    ),
+    ContractClauseVector(
+        "read_policy_frozen_slotted",
+        "`_CanonicalGoldEconomicCalendarReadPolicyV1` is a frozen, slotted dataclass",
+        "`_CanonicalGoldEconomicCalendarReadPolicyV1` is a mutable dataclass",
+    ),
+    ContractClauseVector(
+        "authority_frozen_slotted",
+        "`_CanonicalGoldEconomicCalendarSourceAuthorityV1` is a frozen, slotted",
+        "`_CanonicalGoldEconomicCalendarSourceAuthorityV1` is mutable and unslotted",
+    ),
+    ContractClauseVector(
+        "result_frozen_slotted",
+        "`CanonicalGoldEconomicCalendarSourceAdapterResultV1` is a frozen, slotted",
+        "`CanonicalGoldEconomicCalendarSourceAdapterResultV1` is mutable and unslotted",
+    ),
+)
+
+EVENT_INVARIANT_CLAUSES = (
+    ContractClauseVector(
+        "canonical_event_order",
+        "Events must already be in the exact G199 canonical order by\n`(scheduled_at_utc, event_id)`.",
+        "Events may arrive in arbitrary order.",
+    ),
+    ContractClauseVector(
+        "unique_event_ids",
+        "Event IDs are unique.",
+        "Event IDs may repeat.",
+    ),
+    ContractClauseVector(
+        "ascii_tie_order",
+        "Equal scheduled times\nuse ASCII event-ID order.",
+        "Equal scheduled times may use source order.",
+    ),
+    ContractClauseVector(
+        "event_utc_codes_and_revision",
+        "ASCII values, real UTC timestamp,\n   valid closed codes, and non-negative exact revision.",
+        "ASCII values, approximate timestamps, open codes, and signed revisions are accepted.",
+    ),
+    ContractClauseVector(
+        "event_coverage_membership",
+        "canonical event order, unique IDs, coverage membership",
+        "canonical event order and unique IDs",
+    ),
+)
+
+EXCEPTION_BOUNDARY_CLAUSES = (
+    ContractClauseVector(
+        "validator_exception_returns_false",
+        "returns false on every invalid input or internal validation exception.",
+        "propagates internal validation exceptions.",
+    ),
+    ContractClauseVector(
+        "sanitizer_returns_empty_safe_failure",
+        "sanitizer returns a fresh exact SAFE_FAILURE result with no snapshot.",
+        "sanitizer returns SAFE_FAILURE with the partial snapshot.",
+    ),
+    ContractClauseVector(
+        "exception_state_is_not_exposed",
+        "Unexpected exception type, message, traceback, path, fixture bytes, parsed\ncontent, token, or source status must not enter the result or a log.",
+        "Unexpected exception details may enter the result.",
+    ),
+)
+
+EXCEPTION_BOUNDARY_VECTORS = (
+    ExceptionBoundaryVector(
+        "validator_internal_exception_then_sanitizer",
+        False,
+        STATUS_REASON_VECTORS[8].status,
+        STATUS_REASON_VECTORS[8].reason,
+        False,
+        None,
+        False,
+    ),
+    ExceptionBoundaryVector(
+        "sanitizer_internal_exception_boundary",
+        None,
+        STATUS_REASON_VECTORS[8].status,
+        STATUS_REASON_VECTORS[8].reason,
+        False,
+        None,
+        False,
+    ),
+)
+
+SAFE_FAILURE_MAPPING = MappingProxyType(
+    {
+        "passed": False,
+        "status_code": STATUS_REASON_VECTORS[8].status,
+        "reason_codes": (STATUS_REASON_VECTORS[8].reason,),
+        "warning_codes": (),
+        "snapshot_available": False,
+        "snapshot": None,
+        **SAFETY_FLAGS,
+    }
 )
 
 
@@ -792,6 +1043,14 @@ def _contract_oracle(candidate: str) -> bool:
             in candidate
             and "No event-record failure may be relabeled as FIXTURE_INVALID."
             in candidate
+            and all(
+                vector.required_text in candidate
+                for vector in (
+                    *FROZEN_SLOTTED_CLAUSES,
+                    *EVENT_INVARIANT_CLAUSES,
+                    *EXCEPTION_BOUNDARY_CLAUSES,
+                )
+            )
             and stages == tuple(range(1, 8))
         )
     except (ValueError, TypeError):
@@ -807,13 +1066,18 @@ def test_vectors_are_frozen_closed_and_have_exact_counts() -> None:
         PUBLIC_SCHEMAS["replacement"] = ()  # type: ignore[index]
     with pytest.raises(TypeError):
         FIXED_AUTHORITY["maximum_read_attempts"] = 2  # type: ignore[index]
+    with pytest.raises(FrozenInstanceError):
+        FROZEN_SLOTTED_CLAUSES[0].name = "replacement"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        SAFE_FAILURE_MAPPING["snapshot_available"] = True  # type: ignore[index]
 
     assert tuple(map(len, PUBLIC_SCHEMAS.values())) == (1, 6, 8, 7, 8, 12, 8, 15)
     assert len(CALL_ACCOUNTING) == 11
     assert len(STATUS_REASON_VECTORS) == 9
     assert len(BOUND_VECTORS) == 17
-    assert len(SHAPE_MUTATION_VECTORS) == 56
-    assert len(VALUE_MUTATION_VECTORS) == 10
+    assert len(SHAPE_MUTATION_VECTORS) == 55
+    assert len(VALUE_MUTATION_VECTORS) == 24
+    assert len(EXCEPTION_BOUNDARY_VECTORS) == 2
     assert len(STAGED_DELIVERY) == 7
 
 
@@ -859,6 +1123,7 @@ def test_contract_locks_exports_interfaces_and_exact_schema_rows() -> None:
     assert _table_rows(snapshot_block) == _vector_rows(SNAPSHOT_FIELDS)
     assert _table_rows(upstream_block) == _vector_rows(UPSTREAM_FIELDS)
     assert _table_rows(result_block) == _vector_rows(RESULT_FIELDS)
+    assert all(vector.required_text in text for vector in FROZEN_SLOTTED_CLAUSES)
 
 
 def test_server_owned_authority_path_policy_and_override_rules_are_exact() -> None:
@@ -939,6 +1204,21 @@ def test_g199_codes_and_g201_source_provenance_match_real_ownership() -> None:
             if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
         )
 
+    def has_frozen_slotted_dataclass(name: str) -> bool:
+        return any(
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Name)
+            and decorator.func.id == "dataclass"
+            and {
+                keyword.arg: keyword.value.value
+                for keyword in decorator.keywords
+                if keyword.arg in {"frozen", "slots"}
+                and isinstance(keyword.value, ast.Constant)
+            }
+            == {"frozen": True, "slots": True}
+            for decorator in classes[name].decorator_list
+        )
+
     assert annotation_fields("CanonicalGoldEconomicCalendarSnapshotV1") == _field_names(
         SNAPSHOT_FIELDS
     )
@@ -947,6 +1227,14 @@ def test_g199_codes_and_g201_source_provenance_match_real_ownership() -> None:
     ) == _field_names(UPSTREAM_FIELDS)
     assert annotation_fields("CanonicalGoldEconomicEventSourceV1") == _field_names(
         EVENT_FIELDS
+    )
+    assert all(
+        has_frozen_slotted_dataclass(name)
+        for name in (
+            "CanonicalGoldEconomicCalendarSnapshotV1",
+            "CanonicalGoldEconomicCalendarUpstreamEvidenceV1",
+            "CanonicalGoldEconomicEventSourceV1",
+        )
     )
 
     for code in (
@@ -957,8 +1245,8 @@ def test_g199_codes_and_g201_source_provenance_match_real_ownership() -> None:
         *EVENT_STATUS_CODES,
     ):
         assert code in g199_text
-    assert "(scheduled_at_utc, event_id)" in contract_text
-    assert "Equal scheduled times\nuse ASCII event-ID order." in contract_text
+    for vector in EVENT_INVARIANT_CLAUSES:
+        assert vector.required_text in contract_text
     assert "The adapter validates this order and never sorts," in contract_text
     assert "parser-owned container or raw document may be reachable from the result." in contract_text
 
@@ -1024,17 +1312,25 @@ def test_shape_and_value_mutations_are_concrete_and_fail_closed() -> None:
     }
     for schema in {vector.schema for vector in SHAPE_MUTATION_VECTORS}:
         vectors = [vector for vector in SHAPE_MUTATION_VECTORS if vector.schema == schema]
-        assert {vector.mutation for vector in vectors} == {
+        expected_mutations = {
             "missing",
             "extra",
-            "reordered",
             "duplicate",
             "alias",
             "case_change",
             "wrong_container",
         }
+        if schema != "expected_identity":
+            expected_mutations.add("reordered")
+        assert {vector.mutation for vector in vectors} == expected_mutations
         missing = next(vector for vector in vectors if vector.mutation == "missing")
         assert missing.observed_fields == missing.expected_fields[:-1]
+        reordered = [vector for vector in vectors if vector.mutation == "reordered"]
+        assert all(vector.observed_fields != vector.expected_fields for vector in reordered)
+        assert all(
+            len(vector.observed_fields) == len(vector.expected_fields)
+            for vector in reordered
+        )
         assert all(
             vector.observed_fields != ()
             for vector in vectors
@@ -1043,8 +1339,26 @@ def test_shape_and_value_mutations_are_concrete_and_fail_closed() -> None:
         assert all(vector.expected_status.startswith("CANONICAL_GOLD_") for vector in vectors)
         assert all(vector.expected_reason.startswith("GOLD_ECONOMIC_CALENDAR_") for vector in vectors)
 
-    assert type(VALUE_MUTATION_VECTORS[1].invalid_value) is StrictStringSubclass
-    assert type(VALUE_MUTATION_VECTORS[6].invalid_value) is bool
+    by_name = {vector.name: vector for vector in VALUE_MUTATION_VECTORS}
+    assert type(by_name["identity_subclass"].invalid_value) is StrictStringSubclass
+    assert type(by_name["read_policy_integer_subclass"].invalid_value) is StrictIntSubclass
+    assert type(by_name["event_revision_bool"].invalid_value) is bool
+    assert type(by_name["event_revision_integer_subclass"].invalid_value) is StrictIntSubclass
+    assert type(by_name["result_reason_tuple_subclass"].invalid_value) is StrictTupleSubclass
+    assert {
+        "event_revision_negative",
+        "event_timestamp_invalid_date",
+        "event_country_unknown",
+        "event_currency_case_change",
+        "event_category_case_change",
+        "event_impact_unknown",
+        "event_status_unknown",
+        "event_duplicate_ids",
+        "event_order_descending",
+        "event_tie_order_descending",
+        "event_outside_coverage",
+        "event_wrong_element",
+    }.issubset(by_name)
     assert {vector.expected_priority for vector in VALUE_MUTATION_VECTORS} == {
         1,
         3,
@@ -1074,6 +1388,31 @@ def test_safety_sensitive_output_and_detached_object_rules_are_closed() -> None:
     for term in SENSITIVE_TERMS:
         assert term in normalized_text
     assert "must not enter the result or a log" in text
+    assert all(
+        vector.required_text in text for vector in EXCEPTION_BOUNDARY_CLAUSES
+    )
+    assert SAFE_FAILURE_MAPPING == {
+        "passed": False,
+        "status_code": "CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_SAFE_FAILURE",
+        "reason_codes": ("GOLD_ECONOMIC_CALENDAR_EXCEPTION_SANITIZED",),
+        "warning_codes": (),
+        "snapshot_available": False,
+        "snapshot": None,
+        "read_only": True,
+        "demo_only": True,
+        "is_tradable": False,
+        "can_execute": False,
+        "is_trading_permission": False,
+        "is_execution_instruction": False,
+        "allowed_to_call_ea": False,
+        "allowed_to_modify_risk": False,
+    }
+    for vector in EXCEPTION_BOUNDARY_VECTORS:
+        assert vector.expected_status == SAFE_FAILURE_MAPPING["status_code"]
+        assert vector.expected_reason == SAFE_FAILURE_MAPPING["reason_codes"][0]
+        assert vector.snapshot_available is False
+        assert vector.snapshot is None
+        assert vector.leaks_internal_state is False
 
 
 def test_contract_oracle_rejects_authority_ownership_mapping_and_stage_bypasses() -> None:
@@ -1103,6 +1442,14 @@ def test_contract_oracle_rejects_authority_ownership_mapping_and_stage_bypasses(
             STATUS_REASON_VECTORS[4].status,
             STATUS_REASON_VECTORS[5].status,
             1,
+        ),
+        *(
+            text.replace(vector.required_text, vector.invalid_text, 1)
+            for vector in (
+                *FROZEN_SLOTTED_CLAUSES,
+                *EVENT_INVARIANT_CLAUSES,
+                *EXCEPTION_BOUNDARY_CLAUSES,
+            )
         ),
         text.replace(
             "7. a separately versioned ReplayRunner W6 stage before W7.",
