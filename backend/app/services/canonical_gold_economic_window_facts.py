@@ -444,6 +444,74 @@ def build_canonical_gold_economic_window_facts_v1(
         return _failure(*_FAILURES[10])
 
 
+def _is_safe_canonical_gold_economic_calendar_snapshot_v1(
+    *,
+    economic_calendar_snapshot: object,
+    reference_time_utc: object,
+    expected_calendar_snapshot_id: object,
+    expected_calendar_schema_version: object,
+    expected_source_profile_version: object,
+    maximum_calendar_age_microseconds: object,
+    maximum_coverage_span_microseconds: object,
+    search_horizon_microseconds: object,
+    maximum_calendar_events: object,
+) -> bool:
+    """Validate one complete G201 calendar source without performing I/O."""
+    try:
+        if not (
+            type(reference_time_utc) is datetime
+            and reference_time_utc.tzinfo is not None
+            and reference_time_utc.utcoffset() == timedelta(0)
+            and type(expected_calendar_snapshot_id) is str
+            and _is_identifier(expected_calendar_snapshot_id, 16, 64)
+            and type(expected_calendar_schema_version) is str
+            and expected_calendar_schema_version == _CONTRACT_VERSION
+            and type(expected_source_profile_version) is str
+            and expected_source_profile_version == _CALENDAR_SOURCE_PROFILE_VERSION
+            and type(maximum_calendar_age_microseconds) is int
+            and maximum_calendar_age_microseconds
+            == _CALENDAR_MAXIMUM_AGE_MICROSECONDS
+            and type(maximum_coverage_span_microseconds) is int
+            and maximum_coverage_span_microseconds
+            == _MAXIMUM_COVERAGE_SPAN_MICROSECONDS
+            and type(search_horizon_microseconds) is int
+            and search_horizon_microseconds == _SEARCH_HORIZON_SECONDS * 1_000_000
+            and type(maximum_calendar_events) is int
+            and maximum_calendar_events == _MAXIMUM_CALENDAR_EVENTS
+            and _has_exact_calendar_shape(economic_calendar_snapshot)
+        ):
+            return False
+        snapshot = economic_calendar_snapshot
+        if not (
+            _has_valid_calendar_authority(snapshot)
+            and _has_valid_calendar_identity(snapshot)
+            and snapshot.calendar_schema_version
+            == expected_calendar_schema_version
+            and snapshot.calendar_snapshot_id == expected_calendar_snapshot_id
+            and snapshot.source_profile_version == expected_source_profile_version
+        ):
+            return False
+        reference = reference_time_utc.astimezone(UTC)
+        generated = _parse_utc_z(snapshot.generated_at_utc)
+        if generated is None or not _has_valid_calendar_freshness(reference, generated):
+            return False
+        coverage_start = _parse_utc_z(snapshot.coverage_start_utc)
+        coverage_end = _parse_utc_z(snapshot.coverage_end_utc)
+        return _has_valid_calendar_coverage(
+            reference,
+            coverage_start,
+            coverage_end,
+            inclusive_end=True,
+        ) and _has_valid_events(
+            snapshot,
+            coverage_start,
+            coverage_end,
+            allow_zero_revision=True,
+        )
+    except Exception:
+        return False
+
+
 def _has_exact_input_shape(market: object, calendar: object) -> bool:
     try:
         return _has_exact_market_shape(market) and _has_exact_calendar_shape(calendar)
@@ -791,6 +859,8 @@ def _has_valid_calendar_coverage(
     reference: datetime,
     start: datetime | None,
     end: datetime | None,
+    *,
+    inclusive_end: bool = False,
 ) -> bool:
     if start is None or end is None or start >= end:
         return False
@@ -799,9 +869,10 @@ def _has_valid_calendar_coverage(
         required_end = reference + timedelta(seconds=_SEARCH_HORIZON_SECONDS)
     except OverflowError:
         return False
+    end_has_horizon = end >= required_end if inclusive_end else end > required_end
     return (
         start <= required_start
-        and end > required_end
+        and end_has_horizon
         and _microseconds_between(end, start) <= _MAXIMUM_COVERAGE_SPAN_MICROSECONDS
     )
 
@@ -810,6 +881,8 @@ def _has_valid_events(
     snapshot: CanonicalGoldEconomicCalendarSnapshotV1,
     coverage_start: datetime | None,
     coverage_end: datetime | None,
+    *,
+    allow_zero_revision: bool = False,
 ) -> bool:
     if (
         coverage_start is None
@@ -829,7 +902,11 @@ def _has_valid_events(
             and event.currency_code == "USD"
             and event.event_category_code in _EVENT_CATEGORIES
             and event.impact_code in _IMPACT_CODES
-            and event.source_revision > 0
+            and (
+                event.source_revision >= 0
+                if allow_zero_revision
+                else event.source_revision > 0
+            )
             and event.event_status_code in _EVENT_STATUS_CODES
             and event.event_id not in event_ids
         ):

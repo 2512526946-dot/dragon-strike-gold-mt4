@@ -231,6 +231,62 @@ def test_public_types_exports_and_keyword_only_builder_are_exact() -> None:
     assert str(signature.return_annotation) == "CanonicalGoldEconomicWindowFactsV1"
 
 
+def test_private_calendar_snapshot_validation_seam_is_exact_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seam = facts._is_safe_canonical_gold_economic_calendar_snapshot_v1
+    assert tuple(inspect.signature(seam).parameters) == (
+        "economic_calendar_snapshot",
+        "reference_time_utc",
+        "expected_calendar_snapshot_id",
+        "expected_calendar_schema_version",
+        "expected_source_profile_version",
+        "maximum_calendar_age_microseconds",
+        "maximum_coverage_span_microseconds",
+        "search_horizon_microseconds",
+        "maximum_calendar_events",
+    )
+    assert all(
+        parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        for parameter in inspect.signature(seam).parameters.values()
+    )
+    calendar = _calendar_snapshot()
+    arguments = {
+        "economic_calendar_snapshot": calendar,
+        "reference_time_utc": datetime(2026, 7, 10, 13, 0, tzinfo=UTC),
+        "expected_calendar_snapshot_id": "calendar.g201.ready",
+        "expected_calendar_schema_version": "1.0",
+        "expected_source_profile_version": "canonical_gold_economic_calendar_source_v1",
+        "maximum_calendar_age_microseconds": 300_000_000,
+        "maximum_coverage_span_microseconds": 259_200_000_000,
+        "search_horizon_microseconds": 86_400_000_000,
+        "maximum_calendar_events": 512,
+    }
+    assert seam(**arguments) is True
+    polluted = replace(
+        calendar,
+        upstream_evidence=replace(
+            calendar.upstream_evidence,
+            warning_codes=("warning",),
+        ),
+    )
+    assert seam(**{**arguments, "economic_calendar_snapshot": polluted}) is False
+    assert seam(
+        **{
+            **arguments,
+            "expected_calendar_snapshot_id": StrictStringSubclass(
+                "calendar.g201.ready"
+            ),
+        }
+    ) is False
+
+    def raise_unexpected(*_args: object) -> bool:
+        raise ValueError
+
+    monkeypatch.setattr(facts, "_has_valid_events", raise_unexpected)
+    assert seam(**arguments) is False
+
+
 def test_ready_result_is_exact_detached_fresh_and_deterministic() -> None:
     market = _market_snapshot()
     calendar = _calendar_snapshot()
