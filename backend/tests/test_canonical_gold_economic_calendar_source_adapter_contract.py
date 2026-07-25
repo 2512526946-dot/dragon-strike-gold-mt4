@@ -207,7 +207,10 @@ EVENT_FIELDS = (
     FieldVector("currency_code", "string from the closed G199 enum"),
     FieldVector("event_category_code", "string from the closed G199 enum"),
     FieldVector("impact_code", "string from the closed G199 enum"),
-    FieldVector("source_revision", "built-in JSON integer, zero or greater"),
+    FieldVector(
+        "source_revision",
+        "built-in JSON integer, strictly greater than zero",
+    ),
     FieldVector("event_status_code", "string from the closed G199 enum"),
 )
 
@@ -351,6 +354,7 @@ CALL_ACCOUNTING = (
     ),
     CallAccountingVector("Construction or post-read drift fails", 1, 1, 0),
     CallAccountingVector("Constructed result is invalid", 1, 1, 1),
+    CallAccountingVector("Post-validator authority or document drift fails", 1, 1, 1),
     CallAccountingVector("READY", 1, 1, 1),
 )
 
@@ -460,8 +464,11 @@ BOUND_VECTORS = (
     BoundVector("coverage_span_overflow", 259200000001, False, 6),
     BoundVector("coverage_start_exact_horizon", -86400000000, True, None),
     BoundVector("coverage_start_short", -86399999999, False, 6),
-    BoundVector("coverage_end_exact_horizon", 86400000000, True, None),
+    BoundVector("coverage_end_exact_horizon", 86400000000, False, 6),
+    BoundVector("coverage_end_beyond_horizon", 86400000001, True, None),
     BoundVector("coverage_end_short", 86399999999, False, 6),
+    BoundVector("event_revision_zero", 0, False, 7),
+    BoundVector("event_revision_minimum", 1, True, None),
 )
 
 CALLER_OVERRIDE_VECTORS = (
@@ -734,6 +741,14 @@ VALUE_MUTATION_VECTORS = (
         STATUS_REASON_VECTORS[6].reason,
     ),
     ValueMutationVector(
+        "event_revision_zero",
+        ("fixture", "events", "source_revision"),
+        0,
+        7,
+        STATUS_REASON_VECTORS[6].status,
+        STATUS_REASON_VECTORS[6].reason,
+    ),
+    ValueMutationVector(
         "event_timestamp_invalid_date",
         ("fixture", "events", "scheduled_at_utc"),
         "2026-02-30T00:00:00Z",
@@ -913,13 +928,26 @@ EVENT_INVARIANT_CLAUSES = (
     ),
     ContractClauseVector(
         "event_utc_codes_and_revision",
-        "ASCII values, real UTC timestamp,\n   valid closed codes, and non-negative exact revision.",
-        "ASCII values, approximate timestamps, open codes, and signed revisions are accepted.",
+        "ASCII values, real UTC timestamp,\n   valid closed codes, and strictly positive exact revision.",
+        "ASCII values, approximate timestamps, open codes, and zero revisions are accepted.",
     ),
     ContractClauseVector(
         "event_coverage_membership",
         "canonical event order, unique IDs, coverage membership",
         "canonical event order and unique IDs",
+    ),
+)
+
+AUTHORITY_RECONCILIATION_CLAUSES = (
+    ContractClauseVector(
+        "asymmetric_coverage_horizon",
+        "Exact equality at\n   the start horizon is valid; exact equality at the end horizon is invalid.",
+        "Exact equality at both coverage horizons is valid.",
+    ),
+    ContractClauseVector(
+        "post_validator_drift_recheck",
+        "Any validator-time substitution or mutation maps only to\n    IDENTITY_INVALID after exactly one validator call",
+        "Validator-time substitution or mutation may return READY.",
     ),
 )
 
@@ -1048,6 +1076,7 @@ def _contract_oracle(candidate: str) -> bool:
                 for vector in (
                     *FROZEN_SLOTTED_CLAUSES,
                     *EVENT_INVARIANT_CLAUSES,
+                    *AUTHORITY_RECONCILIATION_CLAUSES,
                     *EXCEPTION_BOUNDARY_CLAUSES,
                 )
             )
@@ -1072,11 +1101,11 @@ def test_vectors_are_frozen_closed_and_have_exact_counts() -> None:
         SAFE_FAILURE_MAPPING["snapshot_available"] = True  # type: ignore[index]
 
     assert tuple(map(len, PUBLIC_SCHEMAS.values())) == (1, 6, 8, 7, 8, 12, 8, 15)
-    assert len(CALL_ACCOUNTING) == 11
+    assert len(CALL_ACCOUNTING) == 12
     assert len(STATUS_REASON_VECTORS) == 9
-    assert len(BOUND_VECTORS) == 17
+    assert len(BOUND_VECTORS) == 20
     assert len(SHAPE_MUTATION_VECTORS) == 55
-    assert len(VALUE_MUTATION_VECTORS) == 24
+    assert len(VALUE_MUTATION_VECTORS) == 25
     assert len(EXCEPTION_BOUNDARY_VECTORS) == 2
     assert len(STAGED_DELIVERY) == 7
 
@@ -1186,7 +1215,14 @@ def test_fixture_parser_call_accounting_and_bounds_are_closed() -> None:
     assert by_name["coverage_span_maximum"].accepted
     assert by_name["coverage_span_overflow"].expected_priority == 6
     assert by_name["coverage_start_short"].expected_priority == 6
+    assert by_name["coverage_start_exact_horizon"].accepted
+    assert not by_name["coverage_end_exact_horizon"].accepted
+    assert by_name["coverage_end_exact_horizon"].expected_priority == 6
+    assert by_name["coverage_end_beyond_horizon"].accepted
     assert by_name["coverage_end_short"].expected_priority == 6
+    assert not by_name["event_revision_zero"].accepted
+    assert by_name["event_revision_zero"].expected_priority == 7
+    assert by_name["event_revision_minimum"].accepted
 
 
 def test_g199_codes_and_g201_source_provenance_match_real_ownership() -> None:
@@ -1246,6 +1282,8 @@ def test_g199_codes_and_g201_source_provenance_match_real_ownership() -> None:
     ):
         assert code in g199_text
     for vector in EVENT_INVARIANT_CLAUSES:
+        assert vector.required_text in contract_text
+    for vector in AUTHORITY_RECONCILIATION_CLAUSES:
         assert vector.required_text in contract_text
     assert "The adapter validates this order and never sorts," in contract_text
     assert "parser-owned container or raw document may be reachable from the result." in contract_text
@@ -1347,6 +1385,7 @@ def test_shape_and_value_mutations_are_concrete_and_fail_closed() -> None:
     assert type(by_name["result_reason_tuple_subclass"].invalid_value) is StrictTupleSubclass
     assert {
         "event_revision_negative",
+        "event_revision_zero",
         "event_timestamp_invalid_date",
         "event_country_unknown",
         "event_currency_case_change",
@@ -1448,6 +1487,7 @@ def test_contract_oracle_rejects_authority_ownership_mapping_and_stage_bypasses(
             for vector in (
                 *FROZEN_SLOTTED_CLAUSES,
                 *EVENT_INVARIANT_CLAUSES,
+                *AUTHORITY_RECONCILIATION_CLAUSES,
                 *EXCEPTION_BOUNDARY_CLAUSES,
             )
         ),

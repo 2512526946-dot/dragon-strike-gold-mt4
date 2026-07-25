@@ -324,7 +324,7 @@ Each event object contains exactly these eight keys in order:
 | 4 | `currency_code` | string from the closed G199 enum |
 | 5 | `event_category_code` | string from the closed G199 enum |
 | 6 | `impact_code` | string from the closed G199 enum |
-| 7 | `source_revision` | built-in JSON integer, zero or greater |
+| 7 | `source_revision` | built-in JSON integer, strictly greater than zero |
 | 8 | `event_status_code` | string from the closed G199 enum |
 
 The parser freezes one private detached document record and one private
@@ -380,14 +380,16 @@ The future adapter has exactly this order:
    parsed until step 9 and belong only to EVENT_INVALID. Require real UTC
    calendar dates. The adapter copies valid canonical strings unchanged; it
    does not normalize malformed input.
-8. Require generated time not later than reference time, calendar age not
-   greater than 300000000 microseconds, coverage start not after reference,
-   coverage end not before reference, full 86400000000-microsecond search
-   horizon on both sides, and total coverage span not greater than
-   259200000000 microseconds.
+8. Require generated time not later than reference time and calendar age not
+   greater than 300000000 microseconds. Coverage start must be less than or
+   equal to `reference_time_utc - 86400000000 microseconds`; coverage end must
+   be strictly greater than
+   `reference_time_utc + 86400000000 microseconds`. Also require total
+   coverage span not greater than 259200000000 microseconds. Exact equality at
+   the start horizon is valid; exact equality at the end horizon is invalid.
 9. Require zero through 512 events and validate every event record's exact
    eight-key shape, strict built-in types, ASCII values, real UTC timestamp,
-   valid closed codes, and non-negative exact revision. Then require exact
+   valid closed codes, and strictly positive exact revision. Then require exact
    canonical event order, unique IDs, coverage membership, and every remaining
    G199 event invariant. Every failure in this step is EVENT_INVALID. Do not
    select, filter, rank, or derive event windows.
@@ -401,8 +403,12 @@ The future adapter has exactly this order:
     adapter-owned pure-memory result validator, passing the exact same private
     authority object used by this call. An exact `False` return maps only to
     RESULT_INVALID, without a snapshot and without a second validator call.
-    Any unexpected exception outside the helper boundary maps only to the
-    adapter-owned SAFE_FAILURE sanitizer.
+    After an exact `True` return, recheck the captured authority, path,
+    expected identity, policy, frozen document, and frozen event values before
+    READY. Any validator-time substitution or mutation maps only to
+    IDENTITY_INVALID after exactly one validator call, with no snapshot and no
+    second validator call. Any unexpected exception outside the helper
+    boundary maps only to the adapter-owned SAFE_FAILURE sanitizer.
 13. Return one fresh result and release private fixture evidence when the
     stack unwinds.
 
@@ -423,6 +429,7 @@ call a provider, change policy, call G201, or continue after failure.
 | Event count, shape, value, order, or coverage-membership validation fails | 1 | 1 | 0 |
 | Construction or post-read drift fails | 1 | 1 | 0 |
 | Constructed result is invalid | 1 | 1 | 1 |
+| Post-validator authority or document drift fails | 1 | 1 | 1 |
 | READY | 1 | 1 | 1 |
 
 An exception after a call begins consumes that call. No outcome permits a
@@ -519,7 +526,7 @@ closed first-failure order is:
 | 1 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_AUTHORITY_INVALID` | `GOLD_ECONOMIC_CALENDAR_AUTHORITY_INVALID` | Authority, exact path type/value or lexical policy, token, reference time, expected snapshot ID, schema, or profile invalid before a read attempt |
 | 2 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_FIXTURE_UNAVAILABLE` | `GOLD_ECONOMIC_CALENDAR_FIXTURE_UNAVAILABLE` | The single consumed read attempt finds missing, inaccessible, canonically escaping, symlink/reparse-ambiguous, non-regular, empty, or oversized fixture state |
 | 3 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_FIXTURE_INVALID` | `GOLD_ECONOMIC_CALENDAR_FIXTURE_INPUT_INVALID` | Decode, JSON, duplicate-key, exact top-level seven-key shape, or `events` container invalid |
-| 4 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_IDENTITY_INVALID` | `GOLD_ECONOMIC_CALENDAR_IDENTITY_INVALID` | Calendar schema, expected snapshot ID, or post-read identity drift invalid |
+| 4 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_IDENTITY_INVALID` | `GOLD_ECONOMIC_CALENDAR_IDENTITY_INVALID` | Calendar schema, expected snapshot ID, post-read identity drift, or post-validator authority/document drift invalid |
 | 5 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_FRESHNESS_INVALID` | `GOLD_ECONOMIC_CALENDAR_FRESHNESS_INVALID` | Generated timestamp syntax, real UTC date, future value, or calendar age invalid |
 | 6 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_COVERAGE_INVALID` | `GOLD_ECONOMIC_CALENDAR_COVERAGE_INVALID` | Coverage timestamp syntax/date, order, reference inclusion, horizon, or span invalid |
 | 7 | `CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_EVENT_INVALID` | `GOLD_ECONOMIC_CALENDAR_EVENT_INPUT_INVALID` | Event count, record shape, type, code, timestamp, revision, coverage membership, uniqueness, or canonical order invalid |
@@ -531,7 +538,9 @@ The nine categories are mutually exclusive and reachable in the frozen order:
 - exact path-value or authority mutations stop at priority 1 with zero reads;
 - filesystem-state mutations stop at priority 2 after one consumed attempt;
 - top-level document or events-container mutations stop at priority 3;
-- schema or snapshot-ID mutations stop at priority 4;
+- schema or snapshot-ID mutations stop at priority 4; validator-time
+  authority/document drift also returns priority 4 after exactly one validator
+  call and never reaches READY;
 - generated-time mutations stop at priority 5;
 - coverage-time or coverage-policy mutations stop at priority 6;
 - event-container element, event-record, count, value, or order mutations stop
@@ -638,16 +647,18 @@ import or call the future adapter. At minimum it must lock:
    provenance, freshness, detachment, and raw-payload discard semantics;
 6. zero, 512, and 513 event boundaries and 259200-second exact coverage span
    versus one-microsecond overflow;
-7. strict real UTC dates, generated-time age, two-sided 86400-second coverage
-   horizon, exact canonical event order, tie order, unique IDs, closed codes,
-   and non-negative revisions;
+7. strict real UTC dates, generated-time age, start horizon equality accepted,
+   end horizon equality rejected, end horizon plus one microsecond accepted,
+   exact canonical event order, tie order, unique IDs, closed codes, and
+   strictly positive revisions with zero rejected and one accepted;
 8. the READY mapping, all nine ordered and individually reachable failure
    mappings, mutually exclusive first-failure ownership, failure snapshot
    clearing, and fixed safety flags;
 9. missing, extra, reordered, duplicate, alias, case-change, subclass,
    wrong-container, wrong-element, path-authority, filesystem-state,
    top-level fixture, event-record, identity, generated-time, coverage-time,
-   warning, mutation, and result-consistency probes;
+   warning, mutation, validator-time authority/document drift, and
+   result-consistency probes;
 10. sanitizer and authority-bearing validator exceptions returning exact safe
     failures without exception or internal-state leakage;
 11. no environment, ambient clock, network, provider, API, G185, G178, G201
@@ -704,10 +715,13 @@ G202 is acceptable only when:
   failures consume the only read attempt, and neither category overlaps;
 - one bounded offline fixture read is the only source attempt;
 - the seven-key document, eight-key events, strict parser, event ordering,
-  UTC, age, coverage, count, and identity rules are closed;
+  UTC, age, asymmetric horizon, positive revision, count, and identity rules
+  are closed;
 - fixture shape owns only the top-level document and events container, while
   event shape, type, value, count, and order belong only to event invalid;
 - all G201 source fields have exact provenance and fresh detached ownership;
+- an exact-true validator return is followed by one final authority/document
+  drift check, and validator-time drift cannot return READY;
 - READY and every ordered failure have exact, mutually exclusive, reachable
   status/reason semantics;
 - failures contain no snapshot, warnings are rejected, and exceptions are
