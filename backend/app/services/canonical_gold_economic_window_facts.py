@@ -501,12 +501,10 @@ def _is_safe_canonical_gold_economic_calendar_snapshot_v1(
             reference,
             coverage_start,
             coverage_end,
-            inclusive_end=True,
         ) and _has_valid_events(
             snapshot,
             coverage_start,
             coverage_end,
-            allow_zero_revision=True,
         )
     except Exception:
         return False
@@ -859,8 +857,6 @@ def _has_valid_calendar_coverage(
     reference: datetime,
     start: datetime | None,
     end: datetime | None,
-    *,
-    inclusive_end: bool = False,
 ) -> bool:
     if start is None or end is None or start >= end:
         return False
@@ -869,10 +865,9 @@ def _has_valid_calendar_coverage(
         required_end = reference + timedelta(seconds=_SEARCH_HORIZON_SECONDS)
     except OverflowError:
         return False
-    end_has_horizon = end >= required_end if inclusive_end else end > required_end
     return (
         start <= required_start
-        and end_has_horizon
+        and end > required_end
         and _microseconds_between(end, start) <= _MAXIMUM_COVERAGE_SPAN_MICROSECONDS
     )
 
@@ -881,8 +876,6 @@ def _has_valid_events(
     snapshot: CanonicalGoldEconomicCalendarSnapshotV1,
     coverage_start: datetime | None,
     coverage_end: datetime | None,
-    *,
-    allow_zero_revision: bool = False,
 ) -> bool:
     if (
         coverage_start is None
@@ -902,11 +895,7 @@ def _has_valid_events(
             and event.currency_code == "USD"
             and event.event_category_code in _EVENT_CATEGORIES
             and event.impact_code in _IMPACT_CODES
-            and (
-                event.source_revision >= 0
-                if allow_zero_revision
-                else event.source_revision > 0
-            )
+            and event.source_revision > 0
             and event.event_status_code in _EVENT_STATUS_CODES
             and event.event_id not in event_ids
         ):

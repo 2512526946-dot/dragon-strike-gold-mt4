@@ -407,7 +407,7 @@ def test_top_level_key_reordering_is_fixture_invalid(
     _assert_failure(result, 2)
 
 
-def test_g202_zero_512_and_inclusive_horizon_bounds_are_accepted(
+def test_g202_zero_512_positive_revision_and_exclusive_horizon_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     empty = _fixture_document()
@@ -424,9 +424,37 @@ def test_g202_zero_512_and_inclusive_horizon_bounds_are_accepted(
     assert empty_result.snapshot is not None
     assert empty_result.snapshot.events == ()
 
+    exact_end = _fixture_document()
+    exact_end["coverage_end_utc"] = "2026-07-11T02:30:05Z"
+    monkeypatch.setattr(
+        adapter,
+        "_read_fixture_bytes",
+        lambda **_kwargs: _fixture_bytes(exact_end),
+    )
+    exact_end_result = (
+        adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
+            authority=_authority()
+        )
+    )
+    _assert_failure(exact_end_result, 5)
+
+    zero_revision = _fixture_document()
+    zero_revision["events"][0]["source_revision"] = 0
+    monkeypatch.setattr(
+        adapter,
+        "_read_fixture_bytes",
+        lambda **_kwargs: _fixture_bytes(zero_revision),
+    )
+    zero_revision_result = (
+        adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
+            authority=_authority()
+        )
+    )
+    _assert_failure(zero_revision_result, 6)
+
     maximum = _fixture_document()
     start = datetime(2026, 7, 10, 0, 0, tzinfo=UTC)
-    maximum["coverage_end_utc"] = "2026-07-11T02:30:05Z"
+    maximum["coverage_end_utc"] = "2026-07-11T02:30:05.000001Z"
     maximum["events"] = [
         {
             "event_id": f"event.{index:04d}",
@@ -437,7 +465,7 @@ def test_g202_zero_512_and_inclusive_horizon_bounds_are_accepted(
             "currency_code": "USD",
             "event_category_code": "US_CPI",
             "impact_code": "HIGH",
-            "source_revision": 0 if index == 0 else index,
+            "source_revision": index + 1,
             "event_status_code": "SCHEDULED",
         }
         for index in range(512)
@@ -447,15 +475,35 @@ def test_g202_zero_512_and_inclusive_horizon_bounds_are_accepted(
         "_read_fixture_bytes",
         lambda **_kwargs: _fixture_bytes(maximum),
     )
+    maximum_authority = _authority()
     maximum_result = (
         adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
-            authority=_authority()
+            authority=maximum_authority
         )
     )
     assert maximum_result.passed is True
     assert maximum_result.snapshot is not None
     assert len(maximum_result.snapshot.events) == 512
-    assert maximum_result.snapshot.events[0].source_revision == 0
+    assert maximum_result.snapshot.events[0].source_revision == 1
+    assert economic_facts._is_safe_canonical_gold_economic_calendar_snapshot_v1(
+        economic_calendar_snapshot=maximum_result.snapshot,
+        reference_time_utc=maximum_authority.reference_time_utc,
+        expected_calendar_snapshot_id=(
+            maximum_authority.expected_identity.calendar_snapshot_id
+        ),
+        expected_calendar_schema_version=maximum_authority.calendar_schema_version,
+        expected_source_profile_version=maximum_authority.source_profile_version,
+        maximum_calendar_age_microseconds=(
+            maximum_authority.read_policy.maximum_calendar_age_microseconds
+        ),
+        maximum_coverage_span_microseconds=(
+            maximum_authority.read_policy.maximum_coverage_span_microseconds
+        ),
+        search_horizon_microseconds=(
+            maximum_authority.read_policy.search_horizon_microseconds
+        ),
+        maximum_calendar_events=maximum_authority.read_policy.maximum_calendar_events,
+    ) is True
 
 
 def test_result_validator_is_called_once_and_false_maps_only_to_result_invalid(
@@ -549,6 +597,58 @@ def test_post_read_authority_drift_is_identity_invalid(
         authority=authority
     )
     _assert_failure(result, 3)
+
+
+@pytest.mark.parametrize("drift_target", ("authority", "document"))
+def test_post_validator_authority_or_document_drift_is_identity_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    drift_target: str,
+) -> None:
+    authority = _authority()
+    calls = 0
+    captured_document: object | None = None
+    original_freeze = adapter._freeze_fixture_document
+    original_validator = (
+        adapter._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
+    )
+
+    def freeze_document(*, parsed: object) -> object:
+        nonlocal captured_document
+        captured_document = original_freeze(parsed=parsed)
+        return captured_document
+
+    def validate_and_drift(*, adapter_result: object, authority: object) -> bool:
+        nonlocal calls
+        calls += 1
+        valid = original_validator(adapter_result=adapter_result, authority=authority)
+        assert valid is True
+        if drift_target == "authority":
+            object.__setattr__(
+                authority.expected_identity,
+                "calendar_snapshot_id",
+                "canonical-gold-economic-calendar-drift-v1",
+            )
+        else:
+            assert captured_document is not None
+            object.__setattr__(
+                captured_document,
+                "generated_at_utc",
+                "2026-07-10T02:30:04.800000Z",
+            )
+        return True
+
+    monkeypatch.setattr(adapter, "_read_fixture_bytes", lambda **_kwargs: _fixture_bytes())
+    monkeypatch.setattr(adapter, "_freeze_fixture_document", freeze_document)
+    monkeypatch.setattr(
+        adapter,
+        "_is_safe_canonical_gold_economic_calendar_source_adapter_result_v1",
+        validate_and_drift,
+    )
+    result = adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
+        authority=authority
+    )
+    _assert_failure(result, 3)
+    assert calls == 1
 
 
 @pytest.mark.parametrize(

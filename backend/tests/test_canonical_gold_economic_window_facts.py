@@ -263,6 +263,27 @@ def test_private_calendar_snapshot_validation_seam_is_exact_and_fail_closed(
         "maximum_calendar_events": 512,
     }
     assert seam(**arguments) is True
+    assert seam(
+        **{
+            **arguments,
+            "economic_calendar_snapshot": replace(
+                calendar,
+                coverage_end_utc="2026-07-11T13:00:00Z",
+            ),
+        }
+    ) is False
+    assert seam(
+        **{
+            **arguments,
+            "economic_calendar_snapshot": replace(
+                calendar,
+                events=(
+                    replace(calendar.events[0], source_revision=0),
+                    *calendar.events[1:],
+                ),
+            ),
+        }
+    ) is False
     polluted = replace(
         calendar,
         upstream_evidence=replace(

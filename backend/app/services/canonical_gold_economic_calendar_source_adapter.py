@@ -323,7 +323,14 @@ def _build_bounded_adapter_result(
         )
     except Exception:
         return _safe_failure()
-    return result if valid is True else _failure(*_FAILURES[7])
+    if valid is not True:
+        return _failure(*_FAILURES[7])
+    if (
+        _authority_snapshot(authority) != authority_before
+        or _document_snapshot(document=document, events=events) != document_before
+    ):
+        return _failure(*_FAILURES[3])
+    return result
 
 
 def _valid_authority(value: object) -> bool:
@@ -542,7 +549,7 @@ def _valid_coverage(
         return False
     return (
         coverage_start <= required_start
-        and coverage_end >= required_end
+        and coverage_end > required_end
         and _microseconds_between(coverage_end, coverage_start)
         <= authority.read_policy.maximum_coverage_span_microseconds
     )
@@ -577,7 +584,7 @@ def _freeze_fixture_events(
             and event.currency_code == "USD"
             and event.event_category_code in _EVENT_CATEGORIES
             and event.impact_code in _IMPACT_CODES
-            and event.source_revision >= 0
+            and event.source_revision > 0
             and event.event_status_code in _EVENT_STATUS_CODES
             and event.event_id not in event_ids
         ):
