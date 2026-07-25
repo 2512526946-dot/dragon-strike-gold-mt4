@@ -260,6 +260,8 @@ def _build_bounded_adapter_result(
     if not _valid_authority(authority):
         return _failure(*_FAILURES[0])
     authority_before = _authority_snapshot(authority)
+    expected_identity_before = authority.expected_identity
+    read_policy_before = authority.read_policy
     try:
         fixture_bytes = _read_fixture_bytes(authority=authority)
     except _FixtureUnavailable:
@@ -300,9 +302,14 @@ def _build_bounded_adapter_result(
         return _safe_failure()
 
     document_before = _document_snapshot(document=document, events=events)
-    if (
-        _authority_snapshot(authority) != authority_before
-        or _document_snapshot(document=document, events=events) != document_before
+    if _authority_or_document_drifted(
+        authority=authority,
+        authority_before=authority_before,
+        expected_identity_before=expected_identity_before,
+        read_policy_before=read_policy_before,
+        document=document,
+        events=events,
+        document_before=document_before,
     ):
         return _failure(*_FAILURES[3])
     try:
@@ -311,9 +318,14 @@ def _build_bounded_adapter_result(
             document=document,
             events=events,
         )
-        if (
-            _authority_snapshot(authority) != authority_before
-            or _document_snapshot(document=document, events=events) != document_before
+        if _authority_or_document_drifted(
+            authority=authority,
+            authority_before=authority_before,
+            expected_identity_before=expected_identity_before,
+            read_policy_before=read_policy_before,
+            document=document,
+            events=events,
+            document_before=document_before,
         ):
             return _failure(*_FAILURES[3])
         result = _ready(snapshot=snapshot)
@@ -325,9 +337,14 @@ def _build_bounded_adapter_result(
         return _safe_failure()
     if valid is not True:
         return _failure(*_FAILURES[7])
-    if (
-        _authority_snapshot(authority) != authority_before
-        or _document_snapshot(document=document, events=events) != document_before
+    if _authority_or_document_drifted(
+        authority=authority,
+        authority_before=authority_before,
+        expected_identity_before=expected_identity_before,
+        read_policy_before=read_policy_before,
+        document=document,
+        events=events,
+        document_before=document_before,
     ):
         return _failure(*_FAILURES[3])
     return result
@@ -400,6 +417,27 @@ def _authority_snapshot(
         value.calendar_schema_version,
         value.source_profile_version,
     )
+
+
+def _authority_or_document_drifted(
+    *,
+    authority: _CanonicalGoldEconomicCalendarSourceAuthorityV1,
+    authority_before: tuple[object, ...],
+    expected_identity_before: _CanonicalGoldEconomicCalendarExpectedIdentityV1,
+    read_policy_before: _CanonicalGoldEconomicCalendarReadPolicyV1,
+    document: _FixtureDocumentV1,
+    events: tuple[_FixtureEventV1, ...],
+    document_before: tuple[object, ...],
+) -> bool:
+    try:
+        return (
+            authority.expected_identity is not expected_identity_before
+            or authority.read_policy is not read_policy_before
+            or _authority_snapshot(authority) != authority_before
+            or _document_snapshot(document=document, events=events) != document_before
+        )
+    except Exception:
+        return True
 
 
 def _read_fixture_bytes(

@@ -651,6 +651,84 @@ def test_post_validator_authority_or_document_drift_is_identity_invalid(
     assert calls == 1
 
 
+@pytest.mark.parametrize("field_name", ("expected_identity", "read_policy"))
+def test_post_validator_equal_nested_authority_substitution_is_identity_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+) -> None:
+    authority = _authority()
+    original_nested = getattr(authority, field_name)
+    original_validator = (
+        adapter._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
+    )
+    calls = 0
+
+    def validate_and_replace(*, adapter_result: object, authority: object) -> bool:
+        nonlocal calls
+        calls += 1
+        valid = original_validator(adapter_result=adapter_result, authority=authority)
+        assert valid is True
+        object.__setattr__(authority, field_name, replace(original_nested))
+        assert getattr(authority, field_name) is not original_nested
+        return True
+
+    monkeypatch.setattr(adapter, "_read_fixture_bytes", lambda **_kwargs: _fixture_bytes())
+    monkeypatch.setattr(
+        adapter,
+        "_is_safe_canonical_gold_economic_calendar_source_adapter_result_v1",
+        validate_and_replace,
+    )
+    result = adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
+        authority=authority
+    )
+    _assert_failure(result, 3)
+    assert calls == 1
+
+
+@pytest.mark.parametrize("drift_target", ("authority", "document"))
+def test_post_validator_structural_drift_is_identity_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    drift_target: str,
+) -> None:
+    authority = _authority()
+    original_freeze = adapter._freeze_fixture_document
+    original_validator = (
+        adapter._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
+    )
+    captured_document: object | None = None
+    calls = 0
+
+    def freeze_document(*, parsed: object) -> object:
+        nonlocal captured_document
+        captured_document = original_freeze(parsed=parsed)
+        return captured_document
+
+    def validate_and_break_shape(*, adapter_result: object, authority: object) -> bool:
+        nonlocal calls
+        calls += 1
+        valid = original_validator(adapter_result=adapter_result, authority=authority)
+        assert valid is True
+        if drift_target == "authority":
+            object.__setattr__(authority, "expected_identity", object())
+        else:
+            assert captured_document is not None
+            object.__delattr__(captured_document, "generated_at_utc")
+        return True
+
+    monkeypatch.setattr(adapter, "_read_fixture_bytes", lambda **_kwargs: _fixture_bytes())
+    monkeypatch.setattr(adapter, "_freeze_fixture_document", freeze_document)
+    monkeypatch.setattr(
+        adapter,
+        "_is_safe_canonical_gold_economic_calendar_source_adapter_result_v1",
+        validate_and_break_shape,
+    )
+    result = adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
+        authority=authority
+    )
+    _assert_failure(result, 3)
+    assert calls == 1
+
+
 @pytest.mark.parametrize(
     "dependency",
     (
