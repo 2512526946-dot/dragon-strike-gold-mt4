@@ -1,0 +1,30 @@
+{
+  "fixture_contract_version": "1.0",
+  "calendar_schema_version": "1.0",
+  "calendar_snapshot_id": "canonical-gold-economic-calendar-docs-fixture-v1",
+  "generated_at_utc": "2026-07-10T02:30:04.900000Z",
+  "coverage_start_utc": "2026-07-09T02:30:05Z",
+  "coverage_end_utc": "2026-07-11T02:30:05.000001Z",
+  "events": [
+    {
+      "event_id": "event.001",
+      "scheduled_at_utc": "2026-07-10T03:00:00Z",
+      "country_code": "US",
+      "currency_code": "USD",
+      "event_category_code": "US_CPI",
+      "impact_code": "HIGH",
+      "source_revision": 1,
+      "event_status_code": "SCHEDULED"
+    },
+    {
+      "event_id": "event.002",
+      "scheduled_at_utc": "2026-07-10T04:00:00Z",
+      "country_code": "US",
+      "currency_code": "USD",
+      "event_category_code": "US_PCE",
+      "impact_code": "MEDIUM",
+      "source_revision": 2,
+      "event_status_code": "SCHEDULED"
+    }
+  ]
+}

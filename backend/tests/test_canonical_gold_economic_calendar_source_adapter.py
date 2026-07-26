@@ -773,7 +773,7 @@ def test_sanitizer_exception_uses_closed_terminal_result(
     _assert_failure(result, 8)
 
 
-def test_filesystem_reader_has_one_fixed_missing_fixture_boundary() -> None:
+def test_filesystem_reader_has_one_fixed_fixture_boundary() -> None:
     authority = _authority()
     assert authority.fixture_path == (
         Path(adapter.__file__).resolve().parents[3]
@@ -783,11 +783,19 @@ def test_filesystem_reader_has_one_fixed_missing_fixture_boundary() -> None:
         / "canonical-gold-economic-calendar-v1"
         / "economic_calendar.json"
     )
-    assert authority.fixture_path.exists() is False
+    assert authority.fixture_path.is_file()
     result = adapter.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(
         authority=authority
     )
-    _assert_failure(result, 1)
+    assert result.passed is result.snapshot_available is True
+    assert result.status_code == "CANONICAL_GOLD_ECONOMIC_CALENDAR_ADAPTER_READY"
+    assert result.reason_codes == result.warning_codes == ()
+    assert result.snapshot is not None
+    assert result.snapshot.calendar_snapshot_id == (
+        "canonical-gold-economic-calendar-docs-fixture-v1"
+    )
+    _assert_safety(result)
+    _assert_no_sensitive_values(result)
 
 
 def test_modules_are_ascii_and_isolated_from_future_runtime_surfaces() -> None:
