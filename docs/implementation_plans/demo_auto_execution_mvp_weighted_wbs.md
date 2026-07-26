@@ -12,7 +12,8 @@ contract, vector, isolated implementation, genuine composition integration,
 and deterministic non-activating verification stages, plus the G199-G201
 economic-window contract, immutable vectors, and isolated implementation,
 and the G202-G204 economic-calendar source-adapter contract, vectors,
-production implementation, and fail-closed authority hardening.
+production implementation, and fail-closed authority hardening, plus the G205
+fixed offline fixture and bounded-adapter integration-evidence stage.
 This document establishes an engineering-hour weighted work breakdown
 structure for the Dragon Strike Demo auto-execution MVP and the separately
 frozen Live auto-execution goal. It does not implement, integrate, activate,
@@ -40,7 +41,7 @@ arithmetic. It does not rewrite the original baseline or authorize W6-W21.
 W6 was re-estimated from repository evidence at:
 
 ```text
-dd695af615592f65e19017ed91dff93a98b16da7
+a27213a240a6643c763560cce7100bc539d6e0b9
 ```
 
 This checkpoint updates only the W6 evidence, maturity assertion, effort
@@ -203,7 +204,7 @@ Critical-path values are:
 | W3 | Canonical docs fixture producer | Deterministic checked-in default source for canonical diagnostics. | `VERIFIED` | Canonical assets, zero-argument producer, strict envelope validation, and fail-closed tests exist. | Connect the approved producer only through the separately reviewed diagnostics migration boundary. | W1 -> W2, W5 | Medium | `PRO_REQUIRED` | CRITICAL | 1-2 | 35-55 / 5-10 | Low | No |
 | W4 | TradeMax MT4 Demo Writer and real Bundle bridge | MT4 Demo publishes atomic canonical bundles through one approved bridge. | `CONTRACT_ONLY` | Read-only bridge and Bundle writer requirements are documented. | MQL4 writer, manifest-last atomic publish, symbol mapping, sandbox integration, and real Demo evidence. | W1 -> W6, W14, W20 | High | `PRO_REQUIRED` | PARALLEL_CRITICAL | 8-12 | 15-25 / 80-140 | High | Yes, estimated 2-4 weeks of broker-terminal observation |
 | W5 | ReplayRunner | Versioned deterministic offline replay infrastructure; v1 covers the canonical diagnostics chain. | `VERIFIED` | Frozen public types and server-owned registry, strict summary validation, bounded production runner, genuine ReplayRunner -> G153 -> G151 integration, and deterministic regression evidence exist for v1. | After W6-W13 are separately implemented and integrated, add separately contracted replay stages for the complete decision chain and W18 linkage. Current v1 grants no activation or runtime execution authority. | W1, W3 -> W6-W13, W18 | High | `PRO_REQUIRED` | CRITICAL | 4-7 | 40-80 / 20-40 | Medium | No |
-| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | G175 and G176 establish the accepted snapshot contract and immutable vectors. G177 implements the 12 frozen, slotted production types. G178 implements the isolated pure-memory projector with strict source validation, Decimal normalization, deterministic status behavior, and safe immutable results. G179 defines the server-owned same-attempt source-adapter contract, G180 locks its immutable contract vectors, and G181 adds the private accepted-attempt reader seam and source-adapter production types. G182 implements bounded same-attempt reader-to-Gate orchestration, strict fail-closed envelope validation, drift detection, and detached 13-field source construction. G183 defines the fixed docs-fixture integration contract, G184 locks immutable contract vectors, G185 implements the controlled zero-argument production boundary, and G186 aligns its optional-checksum success semantics with W1. G187 proves genuine offline G185 -> G182 -> W1 reader/value/DataQualityGate integration with fixed authority, immutable fixtures, exact READY identity, deterministic repeated results, and fresh detached source objects. G188 adds deterministic non-activating regression verification for that fixed offline fixture boundary. G189 defines the session and spread/freshness facts contract, G190 locks its immutable contract vectors, and G191 implements the isolated deterministic pure-memory public types and builder with strict G175 READY validation, fixed UTC session authority, exact integer spread arithmetic, source-freshness aggregation, sanitized failures, and immutable safe results. G192 proves genuine offline G185 -> G178 -> G191 composition integration, and G193 adds deterministic non-activating verification for that narrow composition. G194 defines the volatility and structure facts contract, G195 locks immutable contract vectors, and G196 implements the isolated deterministic production types and pure-memory builder with complete G175 READY validation, exact Decimal true-range and structure behavior, independent result consistency checks, fixed Decimal context, sanitized failures, and immutable safe results. G197 proves genuine offline G185 -> G178 -> G196 composition integration, and G198 adds deterministic non-activating verification for that narrow composition. G199 defines the economic-window facts contract, G200 locks immutable contract vectors, and G201 implements exact production types and the deterministic pure-memory builder with complete G175 input validation, fixed calendar-envelope authority validation, integer-microsecond UTC window semantics, bounded event and coverage validation, independent result consistency checks, deterministic first-error mapping, sanitized failures, detached immutable safe results, and fail-closed preservation of schema-valid non-READY G178 upstream classification. G202 defines the economic-calendar source-adapter contract, G203 locks immutable contract vectors, and G204 implements the bounded filesystem adapter, strict parser and validator, exact G201 snapshot construction, single-call accounting, and fail-closed authority and document drift hardening. | Add the fixed checked-in offline calendar fixture and controlled tests, then prove genuine composition and deterministic non-activating verification. Retain uncertainty for later facts/features and add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 210-335 / 20-60 | Medium | No |
+| W6 | Gold market facts and feature calculation | Pure deterministic facts and features for XAUUSD/GOLD. | `TESTS_ONLY` | G175 and G176 establish the accepted snapshot contract and immutable vectors. G177 implements the 12 frozen, slotted production types. G178 implements the isolated pure-memory projector with strict source validation, Decimal normalization, deterministic status behavior, and safe immutable results. G179 defines the server-owned same-attempt source-adapter contract, G180 locks its immutable contract vectors, and G181 adds the private accepted-attempt reader seam and source-adapter production types. G182 implements bounded same-attempt reader-to-Gate orchestration, strict fail-closed envelope validation, drift detection, and detached 13-field source construction. G183 defines the fixed docs-fixture integration contract, G184 locks immutable contract vectors, G185 implements the controlled zero-argument production boundary, and G186 aligns its optional-checksum success semantics with W1. G187 proves genuine offline G185 -> G182 -> W1 reader/value/DataQualityGate integration with fixed authority, immutable fixtures, exact READY identity, deterministic repeated results, and fresh detached source objects. G188 adds deterministic non-activating regression verification for that fixed offline fixture boundary. G189 defines the session and spread/freshness facts contract, G190 locks its immutable contract vectors, and G191 implements the isolated deterministic pure-memory public types and builder with strict G175 READY validation, fixed UTC session authority, exact integer spread arithmetic, source-freshness aggregation, sanitized failures, and immutable safe results. G192 proves genuine offline G185 -> G178 -> G191 composition integration, and G193 adds deterministic non-activating verification for that narrow composition. G194 defines the volatility and structure facts contract, G195 locks immutable contract vectors, and G196 implements the isolated deterministic production types and pure-memory builder with complete G175 READY validation, exact Decimal true-range and structure behavior, independent result consistency checks, fixed Decimal context, sanitized failures, and immutable safe results. G197 proves genuine offline G185 -> G178 -> G196 composition integration, and G198 adds deterministic non-activating verification for that narrow composition. G199 defines the economic-window facts contract, G200 locks immutable contract vectors, and G201 implements exact production types and the deterministic pure-memory builder with complete G175 input validation, fixed calendar-envelope authority validation, integer-microsecond UTC window semantics, bounded event and coverage validation, independent result consistency checks, deterministic first-error mapping, sanitized failures, detached immutable safe results, and fail-closed preservation of schema-valid non-READY G178 upstream classification. G202 defines the economic-calendar source-adapter contract, G203 locks immutable contract vectors, and G204 implements the bounded filesystem adapter, strict parser and validator, exact G201 snapshot construction, single-call accounting, and fail-closed authority and document drift hardening. G205 adds the fixed checked-in offline calendar fixture and proves genuine bounded-adapter integration with fixed authority, exact READY identity, immutable fixture content, deterministic repeated results, fresh detached nested snapshots, and the exact read/parse/validate call order. | Prove genuine G185 -> G178 -> economic-calendar fixture adapter -> G201 composition and deterministic non-activating verification. Retain uncertainty for later facts/features and add a versioned ReplayRunner W6 stage before W7. | W4 or W5 -> W7 | High | `PRO_REQUIRED` | CRITICAL | 4-7 | 215-345 / 15-55 | Medium | No |
 | W7 | Deterministic analysis and opportunity assessment | One explainable, versioned, non-LLM decision path. | `POLICY_ONLY` | Advice authority and explanation boundaries are documented; placeholder observation logic exists. | Strategy contract, deterministic candidate logic, invalidation conditions, reason codes, and replay evidence. | W6 -> W10 | High | `PRO_REQUIRED` | CRITICAL | 6-10 | 10-20 / 50-90 | High | No |
 | W8 | RiskGate | One server-owned fail-closed risk decision. | `CONTRACT_ONLY` | Safety-gate and execution-authority contracts define veto semantics and major prohibitions. | Typed policy, daily loss, consecutive loss, spread, freshness, event, stop-loss, leverage, and no-overnight enforcement. | W10 -> W9, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 10-20 / 45-80 | Medium | No |
 | W9 | PositionSizing | Hard-calculated GOLD lot size within approved loss limits. | `CONTRACT_ONLY` | Position sizing authority and required inputs are documented. | Contract math, broker precision, min/max/step handling, loss caps, invalid contract handling, and regression vectors. | W8, W10 -> W11, W13 | High | `PRO_REQUIRED` | CRITICAL | 5-8 | 8-15 / 40-70 | High | No |
@@ -242,7 +243,7 @@ produce reviewed upstream boundaries, plus later W18 linkage. Those upstream
 packages retain their own engineering-hour estimates; their work is not
 double-counted in W5.
 
-### 5.2 W6 post-economic-calendar-adapter-implementation re-estimation
+### 5.2 W6 post-fixed-economic-calendar-fixture-integration re-estimation
 
 W6 remains `TESTS_ONLY`. G175 and G176 establish the accepted Canonical Gold
 Market Facts Snapshot v1 contract and immutable static vectors. G177 adds the
@@ -340,32 +341,39 @@ G203 locks its immutable static vectors, and G204 implements the bounded
 filesystem adapter, strict parser and validator, exact G201 snapshot
 construction, single-call accounting, and fail-closed authority and document
 drift protection. G204's direct tests provide controlled production evidence.
-No fixed calendar fixture exists, so G204 does not prove genuine composition,
-deterministic verification, provider integration, activation, or trading
-authority. W6 package maturity therefore remains `TESTS_ONLY`.
+G205 adds the fixed checked-in offline calendar fixture and genuine integration
+evidence through the unpatched bounded G204 adapter. It locks server-owned path,
+time, identity, and policy authority; exact READY output; immutable fixture and
+authority inputs; equal repeated results with fresh detached nested objects;
+the exact read, parse, and validate call order; and fixed Demo-only, Read-only
+safety flags. G205 does not compose G185, G178, the calendar adapter, and G201,
+provide deterministic non-activating verification for that composition,
+integrate a provider, add a ReplayRunner W6 stage, activate runtime authority,
+or grant execution or trading permission. W6 package maturity therefore
+remains `TESTS_ONLY`.
 
-The invested range moves from 185-295 to 210-335 equivalent engineering
-hours. G202-G204 close the contract, immutable-vector, bounded-adapter, and
-authority-hardening portions of the economic-calendar source boundary. Their
-work-order ranges are supporting engineering evidence, not mechanical
-increments. The new range is an independent uncertainty estimate and is not
-derived from commits, tests, files, lines, versions, documents, or a direct
-sum of work-order estimates.
+The invested range moves from 210-335 to 215-345 equivalent engineering hours.
+G205 closes the previously explicit fixed-fixture and controlled bounded-
+adapter integration gap. Its 4-8 hour work-order range is supporting
+engineering evidence, not a mechanical increment. The new range is an
+independent uncertainty estimate and is not derived from commits, tests,
+files, lines, versions, documents, or a direct sum of work-order estimates.
 
-The remaining range moves from 20-65 to 20-60 hours. The production adapter is
-no longer a remaining gap, but the estimate preserves uncertainty for a fixed
-checked-in fixture with controlled tests, genuine composition, deterministic
-non-activating verification, separately contracted later facts/features, and
-a versioned ReplayRunner W6 stage before W7. It is an independent
-remaining-effort assessment, not a mechanical subtraction of G202-G204
-artifacts or work-order hours.
+The remaining range moves from 20-60 to 15-55 hours. The fixed checked-in
+fixture and bounded-adapter integration evidence are no longer remaining gaps.
+The estimate preserves uncertainty for genuine G185 -> G178 -> calendar
+adapter -> G201 composition, deterministic non-activating verification,
+separately contracted later facts/features, and a versioned ReplayRunner W6
+stage before W7. It is an independent remaining-effort assessment, not a
+mechanical subtraction of G205 artifacts or work-order hours.
 
-The estimate of remaining minimal work orders moves from 4-8 to 5-8. The
-lower bound records the five separately required remaining delivery stages
-without silently combining fixture, integration, verification, later-feature,
-or ReplayRunner work. The range is a planning estimate of material engineering
-stages, not a count of commits, tests, files, versions, documents, or lines of
-code.
+The estimate of remaining minimal work orders moves from 5-8 to 4-7. Genuine
+composition, deterministic verification, later-feature delivery, and
+ReplayRunner staging remain materially separate. The upper bound retains
+uncertainty because later facts and features may require more than one
+independently reviewed stage. This is a planning estimate of material
+engineering stages, not a count of commits, tests, files, versions, documents,
+or lines of code.
 
 ## 6. Endpoint progress baseline
 
@@ -374,10 +382,10 @@ code.
 W0 through W20 sum to:
 
 ```text
-estimated invested hours: 707-1151
-estimated remaining hours: 895-1590
-central weighted progress: 42.8%
-mathematical estimate bounds: 30.8%-56.3%
+estimated invested hours: 712-1161
+estimated remaining hours: 890-1585
+central weighted progress: 43.1%
+mathematical estimate bounds: 31.0%-56.6%
 reporting range after judgment: approximately 25%-40%
 ```
 
@@ -392,11 +400,12 @@ plus the G194-G198 volatility/structure contract, vectors, isolated
 implementation, genuine composition, and non-activating verification, raise
 invested effort. G199-G201 add the economic-window contract, vectors, and
 isolated implementation. G202-G204 add the calendar-adapter contract, vectors,
-bounded implementation, and authority hardening. The still-undelivered fixed
-fixture, composition, verification, later-feature, and replay stages remain in
-the denominator. G202-G204 delivered evidence is engineering evidence, not a
-mechanical increment derived from commits, tests, files, versions, documents,
-lines of code, or a direct sum of work-order estimates.
+bounded implementation, and authority hardening. G205 adds the fixed fixture
+and bounded-adapter integration evidence. The still-undelivered composition,
+verification, later-feature, and replay stages remain in the denominator.
+G205 delivered evidence is engineering evidence, not a mechanical increment
+derived from commits, tests, files, versions, documents, lines of code, or a
+direct sum of work-order estimates.
 Those larger
 execution-chain uncertainties do not justify narrowing or raising the
 reporting range.
@@ -406,10 +415,10 @@ reporting range.
 W0 through W21 sum to:
 
 ```text
-estimated invested hours: 712-1161
-estimated remaining hours: 1035-1840
-central engineering progress: 39.4%
-mathematical estimate bounds: 27.9%-52.9%
+estimated invested hours: 717-1171
+estimated remaining hours: 1030-1835
+central engineering progress: 39.7%
+mathematical estimate bounds: 28.1%-53.2%
 reporting range after judgment: approximately 20%-40%
 Live activation readiness: 0%
 ```
