@@ -153,43 +153,133 @@ subclassed, or wrong-container values fail before any dependency call.
 
 ### 4.2 Recursive immutable oracle value
 
-The registry oracle uses one closed value grammar:
+The registry oracle uses one closed, tagged value grammar. Every encoded value
+is an exact built-in tuple. A container tag is never omitted, so values from
+different source types cannot collide merely because their children compare
+equal.
 
 ```text
-FrozenScalarV1 :=
-    exact None
-    | exact built-in bool
-    | exact built-in int
-    | exact built-in str
+FrozenNoneV1 :=
+    ("NONE_V1",)
+
+FrozenBoolV1 :=
+    ("BOOL_V1", exact built-in bool)
+
+FrozenIntV1 :=
+    ("INT_V1", exact built-in int)
+
+FrozenStringV1 :=
+    ("STRING_V1", exact built-in str)
+
+FrozenFloatV1 :=
+    ("FLOAT_HEX_V1", exact canonical built-in str)
+
+FrozenTupleV1 :=
+    ("TUPLE_V1", exact built-in tuple[FrozenValueV1, ...])
+
+FrozenListV1 :=
+    ("LIST_V1", exact built-in tuple[FrozenValueV1, ...])
+
+FrozenDictV1 :=
+    (
+        "DICT_V1",
+        exact built-in tuple[
+            exact built-in tuple[FrozenValueV1, FrozenValueV1],
+            ...,
+        ],
+    )
+
+FrozenDataclassV1 :=
+    (
+        "DATACLASS_V1",
+        exact contract-owned type code str,
+        exact built-in tuple[
+            exact built-in tuple[exact field-name str, FrozenValueV1],
+            ...,
+        ],
+    )
 
 FrozenValueV1 :=
-    FrozenScalarV1
-    | exact built-in tuple[FrozenValueV1, ...]
+    FrozenNoneV1
+    | FrozenBoolV1
+    | FrozenIntV1
+    | FrozenStringV1
+    | FrozenFloatV1
+    | FrozenTupleV1
+    | FrozenListV1
+    | FrozenDictV1
+    | FrozenDataclassV1
 
-FrozenRecordV1 := exact built-in tuple[FrozenValueV1, ...]
+FrozenRecordV1 := FrozenDataclassV1
 ```
 
-No oracle value may contain `float`, `Decimal`, `bytes`, `bytearray`, `Path`,
-`datetime`, `dict`, `list`, `set`, a custom mapping, an enum, a subclass, an
-object identity, `repr` output, a hash, a pickle, JSON text, a filesystem
-value, or an exception value. Decimal facts and UTC timestamps are already
-safe canonical strings in reviewed stage results.
+All tags above are exact ASCII built-in strings. The fixed tag and arity are
+part of each alternative. A tag may not be aliased, case-changed, omitted, or
+used with another alternative's payload shape.
+
+An encoded oracle contains no raw `float`, `Decimal`, `bytes`, `bytearray`,
+`Path`, `datetime`, `dict`, `list`, `set`, custom mapping, enum, subclass,
+object identity, exception, or mutable container. The encoder accepts only the
+strict source values described below and emits only values in the tagged tuple
+grammar.
+
+The exact finite-float encoding is:
+
+1. accept a value only when `type(value) is float`;
+2. require `math.isfinite(value) is True`;
+3. set the payload to the exact built-in result of `value.hex()`;
+4. require `type(payload) is str`;
+5. require `float.fromhex(payload).hex() == payload`; and
+6. emit `("FLOAT_HEX_V1", payload)`.
+
+This is the sole permitted float-to-string transform. It preserves the exact
+binary value and signed zero without Decimal arithmetic, ambient Decimal
+context, locale, rounding, formatting policy, or platform-native byte order.
+`NaN`, positive or negative infinity, float subclasses, malformed or
+non-canonical hex strings, and values not already accepted by the G185 result
+validator are invalid.
+
+An exact built-in list node is accepted only within the genuine v1
+`canonical_summary` subtree after the existing G151 validator has accepted the
+complete exact 20-key summary. It is encoded as
+`("LIST_V1", tuple(encoded_items_in_source_order))`. An exact built-in tuple is
+encoded separately as
+`("TUPLE_V1", tuple(encoded_items_in_source_order))`. This distinction is
+mandatory even for empty or equal-valued containers.
+
+Every exact built-in dict node within that validated `canonical_summary`
+subtree is encoded as
+`("DICT_V1", tuple((encoded_key, encoded_value) for each item in insertion
+order))`. The implementation must not sort any key. No dict or list is
+accepted from any other stage result.
+
+Every exact allowlisted dataclass is encoded with
+`("DATACLASS_V1", fixed_type_code, ordered_fields)`. The future module owns one
+closed mapping from each exact production class object, including every
+allowed nested dataclass class, to one unique fixed ASCII type code. Each
+ordered field entry is `(exact_field_name, encoded_value)`. The encoder must
+require exact class identity and the complete declared field order at every
+dataclass node, not only at the root.
 
 The future implementation may convert an allowlisted safe result to
 `FrozenRecordV1` only by:
 
-1. requiring the exact expected result class;
-2. visiting dataclass fields in their declared order;
-3. recursively visiting exact built-in tuples in their existing order;
-4. converting exact `None`, `bool`, `int`, and `str` without coercion;
-5. handling the v1 `canonical_summary` exact built-in dict only after the
-   existing G151 validator accepts its exact 20-key order, then converting its
-   items to an ordered tuple without sorting; and
-6. rejecting every unsupported, missing, extra, reordered, subclassed, or
-   mutable value.
+1. validating the complete stage result with the existing authoritative
+   result boundary before encoding;
+2. requiring exact allowlisted class identity at every dataclass node;
+3. visiting dataclass fields, dict items, lists, and tuples in their existing
+   contract order;
+4. applying the exact tagged alternative for the source value's strict type;
+5. accepting finite floats only in validator-approved G185 source fields;
+6. accepting dicts and lists only in the validator-approved v1
+   `canonical_summary`; and
+7. rejecting every unsupported, missing, extra, reordered, aliased,
+   case-changed, subclassed, mutable, non-finite, or wrong-context value.
 
-The conversion must not sort, normalize, stringify, round, hash, repair, or
-drop a value.
+The encoder must not sort, coerce, normalize, round, repair, hash, use `repr`,
+use `str(value)`, use generic formatting, serialize JSON, pickle a value, or
+drop a field. Apart from the exact `float.hex()` rule above, it must not
+stringify a value.
 
 ### 4.3 Seven-field expected oracle
 
@@ -694,13 +784,15 @@ least:
 2. all constants, identifier grammars, public-code grammar, and v1
    compatibility;
 3. exact `STAGE_ORDER`, zero/one accounting, and every fail-fast stop point;
-4. complete recursive oracle freezing, including the exact G151 20-key dict
-   conversion and rejection of unsupported values;
+4. complete recursive tagged oracle freezing, including exact G151 20-key
+   dict/list conversion, exact finite G185 float-hex conversion, complete
+   nested dataclass type codes, and rejection of unsupported values;
 5. case, registry, authority, dependency, fixture, version, profile, identity,
    and oracle drift;
 6. all fourteen status/reason mappings and deterministic first-error priority;
 7. missing, extra, reordered, duplicate, alias, case-change, subclass,
-   wrong-container, wrong-element, and meaningless-nonempty values;
+   wrong-container, wrong-element, meaningless-nonempty, and type-tag
+   collision values;
 8. all market and calendar cross-stage identity equalities and mixed-attempt
    rejection;
 9. input, registry, oracle, authority, fixture, source, snapshot, and
@@ -709,7 +801,11 @@ least:
 11. exception sanitization, failure clearing, safety flags, and sensitive-data
     isolation;
 12. no import or runtime implementation of the future runner; and
-13. explicit evidence that existing v1 source, registry, vectors, integration,
+13. real v1 diagnostics and real G185 READY oracle representability, including
+    list-versus-tuple, finite-float, signed-zero, non-finite-float,
+    float-subclass, malformed-float-hex, and dataclass/container type-tag
+    bypass probes; and
+14. explicit evidence that existing v1 source, registry, vectors, integration,
     and verification remain unchanged.
 
 Static vectors must not claim production implementation, genuine integration,
@@ -745,6 +841,8 @@ G208 is complete only when this document:
 - assigns all path, clock, policy, dependency, fixture, oracle, and runtime
   authority to the immutable server-owned registry and private capsule;
 - defines the closed recursive oracle grammar and full-result equality;
+- makes genuine v1 diagnostic lists and genuine finite G185 floats
+  representable without type collisions, rounding, or ambient context;
 - fixes the exact seven-stage order and zero/one call accounting;
 - requires the existing v1 runner rather than direct G153/G151 calls;
 - defines strict per-stage safe-result, identity, profile, oracle, and drift
