@@ -2688,9 +2688,9 @@ def test_vector_module_has_no_future_runtime_import_or_implementation() -> None:
     assert "CanonicalGoldFactsReplayRegistryRecordV1" not in defined_names
     assert "CanonicalGoldFactsReplayResultV1" not in defined_names
     assert "run_canonical_gold_facts_replay_case_v1" not in defined_names
-    assert not (
+    assert (
         Path(__file__).resolve().parents[1]
         / "app"
         / "services"
         / "canonical_gold_facts_replay_stage.py"
-    ).exists()
+    ).is_file()
