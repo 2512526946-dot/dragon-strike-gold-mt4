@@ -363,6 +363,54 @@ def test_all_outer_failures_clear_evidence_and_keep_fixed_safety_flags() -> None
         assert result.allowed_to_modify_risk is False
 
 
+def test_polluted_blocked_dependency_results_are_invalid() -> None:
+    record = stage._REGISTRY[0]
+    blocked_results = (
+        (
+            2,
+            stage.market_facts._failure(
+                stage.market_facts._INPUT_INVALID_STATUS,
+                stage.market_facts._SOURCE_TYPE_INVALID,
+            ),
+            ("contract_version",),
+        ),
+        (
+            3,
+            stage.session_facts._failure(
+                stage.session_facts._INPUT_INVALID_STATUS,
+                stage.session_facts._INPUT_TYPE_INVALID,
+            ),
+            ("contract_version", "facts_profile_version"),
+        ),
+        (
+            4,
+            stage.volatility._failure(
+                stage.volatility._INPUT_INVALID_STATUS,
+                stage.volatility._INPUT_TYPE_INVALID,
+            ),
+            ("contract_version", "facts_profile_version"),
+        ),
+        (
+            6,
+            stage.economic._failure(*stage.economic._FAILURES[0]),
+            ("contract_version", "facts_profile_version"),
+        ),
+    )
+    for index, blocked, version_fields in blocked_results:
+        assert stage._assess_stage(index, blocked, record) == "blocked"
+        assert stage._assess_stage(
+            index,
+            replace(blocked, warning_codes=("POLLUTED_WARNING",)),
+            record,
+        ) == "invalid"
+        for field_name in version_fields:
+            assert stage._assess_stage(
+                index,
+                replace(blocked, **{field_name: "drifted"}),
+                record,
+            ) == "invalid"
+
+
 def test_module_ast_has_no_direct_forbidden_runtime_surface() -> None:
     path = Path(stage.__file__)
     source = path.read_text(encoding="ascii")

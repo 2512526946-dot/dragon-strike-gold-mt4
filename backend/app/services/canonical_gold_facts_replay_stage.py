@@ -1310,9 +1310,48 @@ def _blocked_shape_is_safe(index: int, result: object) -> bool:
             index in {1, 5}
             or (result.status_code, reasons[0]) in _BLOCKED_STATUS_REASONS[index]
         )
+        and _blocked_contract_fields_are_safe(index, result)
         and _failure_evidence_is_cleared(index, result)
         and _safety_flags_are_safe(result)
     )
+
+
+def _blocked_contract_fields_are_safe(index: int, result: object) -> bool:
+    if index == 2:
+        return (
+            type(result.contract_version) is str
+            and result.contract_version == market_facts._CONTRACT_VERSION
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+        )
+    if index == 3:
+        return (
+            type(result.contract_version) is str
+            and result.contract_version == session_facts._CONTRACT_VERSION
+            and type(result.facts_profile_version) is str
+            and result.facts_profile_version == session_facts._FACTS_PROFILE_VERSION
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+        )
+    if index == 4:
+        return (
+            type(result.contract_version) is str
+            and result.contract_version == volatility._CONTRACT_VERSION
+            and type(result.facts_profile_version) is str
+            and result.facts_profile_version == volatility._FACTS_PROFILE_VERSION
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+        )
+    if index == 6:
+        return (
+            type(result.contract_version) is str
+            and result.contract_version == economic._CONTRACT_VERSION
+            and type(result.facts_profile_version) is str
+            and result.facts_profile_version == economic._FACTS_PROFILE_VERSION
+            and type(result.warning_codes) is tuple
+            and result.warning_codes == ()
+        )
+    return True
 
 
 def _failure_evidence_is_cleared(index: int, result: object) -> bool:
