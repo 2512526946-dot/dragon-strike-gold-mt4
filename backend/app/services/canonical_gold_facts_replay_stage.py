@@ -1593,22 +1593,34 @@ def _immutable_state(replay_case: CanonicalGoldFactsReplayCaseV1, registry: tupl
         _record_state(registry[0]),
         tuple((field.name, getattr(registry[0].expected_oracle, field.name)) for field in fields(registry[0].expected_oracle)),
         tuple(getattr(capsule, field.name) for field in fields(capsule)),
+        _registry_object_graph(registry),
     )
 
 
 def _record_state(record: CanonicalGoldFactsReplayRegistryRecordV1) -> tuple[object, ...]:
-    return tuple((field.name, getattr(record, field.name)) for field in fields(record))
+    # The registered case can share identity with its approved binding; snapshot its values.
+    case_state = tuple((field.name, getattr(record.diagnostics_case, field.name)) for field in fields(record.diagnostics_case))
+    return tuple(
+        (field.name, case_state if field.name == "diagnostics_case" else getattr(record, field.name))
+        for field in fields(record)
+    )
 
 
 def _evidence_is_unchanged(replay_case: CanonicalGoldFactsReplayCaseV1, registry_snapshot: tuple[CanonicalGoldFactsReplayRegistryRecordV1, ...], capsule_snapshot: _AuthorityCapsule, fixture_snapshot: tuple[object, ...], immutable_snapshot: tuple[object, ...], earlier_results: tuple[object, ...]) -> bool:
     try:
-        return (
+        if not (
             _REGISTRY is registry_snapshot
             and _CAPSULE is capsule_snapshot
             and _case_is_safe(replay_case)
             and _registry_is_safe(registry_snapshot)
             and _authority_is_safe(capsule_snapshot)
-            and _immutable_state(replay_case, registry_snapshot, capsule_snapshot) == immutable_snapshot
+        ):
+            return False
+        current = _immutable_state(replay_case, registry_snapshot, capsule_snapshot)
+        return (
+            current[:4] == immutable_snapshot[:4]
+            and len(current[4]) == len(immutable_snapshot[4])
+            and all(actual is expected for actual, expected in zip(current[4], immutable_snapshot[4], strict=True))
             and _fixture_state(capsule_snapshot) == fixture_snapshot
             and all(
                 _has_exact_registered_shape(value)
@@ -1623,6 +1635,26 @@ def _evidence_is_unchanged(replay_case: CanonicalGoldFactsReplayCaseV1, registry
         )
     except _MalformedStageResult:
         return False
+
+
+def _registry_object_graph(value: object, *, _ancestors: frozenset[int] = frozenset()) -> tuple[object, ...]:
+    # Keep authority references per attempt, separate from the portable value oracle.
+    if type(value) not in (
+        tuple, CanonicalGoldFactsReplayRegistryRecordV1,
+        CanonicalGoldFactsReplayExpectedOracleV1, CanonicalBundleReplayCaseV1,
+    ):
+        return _object_graph(value, _ancestors=_ancestors)
+    if id(value) in _ancestors:
+        raise _MalformedStageResult
+    ancestors = _ancestors | {id(value)}
+    if type(value) is tuple:
+        children = value
+    else:
+        missing = object()
+        children = tuple(getattr(value, field.name, missing) for field in fields(value))
+        if any(child is missing for child in children):
+            raise _MalformedStageResult
+    return (value, *(node for child in children for node in _registry_object_graph(child, _ancestors=ancestors)))
 
 
 def _object_graph(value: object, *, _ancestors: frozenset[int] = frozenset()) -> tuple[object, ...]:

@@ -852,6 +852,150 @@ def _substitute_attempt_node(value: object, path: tuple[str | int, ...], replace
     return value
 
 
+@pytest.mark.parametrize("index", range(7))
+@pytest.mark.parametrize("path", (
+    ("diagnostics_case",),
+    ("expected_market_identity",),
+    ("expected_calendar_identity",),
+    ("expected_oracle",),
+    *(("expected_oracle", name) for name in EXPECTED_PUBLIC_FIELDS[1][1]),
+))
+def test_registry_boundary_rejects_equal_authority_substitution(
+    monkeypatch: pytest.MonkeyPatch, index: int, path: tuple[str, ...],
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    record = stage._REGISTRY[0]
+    parent = _attempt_node(record, path[:-1])
+    original = getattr(parent, path[-1])
+    foreign = replace(original) if is_dataclass(original) else tuple(list(original))
+    assert foreign == original and foreign is not original
+    before = deepcopy(record)
+    substitutions = 0
+
+    def substitute(result: object) -> object:
+        nonlocal substitutions
+        object.__setattr__(parent, path[-1], foreign)
+        assert getattr(parent, path[-1]) is foreign and record == before
+        substitutions += 1
+        return result
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls = _install_delegating_capsule(
+                controlled, result_transform=(CALL_ORDER[index], substitute),
+            )
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+                stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+            )
+            assert substitutions == 1 and calls == list(CALL_ORDER[:index + 1])
+    finally:
+        object.__setattr__(parent, path[-1], original)
+    assert getattr(parent, path[-1]) is original
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("index", (0, 6))
+@pytest.mark.parametrize("mutation", ("identity_value", "missing_oracle_slot", "oracle_list"))
+def test_registry_boundary_preserves_value_and_structural_failure_classification(
+    monkeypatch: pytest.MonkeyPatch, index: int, mutation: str,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    record = stage._REGISTRY[0]
+    parent = record if mutation == "identity_value" else record.expected_oracle
+    name = "expected_market_identity" if mutation == "identity_value" else "diagnostics_result"
+    original = getattr(parent, name)
+    mutations = 0
+
+    def corrupt(result: object) -> object:
+        nonlocal mutations
+        if mutation == "missing_oracle_slot":
+            object.__delattr__(parent, name)
+        elif mutation == "oracle_list":
+            object.__setattr__(parent, name, list(original))
+        else:
+            object.__setattr__(parent, name, (*original[:-1], "CONTROLLED_SECRET"))
+        mutations += 1
+        return result
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls = _install_delegating_capsule(
+                controlled, result_transform=(CALL_ORDER[index], corrupt),
+            )
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+                stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+            )
+            assert mutations == 1 and calls == list(CALL_ORDER[:index + 1])
+    finally:
+        object.__setattr__(parent, name, original)
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+def test_registry_boundary_internal_fault_stays_safe_failure(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception],
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    original = stage._registry_object_graph
+    faults = 0
+
+    with monkeypatch.context() as controlled:
+        calls = _install_delegating_capsule(controlled)
+
+        def internal_fault(*args: object, **kwargs: object) -> object:
+            nonlocal faults
+            if calls:
+                faults += 1
+                raise error("CONTROLLED_SECRET")
+            return original(*args, **kwargs)
+
+        controlled.setattr(stage, "_registry_object_graph", internal_fault)
+        _assert_terminal_failure(
+            _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE,
+            stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED,
+        )
+        assert faults == 1 and calls == ["diagnostics"]
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("index", range(7))
+@pytest.mark.parametrize("field_name", ("replay_contract_version", "case_id", "fixture_id"))
+def test_registry_boundary_rejects_in_place_registered_case_value_drift(
+    monkeypatch: pytest.MonkeyPatch, index: int, field_name: str,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    case = stage._REGISTRY[0].diagnostics_case
+    original = getattr(case, field_name)
+    mutations = 0
+
+    def corrupt(result: object) -> object:
+        nonlocal mutations
+        object.__setattr__(case, field_name, "CONTROLLED_SECRET")
+        assert stage._REGISTRY[0].diagnostics_case is stage._DIAGNOSTICS_CASE
+        mutations += 1
+        return result
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls = _install_delegating_capsule(
+                controlled, result_transform=(CALL_ORDER[index], corrupt),
+            )
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+                stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+            )
+            assert mutations == 1 and calls == list(CALL_ORDER[:index + 1])
+    finally:
+        object.__setattr__(case, field_name, original)
+    assert _run() == anchor
+
+
 @pytest.mark.parametrize("index,path", (
     (0, ("canonical_summary",)),
     (0, ("canonical_summary", "readiness_notes")),
