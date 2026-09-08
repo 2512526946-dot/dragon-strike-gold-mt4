@@ -154,6 +154,7 @@ def _install_delegating_capsule(
     *,
     mutation_stage: str | None = None,
     result_transform: tuple[str, Callable[[object], object]] | None = None,
+    stage_results: dict[str, object] | None = None,
 ) -> list[str]:
     calls: list[str] = []
     originals = {
@@ -167,6 +168,8 @@ def _install_delegating_capsule(
     }
 
     def finish(name: str, result: object) -> object:
+        if stage_results is not None:
+            stage_results[name] = result
         if result_transform is not None and result_transform[0] == name:
             return result_transform[1](result)
         return result
@@ -993,6 +996,215 @@ def test_registry_boundary_rejects_in_place_registered_case_value_drift(
             assert mutations == 1 and calls == list(CALL_ORDER[:index + 1])
     finally:
         object.__setattr__(case, field_name, original)
+    assert _run() == anchor
+
+
+def _install_delegating_result_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    index: int,
+    on_validate: Callable[[dict[str, object]], None],
+    *,
+    result_transform: Callable[[object], object] | None = None,
+) -> tuple[list[str], list[int]]:
+    armed = False
+    validations: list[int] = []
+    results: dict[str, object] = {}
+
+    def arm(result: object) -> object:
+        nonlocal armed
+        assert result.passed is True
+        armed = True
+        return result if result_transform is None else result_transform(result)
+
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=(CALL_ORDER[index], arm), stage_results=results,
+    )
+
+    def finish(valid: object) -> object:
+        if armed:
+            assert valid is True
+            validations.append(index)
+            on_validate(results)
+        return valid
+
+    if index == 1:
+        original = stage.market_fixture._EXPECTED_VALIDATE_RESULT
+
+        def validate(*, result: object) -> object:
+            return finish(original(result=result))
+
+        monkeypatch.setattr(stage.market_fixture, "_EXPECTED_VALIDATE_RESULT", validate)
+        monkeypatch.setattr(stage.market_fixture, "_is_safe_canonical_gold_market_facts_source_adapter_result_v1", validate)
+        monkeypatch.setattr(stage, "_EXPECTED_VALIDATE_MARKET_RESULT", validate)
+        capsule = replace(stage._APPROVED_CAPSULE, market_result_validator=validate)
+    else:
+        assert index == 5
+        original = stage.calendar._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
+
+        def validate(*, adapter_result: object, authority: object) -> object:
+            return finish(original(adapter_result=adapter_result, authority=authority))
+
+        monkeypatch.setattr(stage.calendar, "_is_safe_canonical_gold_economic_calendar_source_adapter_result_v1", validate)
+        monkeypatch.setattr(stage, "_EXPECTED_VALIDATE_CALENDAR_RESULT", validate)
+        capsule = replace(stage._APPROVED_CAPSULE, calendar_result_validator=validate)
+    monkeypatch.setattr(stage, "_APPROVED_CAPSULE", capsule)
+    monkeypatch.setattr(stage, "_CAPSULE", capsule)
+    return calls, validations
+
+
+@pytest.mark.parametrize("index", (1, 5), ids=("source", "calendar"))
+@pytest.mark.parametrize("mutation", (
+    "missing_replay_contract_version", "missing_case_id", "missing_fixture_id",
+    "equal_registered_case", "equal_expected_identity", "equal_oracle", "equal_oracle_field",
+    "registry_value", "equal_capsule", "capsule_field", "dependency_binding",
+    "earlier_value", "earlier_equal_container", "earlier_missing_slot",
+))
+def test_validator_time_evidence_drift_stops_before_next_stage(
+    monkeypatch: pytest.MonkeyPatch, index: int, mutation: str,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    restores: list[tuple[object, str, object]] = []
+
+    def change(value: object, name: str, replacement: object, *, delete: bool = False) -> None:
+        restores.append((value, name, getattr(value, name)))
+        if delete:
+            object.__delattr__(value, name)
+        else:
+            object.__setattr__(value, name, replacement)
+
+    def substitute(value: object, name: str) -> None:
+        original = getattr(value, name)
+        other = replace(original) if is_dataclass(original) else tuple(list(original))
+        assert other == original and other is not original
+        change(value, name, other)
+
+    def corrupt(results: dict[str, object]) -> None:
+        record = stage._REGISTRY[0]
+        if mutation.startswith("missing_"):
+            change(record.diagnostics_case, mutation.removeprefix("missing_"), None, delete=True)
+        elif mutation == "equal_registered_case":
+            substitute(record, "diagnostics_case")
+        elif mutation == "equal_expected_identity":
+            substitute(record, "expected_market_identity")
+        elif mutation == "equal_oracle":
+            substitute(record, "expected_oracle")
+        elif mutation == "equal_oracle_field":
+            substitute(record.expected_oracle, "diagnostics_result")
+        elif mutation == "registry_value":
+            change(record.diagnostics_case, "replay_contract_version", "CONTROLLED_SECRET")
+        elif mutation == "equal_capsule":
+            other = replace(stage._CAPSULE)
+            assert other == stage._CAPSULE and other is not stage._CAPSULE
+            controlled.setattr(stage, "_CAPSULE", other)
+        elif mutation == "capsule_field":
+            change(stage._CAPSULE, "market_fixture_paths", ())
+        elif mutation == "dependency_binding":
+            controlled.setattr(stage.market_facts, "build_canonical_gold_market_facts_snapshot_v1", object())
+        elif mutation == "earlier_value":
+            change(results["diagnostics"], "canonical_summary", {"changed": "CONTROLLED_SECRET"})
+        elif mutation == "earlier_equal_container":
+            previous = results["diagnostics"].canonical_summary
+            other = deepcopy(previous)
+            assert other == previous and other is not previous
+            change(results["diagnostics"], "canonical_summary", other)
+        else:
+            assert mutation == "earlier_missing_slot"
+            change(results["diagnostics"], "canonical_summary", None, delete=True)
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls, validations = _install_delegating_result_validator(controlled, index, corrupt)
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+                stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+            )
+            assert validations == [index]
+            assert calls == list(CALL_ORDER[:index + 1])
+    finally:
+        for value, name, original in reversed(restores):
+            object.__setattr__(value, name, original)
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("index", (1, 5), ids=("source", "calendar"))
+@pytest.mark.parametrize("state", ("ready", "blocked", "mismatch"))
+@pytest.mark.parametrize("drift", (False, True))
+def test_validator_time_recheck_preserves_state_priority_and_single_call(
+    monkeypatch: pytest.MonkeyPatch, index: int, state: str, drift: bool,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    case = stage._REGISTRY[0].diagnostics_case
+    original = case.replay_contract_version
+
+    def transform(ready: object) -> object:
+        if state == "blocked":
+            return _blocked_result(index)
+        if state == "ready":
+            return ready
+        if index == 1:
+            source = ready.source
+            return replace(ready, source=replace(source, symbol_spec=replace(
+                source.symbol_spec, session_status_readonly_label="CLOSED",
+            )))
+        snapshot = ready.snapshot
+        first = replace(snapshot.events[0], source_revision=snapshot.events[0].source_revision + 1)
+        return replace(ready, snapshot=replace(snapshot, events=(first, *snapshot.events[1:])))
+
+    def validate(results: dict[str, object]) -> None:
+        if drift:
+            object.__delattr__(case, "replay_contract_version")
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls, validations = _install_delegating_result_validator(
+                controlled, index, validate, result_transform=transform,
+            )
+            result = _run()
+            assert validations == [index]
+            if drift:
+                _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+            elif state == "blocked":
+                _assert_terminal_failure(result, *stage._BLOCKED_BY_STAGE[index])
+            elif state == "mismatch":
+                _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_MISMATCH, stage.GOLD_FACTS_REPLAY_EXPECTATION_MISMATCH)
+            else:
+                assert result == anchor and result is not anchor
+            expected_calls = CALL_ORDER if not drift and state == "ready" else CALL_ORDER[:index + 1]
+            assert calls == list(expected_calls)
+    finally:
+        object.__setattr__(case, "replay_contract_version", original)
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("index", (1, 5), ids=("source", "calendar"))
+@pytest.mark.parametrize("helper", ("_evidence_is_unchanged", "_same_object_graph"))
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+def test_post_validator_internal_errors_reach_public_sanitizer(
+    monkeypatch: pytest.MonkeyPatch, index: int, helper: str, error: type[Exception],
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    faults = 0
+    original = getattr(stage, helper)
+    with monkeypatch.context() as controlled:
+        calls, validations = _install_delegating_result_validator(controlled, index, lambda results: None)
+
+        def fail(*args: object, **kwargs: object) -> object:
+            nonlocal faults
+            if validations:
+                faults += 1
+                raise error("CONTROLLED_SECRET")
+            return original(*args, **kwargs)
+
+        controlled.setattr(stage, helper, fail)
+        _assert_terminal_failure(
+            _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE,
+            stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED,
+        )
+        assert validations == [index] and faults == 1
+        assert calls == list(CALL_ORDER[:index + 1])
     assert _run() == anchor
 
 

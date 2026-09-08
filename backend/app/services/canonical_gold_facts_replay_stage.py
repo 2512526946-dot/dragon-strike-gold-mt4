@@ -1271,6 +1271,18 @@ def _after_stage(
     except _MalformedStageResult:
         return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
     assessment = _assess_stage(index, result, record, calendar_authority=calendar_authority)
+    if index in {1, 5} and assessment != "invalid":
+        # A validator may change evidence after the stage's first drift check.
+        if not _evidence_is_unchanged(replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, earlier_results):
+            return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
+        try:
+            if len(attempt_graphs) != len(earlier_results) or not all(
+                _same_object_graph(value, prior_graph)
+                for value, prior_graph in zip(earlier_results, attempt_graphs, strict=True)
+            ):
+                raise _MalformedStageResult
+        except _MalformedStageResult:
+            return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
     if assessment == "ready":
         try:
             if not _same_object_graph(result, graph):
