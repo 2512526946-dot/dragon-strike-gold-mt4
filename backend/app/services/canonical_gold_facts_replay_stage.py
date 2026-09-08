@@ -1187,16 +1187,17 @@ def run_canonical_gold_facts_replay_case_v1(
         return _failure(CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE, GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED)
 
     results: list[object] = []
+    attempt_graphs: list[tuple[object, ...]] = []
     try:
         diagnostics_result = replay_v1.run_canonical_bundle_replay_case(replay_case=record.diagnostics_case)
         results.append(diagnostics_result)
-        failure = _after_stage(0, diagnostics_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, ())
+        failure = _after_stage(0, diagnostics_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, (), attempt_graphs=attempt_graphs)
         if failure is not None:
             return failure
 
         market_source_result = market_fixture.build_canonical_gold_market_facts_docs_fixture_source_v1()
         results.append(market_source_result)
-        failure = _after_stage(1, market_source_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]))
+        failure = _after_stage(1, market_source_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs)
         if failure is not None:
             return failure
         source = market_source_result.source
@@ -1204,20 +1205,20 @@ def run_canonical_gold_facts_replay_case_v1(
 
         market_snapshot = market_facts.build_canonical_gold_market_facts_snapshot_v1(validated_source=source)
         results.append(market_snapshot)
-        failure = _after_stage(2, market_snapshot, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]))
+        failure = _after_stage(2, market_snapshot, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs)
         if failure is not None or _freeze_value(source, allow_market_floats=True) != source_snapshot:
             return failure or _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
         market_snapshot_state = _freeze_value(market_snapshot)
 
         session_result = session_facts.build_canonical_gold_session_spread_freshness_facts_v1(market_facts_snapshot=market_snapshot)
         results.append(session_result)
-        failure = _after_stage(3, session_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]))
+        failure = _after_stage(3, session_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs)
         if failure is not None or _freeze_value(market_snapshot) != market_snapshot_state:
             return failure or _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
 
         volatility_result = volatility.build_canonical_gold_volatility_structure_facts_v1(market_facts_snapshot=market_snapshot)
         results.append(volatility_result)
-        failure = _after_stage(4, volatility_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]))
+        failure = _after_stage(4, volatility_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs)
         if failure is not None or _freeze_value(market_snapshot) != market_snapshot_state:
             return failure or _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
 
@@ -1225,7 +1226,7 @@ def run_canonical_gold_facts_replay_case_v1(
         calendar_authority_state = calendar._authority_snapshot(calendar_authority)
         calendar_result = calendar.build_server_owned_canonical_gold_economic_calendar_snapshot_v1(authority=calendar_authority)
         results.append(calendar_result)
-        failure = _after_stage(5, calendar_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), calendar_authority=calendar_authority)
+        failure = _after_stage(5, calendar_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs, calendar_authority=calendar_authority)
         if failure is not None or calendar._authority_snapshot(calendar_authority) != calendar_authority_state:
             return failure or _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
         calendar_snapshot = calendar_result.snapshot
@@ -1233,7 +1234,7 @@ def run_canonical_gold_facts_replay_case_v1(
 
         economic_result = economic.build_canonical_gold_economic_window_facts_v1(market_facts_snapshot=market_snapshot, economic_calendar_snapshot=calendar_snapshot)
         results.append(economic_result)
-        failure = _after_stage(6, economic_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]))
+        failure = _after_stage(6, economic_result, record, replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, tuple(results[:-1]), attempt_graphs=attempt_graphs)
         if failure is not None or _freeze_value(market_snapshot) != market_snapshot_state or _freeze_value(calendar_snapshot) != calendar_snapshot_state:
             return failure or _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
 
@@ -1255,12 +1256,28 @@ def _after_stage(
     immutable_snapshot: tuple[object, ...],
     earlier_results: tuple[object, ...],
     *,
+    attempt_graphs: list[tuple[object, ...]],
     calendar_authority: object | None = None,
 ) -> CanonicalGoldFactsReplayResultV1 | None:
     if not _evidence_is_unchanged(replay_case, registry_snapshot, capsule_snapshot, fixture_snapshot, immutable_snapshot, earlier_results):
         return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
+    try:
+        if len(attempt_graphs) != len(earlier_results) or not all(
+            _same_object_graph(value, graph)
+            for value, graph in zip(earlier_results, attempt_graphs, strict=True)
+        ):
+            raise _MalformedStageResult
+        graph = _object_graph(result)
+    except _MalformedStageResult:
+        return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
     assessment = _assess_stage(index, result, record, calendar_authority=calendar_authority)
     if assessment == "ready":
+        try:
+            if not _same_object_graph(result, graph):
+                raise _MalformedStageResult
+        except _MalformedStageResult:
+            return _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
+        attempt_graphs.append(graph)
         return None
     if assessment == "blocked":
         status, reason = _BLOCKED_BY_STAGE[index]
@@ -1566,7 +1583,7 @@ def _fixture_state(capsule: _AuthorityCapsule) -> tuple[object, ...] | None:
             stat_result = path.stat()
             state.append((path, stat_result.st_mode, stat_result.st_size, stat_result.st_mtime_ns, path.read_bytes()))
         return tuple(state)
-    except Exception:
+    except OSError:
         return None
 
 
@@ -1606,6 +1623,34 @@ def _evidence_is_unchanged(replay_case: CanonicalGoldFactsReplayCaseV1, registry
         )
     except _MalformedStageResult:
         return False
+
+
+def _object_graph(value: object, *, _ancestors: frozenset[int] = frozenset()) -> tuple[object, ...]:
+    # Retain strong references only within this attempt; the value oracle stays portable.
+    if value is None or type(value) in {bool, int, float, str}:
+        return ()
+    if id(value) in _ancestors:
+        raise _MalformedStageResult
+    ancestors = _ancestors | {id(value)}
+    if type(value) in {tuple, list}:
+        children = value
+    elif type(value) is dict:
+        children = tuple(child for pair in value.items() for child in pair)
+    elif _has_exact_registered_shape(value):
+        missing = object()
+        children = tuple(getattr(value, field.name, missing) for field in fields(value))
+        if any(child is missing for child in children):
+            raise _MalformedStageResult
+    else:
+        raise _MalformedStageResult
+    return (value, *(node for child in children for node in _object_graph(child, _ancestors=ancestors)))
+
+
+def _same_object_graph(value: object, graph: tuple[object, ...]) -> bool:
+    current = _object_graph(value)
+    return len(current) == len(graph) and all(
+        actual is expected for actual, expected in zip(current, graph, strict=True)
+    )
 
 
 def _has_exact_registered_shape(value: object) -> bool:
@@ -1771,9 +1816,19 @@ def _is_valid_frozen_value(value: object) -> bool:
 
 def _identities_match(record: CanonicalGoldFactsReplayRegistryRecordV1, results: tuple[object, ...]) -> bool:
     try:
+        if (
+            type(record) is not CanonicalGoldFactsReplayRegistryRecordV1
+            or not _has_all_fields(record)
+            or type(results) is not tuple
+            or len(results) != len(_RESULT_TYPES)
+            or not all(_matches_declared_type(value, expected) for value, expected in zip(results, _RESULT_TYPES, strict=True))
+        ):
+            return False
         diagnostics, source_result, snapshot, session_result, volatility_result, calendar_result, economic_result = results
         source = source_result.source
         calendar_snapshot = calendar_result.snapshot
+        if source is None or calendar_snapshot is None:
+            return False
         return (
             (diagnostics.replay_contract_version, diagnostics.registry_version, diagnostics.pipeline_contract_version, diagnostics.policy_profile_version, diagnostics.case_id, diagnostics.fixture_id)
             == (UPSTREAM_REPLAY_CONTRACT_VERSION, UPSTREAM_REPLAY_REGISTRY_VERSION, "canonical_diagnostics_pipeline_g153_v1", "canonical_diagnostics_default_policy_v1", "canonical_docs_ready", "canonical_docs_fixture_v1")
@@ -1786,7 +1841,7 @@ def _identities_match(record: CanonicalGoldFactsReplayRegistryRecordV1, results:
             and _calendar_identity_from_economic(economic_result) == record.expected_calendar_identity
             and source.reference_time_utc == snapshot.reference_time_utc == session_result.reference_time_utc == volatility_result.reference_time_utc == economic_result.reference_time_utc == record.reference_time_utc
         )
-    except Exception:
+    except _MalformedStageResult:
         return False
 
 
@@ -1879,7 +1934,14 @@ def _failure(status: str, reason: str) -> CanonicalGoldFactsReplayResultV1:
         volatility_structure_facts=None,
         economic_calendar_result=None,
         economic_window_facts=None,
-        **_safety_values(),
+        read_only=True,
+        demo_only=True,
+        is_tradable=False,
+        can_execute=False,
+        is_trading_permission=False,
+        is_execution_instruction=False,
+        allowed_to_call_ea=False,
+        allowed_to_modify_risk=False,
     )
     try:
         if _result_is_safe(result) is True:
@@ -1906,7 +1968,14 @@ def _failure(status: str, reason: str) -> CanonicalGoldFactsReplayResultV1:
         volatility_structure_facts=None,
         economic_calendar_result=None,
         economic_window_facts=None,
-        **_safety_values(),
+        read_only=True,
+        demo_only=True,
+        is_tradable=False,
+        can_execute=False,
+        is_trading_permission=False,
+        is_execution_instruction=False,
+        allowed_to_call_ea=False,
+        allowed_to_modify_risk=False,
     )
 
 
@@ -1931,11 +2000,15 @@ def _safety_values() -> dict[str, bool]:
 
 
 def _safety_flags_are_safe(value: object) -> bool:
-    try:
-        expected = _safety_values()
-        return all(type(getattr(value, name)) is bool and getattr(value, name) is expected_value for name, expected_value in expected.items() if hasattr(value, name)) and value.read_only is True and value.demo_only is True and value.is_tradable is False and value.can_execute is False and value.allowed_to_call_ea is False
-    except Exception:
-        return False
+    expected = _safety_values()
+    return (
+        all(type(getattr(value, name)) is bool and getattr(value, name) is expected_value for name, expected_value in expected.items() if hasattr(value, name))
+        and getattr(value, "read_only", None) is True
+        and getattr(value, "demo_only", None) is True
+        and getattr(value, "is_tradable", None) is False
+        and getattr(value, "can_execute", None) is False
+        and getattr(value, "allowed_to_call_ea", None) is False
+    )
 
 
 def _identifier_is_safe(value: object) -> bool:

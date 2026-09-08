@@ -826,6 +826,214 @@ def test_recovery_missing_case_slot_has_structural_classification(
     assert calls == (["diagnostics"] if after_stage else [])
 
 
+def _attempt_child(value: object, key: str | int) -> object:
+    return value[key] if type(value) in {dict, tuple, list} else getattr(value, key)
+
+
+def _attempt_node(value: object, path: tuple[str | int, ...]) -> object:
+    for key in path:
+        value = _attempt_child(value, key)
+    return value
+
+
+def _substitute_attempt_node(value: object, path: tuple[str | int, ...], replacement: object) -> object:
+    if not path:
+        return replacement
+    key = path[0]
+    changed = _substitute_attempt_node(_attempt_child(value, key), path[1:], replacement)
+    if type(value) is tuple:
+        items = list(value)
+        items[key] = changed
+        return tuple(items)
+    if type(value) in {dict, list}:
+        value[key] = changed
+    else:
+        object.__setattr__(value, key, changed)
+    return value
+
+
+@pytest.mark.parametrize("index,path", (
+    (0, ("canonical_summary",)),
+    (0, ("canonical_summary", "readiness_notes")),
+    (0, ("canonical_summary", "component_statuses", "canonical_data_quality_gate")),
+    (1, ("source",)),
+    (1, ("source", "live_tick")),
+    (1, ("source", "upstream_evidence")),
+    (1, ("source", "timeframes")),
+    (1, ("source", "timeframes", 0, "bars")),
+    (1, ("source", "timeframes", 0, "bars", 0)),
+    (1, ("source", "symbol_spec")),
+    (2, ("quote",)),
+    (2, ("timeframes",)),
+    (2, ("timeframes", 0, "bars")),
+    (2, ("timeframes", 0, "bars", 0)),
+    (2, ("symbol_spec",)),
+    (2, ("freshness",)),
+    (3, ("session",)),
+    (3, ("spread",)),
+    (3, ("freshness",)),
+    (4, ("timeframes",)),
+    (4, ("timeframes", 0, "bar_pairs")),
+    (4, ("timeframes", 0, "bar_pairs", 0)),
+    (5, ("snapshot",)),
+    (5, ("snapshot", "events")),
+    (5, ("snapshot", "events", 0)),
+    (5, ("snapshot", "upstream_evidence")),
+))
+def test_attempt_boundary_rejects_equal_foreign_nested_objects(
+    monkeypatch: pytest.MonkeyPatch, index: int, path: tuple[str | int, ...],
+) -> None:
+    previous = _run()
+    assert previous.passed is True
+    foreign = _attempt_node(_nested_results(previous)[index], path)
+    accepted: dict[int, object] = {}
+    original_after = stage._after_stage
+    substitutions = 0
+
+    def remember(stage_index: int, result: object, *args: object, **kwargs: object) -> object:
+        failure = original_after(stage_index, result, *args, **kwargs)
+        if failure is None:
+            accepted[stage_index] = result
+        return failure
+
+    def substitute(result: object) -> object:
+        nonlocal substitutions
+        earlier = accepted[index]
+        current = _attempt_node(earlier, path)
+        assert current == foreign and current is not foreign
+        before = deepcopy(earlier)
+        assert _substitute_attempt_node(earlier, path, foreign) is earlier
+        assert earlier == before
+        assert _attempt_node(earlier, path) is foreign
+        substitutions += 1
+        return result
+
+    with monkeypatch.context() as controlled:
+        controlled.setattr(stage, "_after_stage", remember)
+        calls = _install_delegating_capsule(
+            controlled, result_transform=(CALL_ORDER[index + 1], substitute),
+        )
+        _assert_terminal_failure(
+            _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+            stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+        )
+        assert substitutions == 1
+        assert calls == list(CALL_ORDER[:index + 2])
+    assert _run() == previous
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+@pytest.mark.parametrize("location", ("final_identity", "final_safety", "post_stage_fixture", "post_stage_graph"))
+def test_attempt_boundary_internal_faults_reach_terminal_sanitizer(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception], location: str,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+    observer_name = {
+        "final_identity": "_identities_match",
+        "final_safety": "_safety_flags_are_safe",
+        "post_stage_fixture": "_evidence_is_unchanged",
+        "post_stage_graph": "_after_stage",
+    }[location]
+    owner, fault_name = {
+        "final_identity": (stage, "_market_identity_from_source"),
+        "final_safety": (stage, "_safety_values"),
+        "post_stage_fixture": (Path, "read_bytes"),
+        "post_stage_graph": (stage, "_object_graph"),
+    }[location]
+    original_observer = getattr(stage, observer_name)
+    original_leaf = getattr(owner, fault_name)
+    in_scope = False
+    faults = 0
+
+    def observe(*args: object, **kwargs: object) -> object:
+        nonlocal in_scope
+        if location == "final_safety":
+            in_scope = type(args[0]) is stage.CanonicalGoldFactsReplayResultV1 and args[0].passed is True
+        elif location == "post_stage_fixture":
+            in_scope = bool(args[-1])
+        elif location == "post_stage_graph":
+            in_scope = args[0] == 1
+        else:
+            in_scope = True
+        try:
+            return original_observer(*args, **kwargs)
+        finally:
+            in_scope = False
+
+    def internal_fault(*args: object, **kwargs: object) -> object:
+        nonlocal faults
+        if in_scope:
+            faults += 1
+            raise error("CONTROLLED_SECRET")
+        return original_leaf(*args, **kwargs)
+
+    monkeypatch.setattr(stage, observer_name, observe)
+    monkeypatch.setattr(owner, fault_name, internal_fault)
+    _assert_terminal_failure(
+        _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE,
+        stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED,
+    )
+    assert faults == 1
+    assert calls == list(CALL_ORDER if location.startswith("final") else CALL_ORDER[:2])
+
+
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_attempt_boundary_expected_filesystem_failure_remains_structural(
+    monkeypatch: pytest.MonkeyPatch, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+    original_check = stage._evidence_is_unchanged
+    original_read = Path.read_bytes
+    checking_earlier = False
+    faults = 0
+
+    def observe(*args: object, **kwargs: object) -> bool:
+        nonlocal checking_earlier
+        checking_earlier = bool(args[-1])
+        try:
+            return original_check(*args, **kwargs)
+        finally:
+            checking_earlier = False
+
+    def unavailable(path: Path) -> bytes:
+        nonlocal faults
+        if not after_stage or checking_earlier:
+            faults += 1
+            raise PermissionError("CONTROLLED_SECRET")
+        return original_read(path)
+
+    monkeypatch.setattr(stage, "_evidence_is_unchanged", observe)
+    monkeypatch.setattr(Path, "read_bytes", unavailable)
+    expected = (
+        (stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+        if after_stage else
+        (stage.CANONICAL_GOLD_FACTS_REPLAY_AUTHORITY_INVALID, stage.GOLD_FACTS_REPLAY_AUTHORITY_INVALID)
+    )
+    _assert_terminal_failure(_run(), *expected)
+    assert faults == 1
+    assert calls == (list(CALL_ORDER[:2]) if after_stage else [])
+
+
+def test_attempt_boundary_persistent_safety_helper_fault_stays_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+
+    def broken_safety() -> dict[str, bool]:
+        raise RuntimeError("CONTROLLED_SECRET")
+
+    monkeypatch.setattr(stage, "_safety_values", broken_safety)
+    _assert_terminal_failure(
+        _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE,
+        stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED,
+    )
+    assert calls == ["diagnostics"]
+
+
+
 @pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
 @pytest.mark.parametrize("helper", ("_schemas_are_safe", "_is_valid_frozen_value", "isfinite"))
 @pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
