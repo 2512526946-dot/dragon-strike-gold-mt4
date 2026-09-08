@@ -996,6 +996,92 @@ def test_registry_boundary_rejects_in_place_registered_case_value_drift(
     assert _run() == anchor
 
 
+@pytest.mark.parametrize("index", range(7))
+@pytest.mark.parametrize("field_name", ("replay_contract_version", "case_id", "fixture_id"))
+def test_registry_missing_case_slot_stops_at_the_current_stage(
+    monkeypatch: pytest.MonkeyPatch, index: int, field_name: str,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    case = stage._REGISTRY[0].diagnostics_case
+    before = deepcopy(case)
+    original = getattr(case, field_name)
+    mutations = 0
+
+    def remove_slot(result: object) -> object:
+        nonlocal mutations
+        object.__delattr__(case, field_name)
+        mutations += 1
+        return result
+
+    try:
+        with monkeypatch.context() as controlled:
+            calls = _install_delegating_capsule(
+                controlled, result_transform=(CALL_ORDER[index], remove_slot),
+            )
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID,
+                stage.GOLD_FACTS_REPLAY_RESULT_INVALID,
+            )
+            assert mutations == 1 and calls == list(CALL_ORDER[:index + 1])
+    finally:
+        object.__setattr__(case, field_name, original)
+    assert case == before and _run() == anchor
+
+
+@pytest.mark.parametrize("field_name", ("replay_contract_version", "case_id", "fixture_id"))
+def test_registry_missing_case_slot_is_rejected_before_any_dependency(
+    monkeypatch: pytest.MonkeyPatch, field_name: str,
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    case = stage._REGISTRY[0].diagnostics_case
+    original = getattr(case, field_name)
+    try:
+        with monkeypatch.context() as controlled:
+            calls = _install_delegating_capsule(controlled)
+            object.__delattr__(case, field_name)
+            _assert_terminal_failure(
+                _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_REGISTRY_INVALID,
+                stage.GOLD_FACTS_REPLAY_REGISTRY_INVALID,
+            )
+            assert calls == []
+    finally:
+        object.__setattr__(case, field_name, original)
+    assert _run() == anchor
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+@pytest.mark.parametrize("helper", ("_has_all_fields", "_record_state"))
+def test_registry_slot_validation_internal_fault_is_not_missing_input(
+    monkeypatch: pytest.MonkeyPatch, helper: str, error: type[Exception],
+) -> None:
+    anchor = _run()
+    assert anchor.passed is True
+    case = stage._REGISTRY[0].diagnostics_case
+    target = case if helper == "_has_all_fields" else stage._REGISTRY[0]
+    original = getattr(stage, helper)
+    faults = 0
+
+    with monkeypatch.context() as controlled:
+        calls = _install_delegating_capsule(controlled)
+
+        def internal_fault(value: object) -> object:
+            nonlocal faults
+            if calls and value is target:
+                faults += 1
+                raise error("CONTROLLED_SECRET")
+            return original(value)
+
+        controlled.setattr(stage, helper, internal_fault)
+        _assert_terminal_failure(
+            _run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE,
+            stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED,
+        )
+        assert faults == 1 and calls == ["diagnostics"]
+    assert _run() == anchor
+
+
 @pytest.mark.parametrize("index,path", (
     (0, ("canonical_summary",)),
     (0, ("canonical_summary", "readiness_notes")),

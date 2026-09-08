@@ -1502,6 +1502,8 @@ def _record_is_safe(record: object) -> bool:
         and record.stage_contract_version == STAGE_CONTRACT_VERSION
         and record.authority_profile_version == AUTHORITY_PROFILE_VERSION
         and record.stage_id == STAGE_ID
+        and type(record.diagnostics_case) is CanonicalBundleReplayCaseV1
+        and _has_all_fields(record.diagnostics_case)
         and record.diagnostics_case == _DIAGNOSTICS_CASE
         and record.market_source_profile_version == "canonical_gold_market_facts_policy_v1"
         and record.market_facts_contract_version == "1.0"
