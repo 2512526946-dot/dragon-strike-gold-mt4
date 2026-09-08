@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
 from decimal import DecimalException
 import inspect
@@ -10,6 +11,9 @@ from pathlib import Path
 import pytest
 
 from app.services import canonical_gold_facts_replay_stage as stage
+from app.services.demo_readonly_canonical_diagnostics_summary_validator import (
+    is_safe_demo_readonly_canonical_diagnostics_summary,
+)
 
 
 EXPECTED_EXPORTS = (
@@ -582,13 +586,110 @@ def test_public_boundary_rejects_malformed_diagnostics_summary(
     assert calls == ["diagnostics"]
 
 
-def test_valid_diagnostics_content_change_remains_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("path,transform", (
+    (("readiness_notes",), lambda value: ["Changed observation"]),
+    (("readiness_notes",), lambda value: []),
+    (("readiness_notes",), lambda value: list(reversed(value))),
+    (("readiness_notes",), lambda value: [*value, value[0]]),
+    (("readiness_notes",), lambda value: tuple(value)),
+    (("readiness_notes",), lambda value: [_StringSubclass(value[0]), *value[1:]]),
+    (("next_allowed_stage",), lambda value: ["execution_chain"]),
+    (("next_allowed_stage",), lambda value: []),
+    (("next_allowed_stage",), lambda value: [*value, value[0]]),
+    (("next_blocked_stage",), lambda value: []),
+    (("next_blocked_stage",), lambda value: list(reversed(value))),
+    (("next_blocked_stage",), lambda value: [*value, "unregistered_stage"]),
+    (("bundle_validation_status", "status_code"), lambda value: "POLLUTED"),
+    (("component_statuses", "canonical_data_quality_gate", "status_code"), lambda value: "POLLUTED"),
+    (("bundle_validation_status",), lambda value: dict(reversed(tuple(value.items())))),
+    (("component_statuses", "canonical_data_quality_gate"), lambda value: dict(reversed(tuple(value.items())))),
+    ((), lambda value: dict(reversed(tuple(value.items())))),
+))
+def test_public_boundary_rejects_g151_invalid_diagnostics_content_and_order(
+    monkeypatch: pytest.MonkeyPatch, path: tuple[str, ...], transform: Callable[[object], object],
+) -> None:
+    assert _run().passed is True
+
     def changed(result: object) -> object:
-        return replace(result, canonical_summary={**result.canonical_summary, "readiness_notes": ["Changed observation"]})
+        summary = deepcopy(result.canonical_summary)
+        assert is_safe_demo_readonly_canonical_diagnostics_summary(canonical_summary=summary) is True
+        if path:
+            container = summary
+            for key in path[:-1]:
+                container = container[key]
+            container[path[-1]] = transform(container[path[-1]])
+        else:
+            summary = transform(summary)
+        assert is_safe_demo_readonly_canonical_diagnostics_summary(canonical_summary=summary) is False
+        return replace(result, canonical_summary=summary)
 
     calls = _install_delegating_capsule(monkeypatch, result_transform=("diagnostics", changed))
-    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_MISMATCH, stage.GOLD_FACTS_REPLAY_EXPECTATION_MISMATCH)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
     assert calls == ["diagnostics"]
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+@pytest.mark.parametrize("helper", (
+    "_registry_is_safe", "_authority_is_safe", "_immutable_state",
+    "_fixture_state", "_has_exact_registered_shape", "_freeze_value",
+))
+def test_post_stage_internal_exceptions_reach_public_sanitizer(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception], helper: str,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+    original_check = stage._evidence_is_unchanged
+    original_helper = getattr(stage, helper)
+    checking_earlier_results = False
+    faults = 0
+
+    def observe_check(*args: object, **kwargs: object) -> bool:
+        nonlocal checking_earlier_results
+        checking_earlier_results = bool(args[-1])
+        try:
+            return original_check(*args, **kwargs)
+        finally:
+            checking_earlier_results = False
+
+    def internal_fault(*args: object, **kwargs: object) -> object:
+        nonlocal faults
+        if checking_earlier_results:
+            faults += 1
+            raise error("CONTROLLED_SECRET")
+        return original_helper(*args, **kwargs)
+
+    monkeypatch.setattr(stage, "_evidence_is_unchanged", observe_check)
+    monkeypatch.setattr(stage, helper, internal_fault)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE, stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED)
+    assert faults == 1
+    assert calls == ["diagnostics", "source"]
+
+
+@pytest.mark.parametrize("mutation", ("missing_slot", "unsupported_value", "changed_value"))
+def test_post_stage_malformed_earlier_result_remains_result_invalid(
+    monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+    original_check = stage._evidence_is_unchanged
+    mutations = 0
+
+    def corrupt_earlier_result(*args: object, **kwargs: object) -> bool:
+        nonlocal mutations
+        earlier_results = args[-1]
+        if earlier_results:
+            mutations += 1
+            if mutation == "missing_slot":
+                object.__delattr__(earlier_results[0], "status_code")
+            else:
+                value = object() if mutation == "unsupported_value" else "Changed observation"
+                earlier_results[0].canonical_summary["readiness_notes"] = [value]
+        return original_check(*args, **kwargs)
+
+    monkeypatch.setattr(stage, "_evidence_is_unchanged", corrupt_earlier_result)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert mutations == 1
+    assert calls == ["diagnostics", "source"]
 
 
 @pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))

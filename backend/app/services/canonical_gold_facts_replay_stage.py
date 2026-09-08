@@ -1593,7 +1593,7 @@ def _evidence_is_unchanged(replay_case: CanonicalGoldFactsReplayCaseV1, registry
                 for index, value in enumerate(earlier_results)
             )
         )
-    except Exception:
+    except _MalformedStageResult:
         return False
 
 
@@ -1640,30 +1640,28 @@ def _matches_declared_type(value: object, annotation: object) -> bool:
 
 
 def _summary_matches_registered_shape(
-    value: object, oracle: tuple[object, ...], field_name: str = "",
+    value: object, oracle: tuple[object, ...],
 ) -> bool:
-    # The v1 Any-valued summary uses the registry grammar, not a second G151 call.
+    # The fixed G151 READY content and order are part of the accepted shape.
     tag = oracle[0]
     if tag == "DICT_V1":
         if type(value) is not dict or any(type(key) is not str for key in value):
             return False
         expected = tuple((key[1], child) for key, child in oracle[1])
-        return len(value) == len(expected) and all(
-            key in value and _summary_matches_registered_shape(value[key], child, key)
+        return tuple(value) == tuple(key for key, _ in expected) and all(
+            _summary_matches_registered_shape(value[key], child)
             for key, child in expected
         )
     if tag == "LIST_V1":
         return (
-            type(value) is list and all(type(item) is str for item in value)
-            and (field_name not in {"block_reasons", "warning_reasons"} or value == [])
+            type(value) is list and len(value) == len(oracle[1])
+            and all(_summary_matches_registered_shape(item, child)
+                    for item, child in zip(value, oracle[1], strict=True))
         )
     if tag == "BOOL_V1":
         return type(value) is bool and value is oracle[1]
     if tag == "STRING_V1":
-        return type(value) is str and (
-            field_name not in {"status_code", "source_scope", "validation_stage", "fixture_source"}
-            or value == oracle[1]
-        )
+        return type(value) is str and value == oracle[1]
     return False
 
 
