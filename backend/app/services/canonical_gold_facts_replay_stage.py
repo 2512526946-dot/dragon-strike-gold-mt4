@@ -1451,13 +1451,18 @@ def _case_is_safe(value: object) -> bool:
     return (
         type(value) is CanonicalGoldFactsReplayCaseV1
         and tuple(field.name for field in fields(value)) == ("replay_contract_version", "stage_contract_version", "stage_id", "case_id", "fixture_id")
-        and all(type(getattr(value, field.name)) is str for field in fields(value))
+        and all(type(getattr(value, field.name, None)) is str for field in fields(value))
         and value.replay_contract_version == REPLAY_CONTRACT_VERSION
         and value.stage_contract_version == STAGE_CONTRACT_VERSION
         and value.stage_id == STAGE_ID
         and _identifier_is_safe(value.case_id)
         and _identifier_is_safe(value.fixture_id)
     )
+
+
+def _has_all_fields(value: object) -> bool:
+    missing = object()
+    return all(getattr(value, field.name, missing) is not missing for field in fields(value))
 
 
 def _registry_is_safe(value: object) -> bool:
@@ -1471,30 +1476,30 @@ def _registry_is_safe(value: object) -> bool:
 
 
 def _record_is_safe(record: object) -> bool:
-    try:
-        return (
-            type(record) is CanonicalGoldFactsReplayRegistryRecordV1
-            and tuple(field.name for field in fields(record)) == tuple(field.name for field in fields(CanonicalGoldFactsReplayRegistryRecordV1))
-            and record.registry_version == REGISTRY_VERSION
-            and record.replay_contract_version == REPLAY_CONTRACT_VERSION
-            and record.stage_contract_version == STAGE_CONTRACT_VERSION
-            and record.authority_profile_version == AUTHORITY_PROFILE_VERSION
-            and record.stage_id == STAGE_ID
-            and record.diagnostics_case == _DIAGNOSTICS_CASE
-            and record.market_source_profile_version == "canonical_gold_market_facts_policy_v1"
-            and record.market_facts_contract_version == "1.0"
-            and record.session_facts_profile_version == "canonical_gold_session_spread_freshness_profile_v1"
-            and record.volatility_facts_profile_version == "canonical_gold_volatility_structure_profile_v1"
-            and record.calendar_source_profile_version == "canonical_gold_economic_calendar_source_v1"
-            and record.economic_window_facts_profile_version == "canonical_gold_economic_window_profile_v1"
-            and record.reference_time_utc == "2026-07-10T02:30:05.000000Z"
-            and record.expected_market_identity == _MARKET_IDENTITY
-            and record.expected_calendar_identity == _CALENDAR_IDENTITY
-            and record.expected_oracle is _EXPECTED_ORACLE
-            and all(_is_valid_frozen_value(getattr(record.expected_oracle, field.name)) for field in fields(record.expected_oracle))
-        )
-    except Exception:
-        return False
+    return (
+        type(record) is CanonicalGoldFactsReplayRegistryRecordV1
+        and _has_all_fields(record)
+        and tuple(field.name for field in fields(record)) == tuple(field.name for field in fields(CanonicalGoldFactsReplayRegistryRecordV1))
+        and record.registry_version == REGISTRY_VERSION
+        and record.replay_contract_version == REPLAY_CONTRACT_VERSION
+        and record.stage_contract_version == STAGE_CONTRACT_VERSION
+        and record.authority_profile_version == AUTHORITY_PROFILE_VERSION
+        and record.stage_id == STAGE_ID
+        and record.diagnostics_case == _DIAGNOSTICS_CASE
+        and record.market_source_profile_version == "canonical_gold_market_facts_policy_v1"
+        and record.market_facts_contract_version == "1.0"
+        and record.session_facts_profile_version == "canonical_gold_session_spread_freshness_profile_v1"
+        and record.volatility_facts_profile_version == "canonical_gold_volatility_structure_profile_v1"
+        and record.calendar_source_profile_version == "canonical_gold_economic_calendar_source_v1"
+        and record.economic_window_facts_profile_version == "canonical_gold_economic_window_profile_v1"
+        and record.reference_time_utc == "2026-07-10T02:30:05.000000Z"
+        and record.expected_market_identity == _MARKET_IDENTITY
+        and record.expected_calendar_identity == _CALENDAR_IDENTITY
+        and record.expected_oracle is _EXPECTED_ORACLE
+        and type(record.expected_oracle) is CanonicalGoldFactsReplayExpectedOracleV1
+        and _has_all_fields(record.expected_oracle)
+        and all(_is_valid_frozen_value(getattr(record.expected_oracle, field.name)) for field in fields(record.expected_oracle))
+    )
 
 
 def _resolve_record(replay_case: CanonicalGoldFactsReplayCaseV1, registry: tuple[CanonicalGoldFactsReplayRegistryRecordV1, ...]) -> CanonicalGoldFactsReplayRegistryRecordV1 | None:
@@ -1503,33 +1508,38 @@ def _resolve_record(replay_case: CanonicalGoldFactsReplayCaseV1, registry: tuple
 
 
 def _authority_is_safe(value: object) -> bool:
-    try:
-        return (
-            type(value) is _AuthorityCapsule
-            and value is _APPROVED_CAPSULE
-            and value.diagnostics_runner is _EXPECTED_RUN_DIAGNOSTICS is replay_v1.run_canonical_bundle_replay_case
-            and value.market_source_builder is _EXPECTED_BUILD_MARKET_SOURCE is market_fixture.build_canonical_gold_market_facts_docs_fixture_source_v1
-            and value.market_projector is _EXPECTED_BUILD_MARKET_FACTS is market_facts.build_canonical_gold_market_facts_snapshot_v1
-            and value.session_builder is _EXPECTED_BUILD_SESSION_FACTS is session_facts.build_canonical_gold_session_spread_freshness_facts_v1
-            and value.volatility_builder is _EXPECTED_BUILD_VOLATILITY_FACTS is volatility.build_canonical_gold_volatility_structure_facts_v1
-            and value.calendar_builder is _EXPECTED_BUILD_CALENDAR is calendar.build_server_owned_canonical_gold_economic_calendar_snapshot_v1
-            and value.economic_builder is _EXPECTED_BUILD_ECONOMIC_FACTS is economic.build_canonical_gold_economic_window_facts_v1
-            and value.market_result_validator is _EXPECTED_VALIDATE_MARKET_RESULT is market_fixture._EXPECTED_VALIDATE_RESULT
-            and value.calendar_result_validator is _EXPECTED_VALIDATE_CALENDAR_RESULT is calendar._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
-            and value.market_fixture_paths is _MARKET_FIXTURE_PATHS
-            and value.calendar_fixture_path is calendar._EXPECTED_FIXTURE_PATH
-            and _schemas_are_safe()
-        )
-    except Exception:
-        return False
+    return (
+        type(value) is _AuthorityCapsule
+        and _has_all_fields(value)
+        and value is _APPROVED_CAPSULE
+        and value.diagnostics_runner is _EXPECTED_RUN_DIAGNOSTICS is replay_v1.run_canonical_bundle_replay_case
+        and value.market_source_builder is _EXPECTED_BUILD_MARKET_SOURCE is market_fixture.build_canonical_gold_market_facts_docs_fixture_source_v1
+        and value.market_projector is _EXPECTED_BUILD_MARKET_FACTS is market_facts.build_canonical_gold_market_facts_snapshot_v1
+        and value.session_builder is _EXPECTED_BUILD_SESSION_FACTS is session_facts.build_canonical_gold_session_spread_freshness_facts_v1
+        and value.volatility_builder is _EXPECTED_BUILD_VOLATILITY_FACTS is volatility.build_canonical_gold_volatility_structure_facts_v1
+        and value.calendar_builder is _EXPECTED_BUILD_CALENDAR is calendar.build_server_owned_canonical_gold_economic_calendar_snapshot_v1
+        and value.economic_builder is _EXPECTED_BUILD_ECONOMIC_FACTS is economic.build_canonical_gold_economic_window_facts_v1
+        and value.market_result_validator is _EXPECTED_VALIDATE_MARKET_RESULT is market_fixture._EXPECTED_VALIDATE_RESULT
+        and value.calendar_result_validator is _EXPECTED_VALIDATE_CALENDAR_RESULT is calendar._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1
+        and value.market_fixture_paths is _MARKET_FIXTURE_PATHS
+        and value.calendar_fixture_path is calendar._EXPECTED_FIXTURE_PATH
+        and _schemas_are_safe()
+    )
 
 
 def _schemas_are_safe() -> bool:
     return (
         type(_PRODUCTION_SCHEMAS) is tuple
         and len(_PRODUCTION_SCHEMAS) == 28
+        and type(_SCHEMA_BY_CLASS) is dict
+        and type(_SCHEMA_BY_TYPE_CODE) is dict
         and len(_SCHEMA_BY_CLASS) == len(_SCHEMA_BY_TYPE_CODE) == 28
-        and all(type(schema) is _ProductionSchema and tuple(field.name for field in fields(schema.class_object)) == schema.ordered_fields for schema in _PRODUCTION_SCHEMAS)
+        and all(
+            type(schema) is _ProductionSchema and _has_all_fields(schema)
+            and isinstance(schema.class_object, type) and is_dataclass(schema.class_object)
+            and tuple(field.name for field in fields(schema.class_object)) == schema.ordered_fields
+            for schema in _PRODUCTION_SCHEMAS
+        )
     )
 
 
@@ -1578,6 +1588,7 @@ def _evidence_is_unchanged(replay_case: CanonicalGoldFactsReplayCaseV1, registry
         return (
             _REGISTRY is registry_snapshot
             and _CAPSULE is capsule_snapshot
+            and _case_is_safe(replay_case)
             and _registry_is_safe(registry_snapshot)
             and _authority_is_safe(capsule_snapshot)
             and _immutable_state(replay_case, registry_snapshot, capsule_snapshot) == immutable_snapshot
@@ -1716,30 +1727,46 @@ def _freeze_value(
 
 
 def _is_valid_frozen_value(value: object) -> bool:
-    try:
-        if type(value) is not tuple or not value or type(value[0]) is not str:
+    if type(value) is not tuple or not value or type(value[0]) is not str:
+        return False
+    tag = value[0]
+    if tag == "NONE_V1":
+        return len(value) == 1
+    if tag == "BOOL_V1":
+        return len(value) == 2 and type(value[1]) is bool
+    if tag == "INT_V1":
+        return len(value) == 2 and type(value[1]) is int
+    if tag == "STRING_V1":
+        return len(value) == 2 and type(value[1]) is str
+    if tag == "FLOAT_HEX_V1":
+        if len(value) != 2 or type(value[1]) is not str:
             return False
-        tag = value[0]
-        if tag == "NONE_V1":
-            return len(value) == 1
-        if tag == "BOOL_V1":
-            return len(value) == 2 and type(value[1]) is bool
-        if tag == "INT_V1":
-            return len(value) == 2 and type(value[1]) is int
-        if tag == "STRING_V1":
-            return len(value) == 2 and type(value[1]) is str
-        if tag == "FLOAT_HEX_V1":
-            return len(value) == 2 and type(value[1]) is str and math.isfinite(float.fromhex(value[1])) and float.fromhex(value[1]).hex() == value[1]
-        if tag in {"TUPLE_V1", "LIST_V1"}:
-            return len(value) == 2 and type(value[1]) is tuple and all(_is_valid_frozen_value(item) for item in value[1])
-        if tag == "DICT_V1":
-            return len(value) == 2 and type(value[1]) is tuple and all(type(pair) is tuple and len(pair) == 2 and _is_valid_frozen_value(pair[0]) and _is_valid_frozen_value(pair[1]) for pair in value[1]) and len({pair[0] for pair in value[1]}) == len(value[1])
-        if tag == "DATACLASS_V1":
-            schema = _SCHEMA_BY_TYPE_CODE.get(value[1]) if len(value) == 3 and type(value[1]) is str else None
-            return schema is not None and type(value[2]) is tuple and tuple(pair[0] for pair in value[2]) == schema.ordered_fields and all(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str and _is_valid_frozen_value(pair[1]) for pair in value[2])
-        return False
-    except Exception:
-        return False
+        try:
+            number = float.fromhex(value[1])
+        except (ValueError, OverflowError):
+            return False
+        return math.isfinite(number) and number.hex() == value[1]
+    if tag in {"TUPLE_V1", "LIST_V1"}:
+        return len(value) == 2 and type(value[1]) is tuple and all(_is_valid_frozen_value(item) for item in value[1])
+    if tag == "DICT_V1":
+        return len(value) == 2 and type(value[1]) is tuple and all(type(pair) is tuple and len(pair) == 2 and _is_valid_frozen_value(pair[0]) and _is_valid_frozen_value(pair[1]) for pair in value[1]) and len({pair[0] for pair in value[1]}) == len(value[1])
+    if tag == "DATACLASS_V1":
+        if len(value) != 3 or type(value[1]) is not str or type(value[2]) is not tuple:
+            return False
+        if type(_SCHEMA_BY_TYPE_CODE) is not dict:
+            return False
+        schema = _SCHEMA_BY_TYPE_CODE.get(value[1])
+        return (
+            type(schema) is _ProductionSchema
+            and _has_all_fields(schema)
+            and all(
+                type(pair) is tuple and len(pair) == 2
+                and type(pair[0]) is str and _is_valid_frozen_value(pair[1])
+                for pair in value[2]
+            )
+            and tuple(pair[0] for pair in value[2]) == schema.ordered_fields
+        )
+    return False
 
 
 def _identities_match(record: CanonicalGoldFactsReplayRegistryRecordV1, results: tuple[object, ...]) -> bool:

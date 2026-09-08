@@ -799,3 +799,178 @@ def test_module_ast_has_no_direct_forbidden_runtime_surface() -> None:
     assert "requests" not in source
     assert "subprocess" not in source
     assert "socket" not in source
+
+
+@pytest.mark.parametrize("field_name", EXPECTED_PUBLIC_FIELDS[0][1])
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_recovery_missing_case_slot_has_structural_classification(
+    monkeypatch: pytest.MonkeyPatch, field_name: str, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    replay_case = _case()
+
+    def remove_slot(result: object) -> object:
+        object.__delattr__(replay_case, field_name)
+        return result
+
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=("diagnostics", remove_slot) if after_stage else None,
+    )
+    if not after_stage:
+        remove_slot(None)
+    result = stage.run_canonical_gold_facts_replay_case_v1(replay_case=replay_case)
+    if after_stage:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    else:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_INPUT_INVALID, stage.GOLD_FACTS_REPLAY_CASE_INPUT_INVALID)
+    assert calls == (["diagnostics"] if after_stage else [])
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+@pytest.mark.parametrize("helper", ("_schemas_are_safe", "_is_valid_frozen_value", "isfinite"))
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_recovery_deep_internal_fault_is_not_structural_invalidity(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception], helper: str, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    calls = _install_delegating_capsule(monkeypatch)
+    owner = stage.math if helper == "isfinite" else stage
+    original = getattr(owner, helper)
+    original_check = stage._evidence_is_unchanged
+    checking_earlier_results = False
+    faults = 0
+
+    def observe_check(*args: object, **kwargs: object) -> bool:
+        nonlocal checking_earlier_results
+        checking_earlier_results = bool(args[-1])
+        try:
+            return original_check(*args, **kwargs)
+        finally:
+            checking_earlier_results = False
+
+    def internal_fault(*args: object, **kwargs: object) -> object:
+        nonlocal faults
+        if not after_stage or checking_earlier_results:
+            faults += 1
+            raise error("CONTROLLED_SECRET")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(stage, "_evidence_is_unchanged", observe_check)
+    monkeypatch.setattr(owner, helper, internal_fault)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE, stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED)
+    assert faults == 1
+    assert calls == (["diagnostics", "source"] if after_stage else [])
+
+
+@pytest.mark.parametrize("target_name,field_name", (
+    ("record", "reference_time_utc"),
+    ("record", "expected_oracle"),
+    ("oracle", "diagnostics_result"),
+    ("capsule", "market_projector"),
+))
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_recovery_missing_authority_slots_remain_structural_failures(
+    monkeypatch: pytest.MonkeyPatch, target_name: str, field_name: str, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    target = None
+
+    def remove_slot(result: object) -> object:
+        object.__delattr__(target, field_name)
+        return result
+
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=("diagnostics", remove_slot) if after_stage else None,
+    )
+    record = replace(stage._REGISTRY[0], expected_oracle=replace(stage._EXPECTED_ORACLE))
+    monkeypatch.setattr(stage, "_EXPECTED_ORACLE", record.expected_oracle)
+    monkeypatch.setattr(stage, "_APPROVED_REGISTRY", (record,))
+    monkeypatch.setattr(stage, "_REGISTRY", stage._APPROVED_REGISTRY)
+    target = {"record": record, "oracle": record.expected_oracle, "capsule": stage._CAPSULE}[target_name]
+    if not after_stage:
+        remove_slot(None)
+    result = _run()
+    if after_stage:
+        expected = (stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    elif target_name == "capsule":
+        expected = (stage.CANONICAL_GOLD_FACTS_REPLAY_AUTHORITY_INVALID, stage.GOLD_FACTS_REPLAY_AUTHORITY_INVALID)
+    else:
+        expected = (stage.CANONICAL_GOLD_FACTS_REPLAY_REGISTRY_INVALID, stage.GOLD_FACTS_REPLAY_REGISTRY_INVALID)
+    _assert_terminal_failure(result, *expected)
+    assert calls == (["diagnostics"] if after_stage else [])
+
+
+@pytest.mark.parametrize("encoded", (
+    ("FLOAT_HEX_V1", "not-hex"),
+    ("FLOAT_HEX_V1", "0x1p+9999999999"),
+    ("FLOAT_HEX_V1", "nan"),
+    ("FLOAT_HEX_V1", "inf"),
+    ("FLOAT_HEX_V1", "0x1p+0"),
+    ("FLOAT_HEX_V1", 1),
+    ("DICT_V1", ((("STRING_V1", "key"), ("NONE_V1",)), (("STRING_V1", "key"), ("NONE_V1",)))),
+    ("DICT_V1", ((),)),
+    ("DICT_V1", ((("STRING_V1", "key"), ["NONE_V1"]),)),
+    ("TUPLE_V1", (("INT_V1", True),)),
+    ("LIST_V1", [("NONE_V1",)]),
+))
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_recovery_invalid_frozen_oracle_is_not_an_internal_exception(
+    monkeypatch: pytest.MonkeyPatch, encoded: object, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    oracle = replace(stage._EXPECTED_ORACLE)
+
+    def corrupt(result: object) -> object:
+        object.__setattr__(oracle, "diagnostics_result", encoded)
+        return result
+
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=("diagnostics", corrupt) if after_stage else None,
+    )
+    record = replace(stage._REGISTRY[0], expected_oracle=oracle)
+    monkeypatch.setattr(stage, "_EXPECTED_ORACLE", oracle)
+    monkeypatch.setattr(stage, "_APPROVED_REGISTRY", (record,))
+    monkeypatch.setattr(stage, "_REGISTRY", stage._APPROVED_REGISTRY)
+    if not after_stage:
+        corrupt(None)
+    result = _run()
+    if after_stage:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    else:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_REGISTRY_INVALID, stage.GOLD_FACTS_REPLAY_REGISTRY_INVALID)
+    assert calls == (["diagnostics"] if after_stage else [])
+
+
+@pytest.mark.parametrize("pairs", (((),), (None,), (("field",),), (["field", ("NONE_V1",)],), ((123, ("NONE_V1",)),)))
+def test_recovery_malformed_dataclass_oracle_pairs_are_rejected(pairs: object) -> None:
+    type_code = stage._PRODUCTION_SCHEMAS[0].type_code
+    assert stage._is_valid_frozen_value(("DATACLASS_V1", type_code, pairs)) is False
+
+
+@pytest.mark.parametrize("mutation", ("missing_class", "missing_fields", "not_dataclass", "instance"))
+@pytest.mark.parametrize("after_stage", (False, True), ids=("entry", "post-stage"))
+def test_recovery_malformed_schema_authority_is_not_an_internal_exception(
+    monkeypatch: pytest.MonkeyPatch, mutation: str, after_stage: bool,
+) -> None:
+    assert _run().passed is True
+    schema = replace(stage._PRODUCTION_SCHEMAS[0])
+
+    def corrupt(result: object) -> object:
+        if mutation.startswith("missing"):
+            object.__delattr__(schema, "class_object" if mutation == "missing_class" else "ordered_fields")
+        else:
+            object.__setattr__(schema, "class_object", str if mutation == "not_dataclass" else _case())
+        monkeypatch.setattr(stage, "_PRODUCTION_SCHEMAS", (schema, *stage._PRODUCTION_SCHEMAS[1:]))
+        return result
+
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=("diagnostics", corrupt) if after_stage else None,
+    )
+    if not after_stage:
+        corrupt(None)
+    result = _run()
+    if after_stage:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    else:
+        _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_AUTHORITY_INVALID, stage.GOLD_FACTS_REPLAY_AUTHORITY_INVALID)
+    assert calls == (["diagnostics"] if after_stage else [])
