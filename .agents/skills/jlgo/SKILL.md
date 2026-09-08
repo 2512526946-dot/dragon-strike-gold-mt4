@@ -7,7 +7,7 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 
 1. 先读取仓库根目录 `AGENTS.md`。
 2. 只读检查工作区、当前分支、`main`、`origin/main`、最近 commits、tags、当前分支相对 `main`、可见 work branches，以及相关 ADR、协议、生产代码和测试基线。
-3. 网络可用时可以运行 `git fetch origin --prune --tags`，但不得 checkout、创建或移动分支。
+3. 使用已有本地引用；需要远端证据时只读运行 `git ls-remote`。不得 fetch、prune、刷新 tags、更新 index、checkout、创建或移动分支。
 4. 对每个候选工作分支使用 Git ancestry 证据分类，推荐运行：
 
    ```bash
@@ -24,7 +24,7 @@ description: Read-only project router and planner for the 巨龙出击 repositor
 6. 不得因为政策已经声明，就声称对应 Gate 或执行能力已经实现。
 7. 继续区分 production implementation、tests only、docs only 和 not implemented。
 8. 按以下优先级决定唯一下一步：
-   - 工作区不干净或 checkpoint 异常：停止。
+   - 未批准的 dirty 状态或 checkpoint 异常：停止写操作和正式通过判定，但继续允许的只读诊断，说明已核实问题及缺少的批准。
    - 存在 active unmerged work branch：只建议 review、修订或 merge，不生成新开发工单。
    - 位于干净 `main` 且无待处理分支：规划唯一下一开发工单。
    - 只有用户明确批准 tag 时才建议 release。
@@ -89,11 +89,21 @@ an EA, execute an order, permit trading, or authorize G174. JLGO must instead
 plan the remaining pre-write and review propagation as separately approved
 stages before G174 can be reconsidered.
 
-只有在第 8 步已经证明当前位于 clean synchronized `main`、没有 active
-unmerged work branch，并且一个新开发候选工单已经冻结后，才执行本节。
-active work branch 仍只进入 review、revision 或 merge 路径；其他分支、dirty
-worktree、main mismatch、ancestry unknown 或目标分支被占用时，不得构造
-TaskSizeGate evidence，也不得调用 evaluator。
+新开发候选仍须第 8 步证明 clean synchronized `main`、没有 active
+unmerged work branch，且目标分支未占用。active work branch 只允许 review、
+revision 或明确批准的 preservation recovery，不得夹带新业务工单。
+用户明确要求在原分支规划修订/恢复时，按 planning contract 第 4 节及共享
+pre-write contract 第 6.3-6.4 节验证预期状态、历史 authority 和双范围后，
+才可创建新的真实 planning packet。未经批准的 dirty/local-only 状态、
+main mismatch 或 ancestry unknown 仍阻断 evaluator；仅诊断请求不调用它。
+
+共用记录与调用账户以
+`task_size_gate_jlgo_planning_integration_contract.md` 第 5.1 节为唯一规则。
+本 Skill 严格只读：可读取已授权的外部 append-only packet，但不落盘。
+只展示符合 AGENTS 输出安全规则的字段和私有证明引用；有敏感字段时，不得把
+净化摘要声称为可完整恢复的 packet，也不得把目录写权限当作信息披露许可。
+在 dirty 状态开始恢复任务须有针对根规则的显式一次性保留授权，本 Skill
+不能自行豁免 AGENTS。不得伪造旧记录，不因记录缺失停止一切只读分析；仍须保留阻断结论。
 
 以
 `docs/implementation_plans/task_size_gate_jlgo_planning_integration_contract.md`
@@ -163,8 +173,10 @@ result = evaluate_task_size_gate(evidence=evidence)
 ```
 
 不得 monkeypatch、retry、创建 fallback classifier、手工覆盖 TaskSize、删除
-unknowns、缩小工时或文件范围，也不得使用临时文件、持久状态、环境变量、网络
-或新的 adapter 传递 evidence。
+unknowns、缩小工时或文件范围。evaluator 只接收内存 evidence，不读取环境变量、
+网络或文件；调用方读取获准审计记录不改变此边界，也不得引入新的 adapter。
+传输未启动、调用状态未知、已消费调用的处理必须遵守共享 invocation ledger，
+不得将 shell 失败一律算作调用，也不得盲目重试。
 
 返回值必须满足全部安全信封要求：
 
@@ -275,6 +287,6 @@ codes；任何 blocked 或 invalid result 都不得生成写操作工单。
 - 规划 fast-forward 合并工单时，`下一 Skill` 写 `$jl-merge`。
 - 规划已明确批准的 tag-only release 时，`下一 Skill` 写 `$jl-release`。
 - 规划满足全部安全条件的单工单自动闭环时，`下一 Skill` 可以写 `$jl-supervisor`。
-- checkpoint 异常、工作区不干净、无安全下一步或应停止时，`下一 Skill` 写 `无`。
+- checkpoint 异常、未批准的工作区修改、无安全下一步或应停止时，`下一 Skill` 写 `无`；已批准保留状态仅按上述恢复规则路由，不自动执行。
 - 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
 - 不得通过完整指令自动越过用户批准，不得自动 merge、tag 或进入下一工单。

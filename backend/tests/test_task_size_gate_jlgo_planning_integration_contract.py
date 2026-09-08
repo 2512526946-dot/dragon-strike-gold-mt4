@@ -220,7 +220,7 @@ CALLER_OWNED_SOURCE_RULES = MappingProxyType(
         ),
         "base_branch": "The verified base branch; normal new work uses `main`.",
         "base_main_commit": "Full immutable commit from verified local and remote main.",
-        "work_branch": "One unoccupied canonical `work/...` branch.",
+        "work_branch": "One canonical `work/...` branch with the approved new, revision or recovery existence rule.",
         "commit_message": "Exact ordinary commit message for this work order.",
         "push_destination": (
             "Exact `origin/<work_branch>` destination; never `main`."
@@ -1101,3 +1101,113 @@ def test_static_tests_do_not_call_evaluator_or_claim_end_to_end_verification() -
         encoding="utf-8"
     )
     assert "不代表\npre-write/review/CI integration、workflow activation 或 end-to-end verification" in skill
+
+# Static workflow protocol oracles, not an audit-store or checkpoint implementation.
+PACKET_SECTION_ORACLE = (
+    ("record_identity", "Unique packet and attempt IDs, stage, format version, predecessor digest."),
+    ("approval", "Exact user-approved action, scope, stop conditions, model and record-write authority sources."),
+    ("git_state", "Repository/worktree identity, base, pre-Head, local/remote heads, branch mode, index and worktree state."),
+    ("scope_manifest", "Approved cumulative scope and current revision scope, each with immutable base/head and authority."),
+    ("frozen_evidence", "All 29 ordered fields with exact built-in types, original values and provenance."),
+    ("frozen_results", "Complete planning and latest accepted pre-write results, ordered reasons and their attempt IDs."),
+    ("commit_authority", "Ordered commit hashes, subjects, roles, packet ownership and explicit authority sources."),
+    ("call_ledger", "Per-stage attempt ID, evidence digest, invocation state, consumed calls and raw result reference."),
+    ("check_evidence", "Commands, exit status, counts, warnings/skips, source-tree, dependencies/config and check-set digests."),
+    ("completion", "Actual commit/push outcome and checked Head, or explicit pending state."),
+)
+INVOCATION_ORACLE = (
+    ("precondition_failed", "0", "diagnose_read_only"),
+    ("proven_not_started", "0", "authorized_transport_retry_same_packet"),
+    ("invocation_unknown", "unknown", "stop_and_reconcile_read_only"),
+    ("invoked_failed", "1", "stop_no_retry"),
+    ("invoked_accepted", "1", "resume_authorized_phase_without_recall"),
+)
+
+
+def _protocol_rows(text: str, marker: str) -> tuple[tuple[str, ...], ...]:
+    start, end = f"<!-- {marker}_BEGIN -->", f"<!-- {marker}_END -->"
+    assert text.count(start) == text.count(end) == 1
+    body = text.split(start, 1)[1].split(end, 1)[0]
+    lines = tuple(line.strip() for line in body.splitlines() if line.strip())
+    assert len(lines) >= 3
+    assert all(line.startswith("|") and line.endswith("|") for line in lines)
+    return tuple(
+        tuple(cell.strip() for cell in line.split("|")[1:-1])
+        for line in lines[2:]
+    )
+
+
+def test_shared_packet_and_call_ledger_have_complete_ordered_oracles() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    assert _protocol_rows(contract, "WORKFLOW_PACKET") == PACKET_SECTION_ORACLE
+    assert _protocol_rows(contract, "WORKFLOW_CALL_LEDGER") == INVOCATION_ORACLE
+    assert all(type(row) is tuple for row in PACKET_SECTION_ORACLE + INVOCATION_ORACLE)
+    assert all(type(value) is str for row in INVOCATION_ORACLE for value in row)
+
+
+@pytest.mark.parametrize("row", PACKET_SECTION_ORACLE + INVOCATION_ORACLE)
+def test_protocol_rejects_missing_duplicate_or_wrong_disposition_rows(row: tuple[str, ...]) -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    marker, oracle = (
+        ("WORKFLOW_PACKET", PACKET_SECTION_ORACLE)
+        if row in PACKET_SECTION_ORACLE
+        else ("WORKFLOW_CALL_LEDGER", INVOCATION_ORACLE)
+    )
+    line = "| " + " | ".join(row) + " |"
+    mutations = (
+        contract.replace(line, "", 1),
+        contract.replace(line, line + "\n" + line, 1),
+        contract.replace(line, "| " + " | ".join((*row[:-1], "automatic_proceed")) + " |", 1),
+    )
+    for mutant in mutations:
+        with pytest.raises(AssertionError):
+            assert _protocol_rows(mutant, marker) == oracle
+
+
+def test_packet_order_and_invocation_count_swaps_are_rejected() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    for marker, oracle in (
+        ("WORKFLOW_PACKET", PACKET_SECTION_ORACLE),
+        ("WORKFLOW_CALL_LEDGER", INVOCATION_ORACLE),
+    ):
+        rows = _protocol_rows(contract, marker)
+        assert (rows[1], rows[0], *rows[2:]) != oracle
+    for row in INVOCATION_ORACLE:
+        mutant = contract.replace(
+            "| " + " | ".join(row) + " |",
+            "| " + " | ".join((row[0], "2", row[2])) + " |",
+            1,
+        )
+        assert _protocol_rows(mutant, "WORKFLOW_CALL_LEDGER") != INVOCATION_ORACLE
+
+
+def test_records_preserve_authority_types_and_readonly_boundary() -> None:
+    contract = " ".join(CONTRACT_PATH.read_text(encoding="utf-8").split())
+    for rule in (
+        "outside all repository worktrees and tracked scope",
+        "Read-only callers emit the packet in their response",
+        "Audit storage permission is separate from project-file permission",
+        "never overwrite, backdate, reconstruct missing history",
+        "cannot change authority or call count",
+        "not machine stage identity, source/dependency/check digests",
+        "raw check results, commit/push outcomes, completion facts",
+        "A failed or stale check cannot be relabelled as accepted",
+        "Permission to write a directory is not permission to disclose",
+        "requires explicit private integrity-metadata authority",
+        "Do not claim a redacted summary is a complete restorable packet",
+        "not approval, Git truth, or review PASS",
+        "explicit type tags for tuples and ordered records",
+        "reject duplicate keys, unknown tags, missing/extra/reordered fields",
+        "subclasses and scalar coercion",
+        "Compare exact built-in strings and exact tuples, including commit records",
+        "Never use eval/exec on record text",
+        "explicit retry authority and fresh precondition checks",
+        "Unknown invocation state forbids blind retry",
+        "Checkpoint failure blocks writes and formal PASS, not useful read-only diagnosis",
+    ):
+        assert rule in contract
+    skill = JLGO_SKILL_PATH.read_text(encoding="utf-8")
+    assert "git ls-remote" in skill
+    assert "git fetch origin --prune --tags" not in skill
+    assert "6.3-6.4" in skill
+    assert "task_size_gate_jlgo_planning_integration_contract.md" in skill

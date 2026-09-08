@@ -28,7 +28,7 @@ JL_REVIEW_SKILL_PATH = REPOSITORY_ROOT / ".agents" / "skills" / "jl-review" / "S
 EVIDENCE_FIELD_SOURCE_RULES = MappingProxyType(
     {
         "objective": "Exact single outcome from the frozen approved work order; unchanged by implementation or review.",
-        "objective_count": "Recount independently deliverable outcomes in the actual cumulative diff; any value other than the frozen count is drift.",
+        "objective_count": "Recount independently deliverable outcomes in the current packet delta; verify adopted history separately without hiding cumulative capability or risk.",
         "wbs_package_ids": "Frozen package IDs checked against current WBS ownership; an added package is drift.",
         "current_maturity": "Narrow capability maturity proven at frozen base main; unmerged commits never advance it.",
         "target_maturity": "Exact frozen adjacent target, or exact separately approved maturity-preserving target.",
@@ -36,13 +36,13 @@ EVIDENCE_FIELD_SOURCE_RULES = MappingProxyType(
         "base_branch": "Strict `main`; the reviewed work branch is never substituted here.",
         "base_main_commit": "Fresh equality of local main, remote main, and the frozen base commit.",
         "work_branch": "Exact frozen branch whose local and remote tips equal the reviewed head.",
-        "commit_message": "Exact original frozen work-order message used at planning; it remains unchanged for the entire review and is never replaced by a manual or Supervisor revision message. Actual commit subjects and their authority are validated separately through the ordered commit-authority list.",
+        "commit_message": "Exact original message of the packet being evaluated; unchanged through its review. Each historical or revision subject is checked against its own frozen authority, never substituted into this value.",
         "push_destination": "Exact `origin/<work_branch>` destination and never `main`.",
         "stop_conditions": "Exact frozen stop conditions; no deletion, weakening, or post hoc rewrite.",
         "estimated_engineering_hours_lower": "Frozen approved lower estimate; review must not reduce it to obtain an allow result.",
         "estimated_engineering_hours_upper": "Frozen upper estimate compared with actual scope and effort evidence; any required increase is drift.",
-        "allowed_files": "Exact frozen canonical relative-file scope, checked against every cumulative changed path.",
-        "prohibited_files": "Exact frozen canonical prohibited paths, checked case-insensitively against the cumulative diff.",
+        "allowed_files": "Exact current packet write scope checked against its delta; every cumulative path is separately checked against the explicitly approved historical manifest.",
+        "prohibited_files": "Exact current packet prohibited paths checked case-insensitively against its delta; historical changes require their own approved scope and prohibitions.",
         "prohibited_capabilities": "Frozen capability, policy, merge, release, deployment, and activation exclusions checked against actual behavior.",
         "capability_layers": "Ordered distinct frozen layers compared with actual interfaces and effects; any undeclared layer is drift.",
         "subsystem_boundaries": "Frozen ownership boundaries checked against all imports, files, contracts, and runtime effects.",
@@ -93,6 +93,13 @@ COMMIT_AUTHORITY_VECTORS = (
             "role": "supervisor_automatic_revision",
             "subject_source": "message frozen before the first revision write",
             "per_round_user_approval": False,
+        }
+    ),
+    MappingProxyType(
+        {
+            "role": "preservation_only",
+            "subject_source": "exact separately approved preservation message",
+            "per_round_user_approval": True,
         }
     ),
 )
@@ -371,16 +378,18 @@ def test_commit_message_remains_original_and_authority_is_separate() -> None:
         "initial",
         "manual_revision",
         "supervisor_automatic_revision",
+        "preservation_only",
     )
     assert COMMIT_AUTHORITY_VECTORS[0]["subject_source"] == (
         "original frozen work-order commit_message"
     )
     assert COMMIT_AUTHORITY_VECTORS[1]["per_round_user_approval"] is True
     assert COMMIT_AUTHORITY_VECTORS[2]["per_round_user_approval"] is False
-    assert "it remains unchanged for the entire review" in contract
-    assert "never replaced by a manual or Supervisor revision message" in contract
+    assert "unchanged through its review" in contract
+    assert "never substituted into this value" in contract
     assert "without adding a TaskSizeGate evidence field" in contract
-    assert "not a repository file, state file, progress record, database, or thirtieth" in contract
+    assert "not a thirtieth `TaskSizeGateEvidence` field or approval in itself" in contract
+    assert "review never writes that packet" in contract
     assert "no additional per-round user approval is implied" in contract
 
 
@@ -665,3 +674,74 @@ def test_contract_vectors_do_not_claim_implementation_or_activation() -> None:
     assert "activation, or end-to-end verification" in module_doc
     assert "does not modify a Skill, add tests, implement the checkpoint" in contract
     assert "does not implement or claim runtime integration, activation, verification" in contract
+
+REVIEW_BOUNDARY_ORACLE = (
+    ("complete_current_and_adopted_history", "eligible_for_checkpoint", "independent_review_only"),
+    ("narrower_revision_with_approved_history", "eligible_for_checkpoint", "check_both_manifests"),
+    ("history_only_file_prohibited_now", "eligible_for_checkpoint", "verify_owning_packet_scope"),
+    ("current_delta_prohibited_file", "no_go_zero_calls", "diagnose_read_only"),
+    ("history_used_to_expand_revision", "no_go_zero_calls", "diagnose_read_only"),
+    ("unapproved_preservation_commit", "no_go_zero_calls", "diagnose_read_only"),
+    ("missing_planning_or_prewrite", "no_go_zero_calls", "diagnose_read_only"),
+    ("missing_or_unknown_call_ledger", "no_go_zero_calls", "diagnose_read_only"),
+    ("check_source_or_configuration_drift", "no_go_zero_calls", "diagnose_read_only"),
+    ("metadata_correction_changes_result", "no_go_zero_calls", "diagnose_read_only"),
+    ("metadata_correction_rebinds_checks_or_completion", "no_go_zero_calls", "diagnose_read_only"),
+    ("inferred_commit_authority", "no_go_zero_calls", "diagnose_read_only"),
+    ("exact_metadata_correction_with_original", "eligible_for_checkpoint", "verify_original_and_correction"),
+)
+
+
+def _review_boundary_rows(contract: str) -> tuple[tuple[str, ...], ...]:
+    start, end = "<!-- WORKFLOW_REVIEW_BOUNDARY_BEGIN -->", "<!-- WORKFLOW_REVIEW_BOUNDARY_END -->"
+    assert contract.count(start) == contract.count(end) == 1
+    lines = tuple(
+        line.strip() for line in contract.split(start, 1)[1].split(end, 1)[0].splitlines()
+        if line.strip()
+    )
+    assert all(line.startswith("|") and line.endswith("|") for line in lines)
+    return tuple(tuple(cell.strip() for cell in line.split("|")[1:-1]) for line in lines[2:])
+
+
+def test_review_boundary_keeps_current_delta_separate_from_adopted_history() -> None:
+    assert _review_boundary_rows(_read(CONTRACT_PATH)) == REVIEW_BOUNDARY_ORACLE
+    assert COMMIT_AUTHORITY_VECTORS[-1]["role"] == "preservation_only"
+    assert COMMIT_AUTHORITY_VECTORS[-1]["per_round_user_approval"] is True
+    contract = _normalized(_read(CONTRACT_PATH))
+    for rule in (
+        "earlier commits are checked against their owning packet",
+        "not an artificial blend with older results",
+        "never proof of development completion or acceptance",
+        "unchanged evidence/result and preserve the original record",
+        "preserve check/source/dependency bindings",
+        "actual check outcomes, completion facts, machine stage identity",
+        "history is disclosed; it cannot be retroactively certified",
+        "independent read-only diagnosis may continue",
+    ):
+        assert rule.casefold() in contract.casefold()
+
+
+@pytest.mark.parametrize("row", REVIEW_BOUNDARY_ORACLE)
+def test_review_handoff_and_scope_bypass_mutations_are_rejected(row: tuple[str, ...]) -> None:
+    contract = _read(CONTRACT_PATH)
+    line = "| " + " | ".join(row) + " |"
+    mutants = (
+        contract.replace(line, "", 1),
+        contract.replace(line, line + "\n" + line, 1),
+        contract.replace(line, "| " + " | ".join((row[0], "pass", "merge")) + " |", 1),
+    )
+    for mutant in mutants:
+        with pytest.raises(AssertionError):
+            assert _review_boundary_rows(mutant) == REVIEW_BOUNDARY_ORACLE
+
+
+def test_review_cannot_write_records_refresh_git_or_reconstruct_acceptance() -> None:
+    skill = _normalized(_read(JL_REVIEW_SKILL_PATH))
+    contract = _normalized(_read(CONTRACT_PATH))
+    for text in (skill, contract):
+        assert "git ls-remote" in text
+        assert "never fetch" in text
+        assert "task_size_gate_jlgo_planning_integration_contract.md" in text or "JLGO planning contract section 5.1" in text
+    assert "Never write audit records" in skill
+    assert "keep `NO-GO`, do not call the evaluator again" in skill
+    assert "A development recovery exception is not a read-only review write permission" in contract

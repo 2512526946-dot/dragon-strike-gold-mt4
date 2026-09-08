@@ -39,7 +39,7 @@ This boundary applies only to the planning checkpoint. It does not cover:
 - the pre-write checkpoint owned by `jl-develop` or `jl-supervisor`;
 - the review checkpoint owned by `jl-review`;
 - merge or release checks;
-- a command-line adapter, API, CI job, daemon, or persistent state file;
+- a command-line adapter, API, CI job, daemon, or autonomous state service;
 - reader, MT4, EA, Demo execution, Live execution, or trading activation.
 
 ## 3. Single production owner
@@ -75,7 +75,8 @@ Before constructing evidence, future `jlgo` integration must prove:
 - the proposed objective, exact files, checks, branch, commit message, push
   destination, boundaries, dependencies, and stop conditions are frozen.
 
-A dirty worktree, unsynchronized main, active unmerged work, unresolved
+For new work, a dirty worktree, unsynchronized main, active unmerged work,
+unresolved
 ancestry, occupied target branch, missing dependency, unknown scope, or
 unreadable evidence prevents an allowed planning result. The integration must
 stop before branch creation or file writes.
@@ -89,6 +90,19 @@ being on synchronized `main` when planning new work.
 
 Retained historical branches whose tips are already ancestors of `main` are
 not active work and must not create a false stop.
+
+Planning an explicitly requested revision or preservation recovery on that
+same active branch is not a new development candidate. Read-only JLGO may
+freeze a fresh revision packet after proving the shared pre-write contract
+section 6 recovery conditions and the user's exact adopted history, state,
+scope and authority. These modes do not override AGENTS: a task starting with
+preserved dirty work must include explicit one-time authority addressing that
+stop rule; absent that exception only read-only diagnosis is permitted.
+Expected edits within an already accepted development phase are not a new
+checkpoint. It must not call an evaluator when the user requested
+diagnosis only. An ordinary dirty worktree does not grant recovery authority.
+Parallel work still requires a separate explicit user exception; it is never
+inferred from the availability of worktrees.
 
 ## 5. Evidence ownership and field mapping
 
@@ -106,7 +120,7 @@ from an evaluator result.
 | `maturity_reason` | Concrete transition or maturity-preserving reason; not a generic label. |
 | `base_branch` | The verified base branch; normal new work uses `main`. |
 | `base_main_commit` | Full immutable commit from verified local and remote main. |
-| `work_branch` | One unoccupied canonical `work/...` branch. |
+| `work_branch` | One canonical `work/...` branch with the approved new, revision or recovery existence rule. |
 | `commit_message` | Exact ordinary commit message for this work order. |
 | `push_destination` | Exact `origin/<work_branch>` destination; never `main`. |
 | `stop_conditions` | Frozen conditions that end the order without scope expansion. |
@@ -130,6 +144,103 @@ from an evaluator result.
 
 User wording may propose values, but it is not sufficient Git, WBS, maturity,
 dependency, or safety evidence. `jlgo` must verify those values independently.
+
+### 5.1 Shared audit packet and invocation ledger
+
+This section is the single caller-owned record protocol for JLGO, pre-write,
+review, and Supervisor. It does not add an evaluator field, a persistence
+service, or an autonomous workflow engine. Earlier capability tables describe
+their original deliveries, not a new WBS maturity claim.
+
+Strict read-only planning and review use existing local refs and, when needed,
+`git ls-remote`; never fetch, prune, refresh tags, update the index, or write
+audit records. Use `git --no-optional-locks` for inspection. Tests must disable
+repository caches and write temporary output only outside the worktree.
+Unavailable remote evidence is unknown, not assumed synchronization.
+
+Only a write-authorized owner with explicit user approval for the exact
+external record directory may append audit records. Keep that directory outside
+all repository worktrees and tracked scope. Read-only callers emit the packet
+in their response and may read previously authorized records; they do not save
+it. Audit storage permission is separate from project-file permission.
+AGENTS output-safety rules still govern stored and displayed content. Permission
+to write a directory is not permission to disclose raw output or sensitive
+paths, market payload/checksums, credentials or exception text. Keep private
+proof references separate from the safe user-facing packet summary. Storing
+workflow-integrity digests requires explicit private integrity-metadata
+authority consistent with AGENTS, or a user-approved narrow exception; without
+it, emit only safe evidence and request that authority, never weaken the rule.
+Do not claim a redacted summary is a complete restorable packet.
+
+Required packet sections are ordered below. These are caller metadata, not
+new `TaskSizeGateEvidence` fields or production types:
+
+<!-- WORKFLOW_PACKET_BEGIN -->
+| Section | Required proof |
+| --- | --- |
+| record_identity | Unique packet and attempt IDs, stage, format version, predecessor digest. |
+| approval | Exact user-approved action, scope, stop conditions, model and record-write authority sources. |
+| git_state | Repository/worktree identity, base, pre-Head, local/remote heads, branch mode, index and worktree state. |
+| scope_manifest | Approved cumulative scope and current revision scope, each with immutable base/head and authority. |
+| frozen_evidence | All 29 ordered fields with exact built-in types, original values and provenance. |
+| frozen_results | Complete planning and latest accepted pre-write results, ordered reasons and their attempt IDs. |
+| commit_authority | Ordered commit hashes, subjects, roles, packet ownership and explicit authority sources. |
+| call_ledger | Per-stage attempt ID, evidence digest, invocation state, consumed calls and raw result reference. |
+| check_evidence | Commands, exit status, counts, warnings/skips, source-tree, dependencies/config and check-set digests. |
+| completion | Actual commit/push outcome and checked Head, or explicit pending state. |
+<!-- WORKFLOW_PACKET_END -->
+
+At planning time, pre-write/checks/completion are explicitly pending, never
+invented. Before review, all required earlier results and checks must exist;
+review completion itself remains pending. An accepted result must have one
+unambiguous reference, not a filename guessed to mean "latest".
+
+Preserve original bytes and digests. Append new records; never overwrite,
+backdate, reconstruct missing history, or reinterpret a failed attempt as
+accepted. A metadata correction references the original and proves unchanged
+evidence/result bytes and values; it cannot change authority or call count.
+A metadata-only correction may change a human-readable label/explanation,
+not machine stage identity, source/dependency/check digests, raw check results,
+commit/push outcomes, completion facts or accepted-result references. A failed
+or stale check cannot be relabelled as accepted. Correcting those substantive
+facts requires new independently proven evidence and explicit approval, with
+the old failure preserved; rerun checks when their source binding is invalid.
+Records are evidence copies, not approval, Git truth, or review PASS. Missing
+history requires a new explicitly approved packet identifying the gap and
+adopted history, never a fabricated old planning or pre-write result.
+
+Use a versioned structured representation with explicit type tags for tuples
+and ordered records. Decode only the declared tags; reject duplicate keys,
+unknown tags, missing/extra/reordered fields, subclasses and scalar coercion.
+Compare exact built-in strings and exact tuples, including commit records.
+Never use eval/exec on record text or normalize an invalid evaluator result.
+Preserve raw tool output alongside any explicitly defined decoding.
+
+One stage attempt has the following closed invocation states. Counts refer to
+actual production evaluator entry, not shell launches or ordinary test calls:
+
+<!-- WORKFLOW_CALL_LEDGER_BEGIN -->
+| Invocation evidence | Consumed calls | Permitted next action |
+| --- | --- | --- |
+| precondition_failed | 0 | diagnose_read_only |
+| proven_not_started | 0 | authorized_transport_retry_same_packet |
+| invocation_unknown | unknown | stop_and_reconcile_read_only |
+| invoked_failed | 1 | stop_no_retry |
+| invoked_accepted | 1 | resume_authorized_phase_without_recall |
+<!-- WORKFLOW_CALL_LEDGER_END -->
+
+A proven transport failure before process/evaluator start may retry only the
+same frozen packet with explicit retry authority and fresh precondition checks.
+Failure before invocation for another reason is not transport retry authority.
+Unknown invocation state forbids blind retry. An exception or validation
+failure after evaluator entry consumes the call. Re-running tests is not a
+checkpoint call and cannot replace checkpoint evidence. A new checkpoint after
+a consumed/uncertain attempt requires separate explicit user approval, a new
+attempt ID and preserved history; no automatic loop or reset of call count.
+
+Checkpoint failure blocks writes and formal PASS, not useful read-only
+diagnosis. Report verified facts, missing evidence and the precise approval
+needed without another evaluator call or automatic Skill invocation.
 
 ## 6. WBS and maturity rules
 

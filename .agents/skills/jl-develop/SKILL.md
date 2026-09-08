@@ -55,7 +55,7 @@ workflow-level `STOP_UNCERTAIN`，下一 Skill 为 `无`，调用 evaluator 零�
 不得创建、切换或移动分支，也不得写文件：
 
 - 工单缺失、可变、歧义，或 planning result / reason codes 不完整；
-- worktree/index dirty、冲突、main mismatch 或 ancestry 无法确认；
+- 未批准的 worktree/index dirty、冲突、main mismatch 或 ancestry 无法确认；
 - 目标分支占用、依赖证据缺失，或 allowed/prohibited scope 不再精确；
 - objective、WBS、maturity、工时、层、依赖、风险、ModelGate、验证或 stop
   conditions 相对冻结工单发生漂移；
@@ -72,6 +72,24 @@ worktree/index 干净，本地与远端 work-branch head 等于批准 revision h
 列表和累计 diff 均可证明且未越界。`base_branch` 仍严格为 `main`；当前分支只由
 Git 前置状态和 `work_branch` 表达。未合并实现不得提升 frozen base-main
 `current_maturity`，原批准 `target_maturity` 和 `maturity_reason` 不得变化。
+
+### 保留式恢复和记录
+
+上述 clean new/revision 前置条件是默认模式，不覆盖已明确批准的保留式恢复。
+依共享 pre-write contract 第 6.3-6.4 节，先证明具体 pre-Head、远端 Head、
+预期 dirty 内容及 index 状态或 local-only commits，以及每项历史 authority。
+历史累计范围与当前修订范围分别验证；`allowed_files` 只表示本 packet 的
+当前写范围。禁止借历史范围扩大本轮修改，禁止自动删除、清理、stash 或重写历史。
+
+记录使用 `task_size_gate_jlgo_planning_integration_contract.md` 第 5.1 节。
+在 dirty 状态开始恢复任务须有针对 AGENTS 的显式一次性保留授权；记录写入
+批准不授予敏感信息披露权。标签更正不得改写 checks/source 绑定或 completion。
+仅在用户明确批准外部记录目录写入时追加真实记录，不覆盖旧记录。
+planning、pre-write、checks、completion 按实际阶段记账；已通过 pre-write 后
+产生预期改动或 local commit 不要求重跑同一已消费调用。只恢复已有授权的
+未完成阶段；内容/依赖/检查集漂移或缺少真实 acceptance 时停止并要求明确批准。
+传输失败与 evaluator 调用按共享 invocation ledger 区分，禁止盲目 retry。
+checkpoint 受阻仍可只读解释实际缺陷和下一批准范围，不可假称通过或自动执行。
 
 ### Non-activating verification scope proof
 
@@ -187,7 +205,7 @@ Git/evidence 变化，统一返回 pre-write contract 第 10 节的一个固定�
 checkpoint 通过只表示当前已批准工单可以继续，不是新用户批准，也不自动执行
 branch、write、Skill、commit、push、merge、tag、部署或 activation。
 
-本节不实现 `jl-supervisor` recovery、`jl-review` checkpoint、test tooling、CI、
+本节不执行 `jl-supervisor` 或 `jl-review`，也不实现 test tooling、CI、
 MT4、reader、EA、交易或执行能力。
 
 ## 下一步操作卡
@@ -208,7 +226,7 @@ MT4、reader、EA、交易或执行能力。
 
 - 开发成功、commit 并 push 工作分支后，`下一 Skill` 写 `$jl-review`。
 - TaskSizeGate pre-write 的 `STOP_UNCERTAIN`、任一前置失败、post-call 失败或 checkpoint 异常时，`下一 Skill` 必须写 `无`，不得建议或自动路由到 `$jlgo`。
-- 工作区不干净、测试失败、commit 失败或 push 失败时，`下一 Skill` 写 `无`。
+- 未批准的工作区修改、测试失败、commit 失败或 push 失败时，`下一 Skill` 写 `无`。已批准的预期保留状态按恢复阶段核对，不因此重跑已消费 checkpoint。
 - 完整指令必须要求只读验收，不得要求 merge、tag 或进入下一业务工单。
 - 完整指令必须只调用一个 Skill，并要求下一轮结束时继续输出新的【下一步操作卡】。
 - 不得通过操作卡自动调用 `$jl-review`；必须等待用户显式批准。

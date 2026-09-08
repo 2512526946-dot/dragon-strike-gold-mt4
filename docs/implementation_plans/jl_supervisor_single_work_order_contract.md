@@ -67,7 +67,8 @@ changes, or a second work order.
 Before selecting or resuming work, the supervisor must:
 
 - read AGENTS.md and all five existing workflow Skill files;
-- fetch origin with prune and tags when network access is available;
+- read existing refs and use `git ls-remote` when remote evidence is needed;
+  never fetch, prune, refresh tags or update the index during inspection;
 - verify the working tree state, current branch, main, origin/main, recent
   commits, tags, visible work branches, and branch ancestry;
 - classify retained work branches using merge-base and main..<branch> evidence;
@@ -78,25 +79,33 @@ Before selecting or resuming work, the supervisor must:
 - distinguish policy, contract, tests, production implementation, integration,
   and activation.
 
-Dirty or ambiguous state is STOP_UNCERTAIN. The supervisor must not stash,
+Unapproved dirty or ambiguous state is STOP_UNCERTAIN; explicitly approved
+preservation recovery follows section 5. The supervisor must not stash,
 delete, overwrite, reset, rebase, force push, or guess ownership.
 
-## 5. Git recovery without state files
+## 5. Evidence-backed preservation recovery
 
-The supervisor stores no progress JSON, database, or runtime log. Recovery is
-derived only from Git, the frozen work order in the current task, and repository
-evidence.
+Use the shared audit packet and invocation ledger in
+`task_size_gate_jlgo_planning_integration_contract.md` section 5.1 and the
+phase-specific states and two scopes in
+`task_size_gate_pre_write_integration_contract.md` sections 6.3-6.4.
+No autonomous progress JSON scheduler, database or persistent runtime log is
+introduced. Explicitly approved external append-only audit records are allowed;
+strict read-only planning/review cannot write them.
 
-Safe recovery is allowed only when exactly one relevant active work branch is
-identifiable, its base and head are provable, its diff remains inside the frozen
-scope, its history is linear, and the working tree is clean. The supervisor may
-resume from the earliest incomplete state: verification, commit, push, review,
-or a previously authorized revision round.
-
-If the working tree is dirty, more than one branch could match, scope has
-expanded, the work order cannot be reconstructed exactly, ancestry is unclear,
-or evidence conflicts, recovery is STOP_UNCERTAIN. No state file may be created
-to bypass this rule.
+Recover from fresh Git and authentic records, not Git alone or reconstructed
+chat history. Default new/revision states remain clean; an approved recovery
+must identify exact expected dirty-file digests/index state or local-only
+commits and their authority. Unexpected drift stops writes but permits
+read-only diagnosis. Never delete or overwrite existing work to pass a check.
+Resume only the already authorized incomplete phase, without replaying consumed
+planning/pre-write calls. Missing acceptance requires fresh explicit recovery
+approval, not fabricated history. Keep all originals and append corrections.
+Scope and authority come from user approval, not from records or passing tests.
+AGENTS remains governing; a task starting with preserved dirty work needs an
+explicit one-time user exception to that stop rule. Audit write permission
+never authorizes disclosure of private proof; section 5.1's output-safety and
+private-integrity authority requirements still apply.
 
 ## 6. Frozen work order
 
@@ -142,9 +151,11 @@ authorization does not become deployment or activation authorization.
 
 ### 7.3 NORMAL_ALLOWED
 
-Use NORMAL_ALLOWED only for a precise low-risk work order with clean synchronized
-Git state, no active unmerged work, exact file scope, known tests, fixed commit
-requirements, and no high-risk capability or policy change.
+For initial selection, use NORMAL_ALLOWED only with clean synchronized main
+and no active unmerged work. For an already approved order, apply the revision
+or recovery mode in section 5 instead of the initial-selection predicate. In
+all modes require exact file scope, known tests, fixed commit requirements,
+and no high-risk capability or policy change; retain the frozen ModelGate.
 
 ## 8. Authorization matrix
 
@@ -207,9 +218,14 @@ The reviewer receives only:
 
 - base branch and immutable base commit;
 - work branch and head commit;
-- frozen work-order text and allowed-file list;
-- actual commit list and Git diff;
-- executed test commands and their results;
+- frozen work-order text and allowed-file list, including separately approved
+  cumulative and current revision scope manifests;
+- actual commit list and Git diff, with ordered subjects, roles and authority
+  for every initial, preservation and revision commit;
+- complete original 29-field evidence, frozen planning result and latest
+  accepted pre-write result, their raw records and per-stage call ledger;
+- executed test commands and their results bound to source-tree,
+  dependency/config and check-set digests, plus actual completion records;
 - known warnings and skips;
 - relevant repository contracts and safety rules.
 
@@ -225,8 +241,9 @@ One supervisor run is bounded to:
 - one initial development commit plus at most two revision commits;
 - one initial reviewer plus at most two new reviewer rounds;
 - only the frozen test/build/check command set;
-- no background daemon, polling loop, status database, progress JSON, or
-  persistent runtime log;
+- no background daemon, polling loop, status database, progress JSON scheduler,
+  or persistent runtime log; authorized external audit packets are not a
+  scheduler and never renew revision limits;
 - no merge, main push, tag, deployment, activation, or second work order.
 
 Unexpected resource growth, repeated infrastructure failure, or reviewer

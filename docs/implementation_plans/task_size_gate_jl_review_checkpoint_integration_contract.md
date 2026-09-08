@@ -81,23 +81,46 @@ Supervisor self-assessment, commit message, test count, file name, or claimed
 capability state is not proof. Missing, mutable, inaccessible, or contradictory
 artifacts fail closed before evaluation.
 
-The commit-authority list exists only in the immutable review packet for the
-current task. It is not a repository file, state file, progress record,
-database, or thirtieth `TaskSizeGateEvidence` field. Its entries are ordered
+The commit-authority list is caller metadata, not a thirtieth
+`TaskSizeGateEvidence` field or approval in itself. It may be read from an
+explicitly authorized external append-only audit packet under JLGO planning
+contract section 5.1; review never writes that packet. Its entries are ordered
 exactly like the Git commit list and use only these authority sources:
 
 - the initial commit subject is the original frozen work-order
   `commit_message`;
 - a manually approved revision subject is the exact message in that approved
-  revision order; and
+  revision order;
+- an explicitly approved preservation-only commit has its own exact subject
+  and authority, but is never proof of development completion or acceptance; and
 - a bounded Supervisor automatic revision subject is frozen before the first
   write of that revision inside the same authorized task and remaining
   revision allowance. The original bounded Supervisor authorization covers
   that in-scope revision, so no additional per-round user approval is implied.
 
 The reviewer must prove the source for every entry from the current task's
-immutable work-order or revision evidence. It must not infer authority from a
-commit subject, developer report, branch history, or desired conclusion.
+immutable work-order, preservation or revision evidence. It must not infer
+authority from a commit subject, developer report, branch history, or desired
+conclusion.
+
+For a newly approved recovery packet, retain the original packet's bytes,
+results and authority. Review evaluates the new packet against its own frozen
+planning and accepted pre-write result, not an artificial blend with older
+results. Its `commit_message` remains its original frozen value throughout
+this review. Earlier commits are checked against their owning packet and
+explicit adopted-history approval. A metadata-only correction must prove
+unchanged evidence/result and preserve the original record. It must also
+preserve check/source/dependency bindings, actual check outcomes, completion
+facts, machine stage identity and accepted-result references under section 5.1.
+Private proof stays outside public summaries; record-write permission is not
+an output-safety exception. Missing history
+is disclosed; it cannot be retroactively certified by a new allow result.
+
+The review handoff includes every shared packet section from JLGO planning
+contract section 5.1, including both scope manifests, per-stage call ledger,
+check/source digests and preservation commit roles. A summary alone cannot
+replace raw evidence. Complete results use exact built-in strings and tuples;
+decode ordered commit records through the declared typed representation only.
 
 ## 4. Git and branch preconditions
 
@@ -112,13 +135,44 @@ Before constructing evidence, the reviewer must prove all of the following:
 - no merge commit, rebase, rewritten commit, unpushed commit, or uncommitted
   change is present;
 - cumulative changed files are canonical relative paths and remain within the
-  frozen allowed scope;
-- no prohibited file or capability is present; and
+  frozen allowed scope of the approved cumulative manifest; separately check
+  revision delta against the current packet's narrower allowed files;
+- no file violates its owning packet's scope/prohibitions and no prohibited
+  capability is present; and
 - the branch has not already been merged, moved, deleted, or replaced.
 
 The checkpoint is read-only. It must not checkout, switch, create, move,
 reset, clean, stash, rebase, commit, push, merge, tag, or delete anything.
-Failure of any precondition uses zero evaluator calls.
+Failure of any precondition uses zero evaluator calls. Use existing local refs
+and `git ls-remote`, never fetch/prune/tag refresh or optional index writes.
+Disable test caches; no repository or audit-record writes are permitted.
+A development recovery exception is not a read-only review write permission.
+If formal prerequisites fail, independent read-only diagnosis may continue
+with an explicit `NO-GO`; it cannot authorize revision or merge.
+
+### 4.1 Scope and handoff decision vectors
+
+These cases assume other prerequisites hold. They constrain reviewer behavior,
+not production evaluator reason codes or additional permissions. "Continue"
+means only the independent read-only review after its own accepted checkpoint.
+
+<!-- WORKFLOW_REVIEW_BOUNDARY_BEGIN -->
+| Evidence case | Checkpoint disposition | Scope of next action |
+| --- | --- | --- |
+| complete_current_and_adopted_history | eligible_for_checkpoint | independent_review_only |
+| narrower_revision_with_approved_history | eligible_for_checkpoint | check_both_manifests |
+| history_only_file_prohibited_now | eligible_for_checkpoint | verify_owning_packet_scope |
+| current_delta_prohibited_file | no_go_zero_calls | diagnose_read_only |
+| history_used_to_expand_revision | no_go_zero_calls | diagnose_read_only |
+| unapproved_preservation_commit | no_go_zero_calls | diagnose_read_only |
+| missing_planning_or_prewrite | no_go_zero_calls | diagnose_read_only |
+| missing_or_unknown_call_ledger | no_go_zero_calls | diagnose_read_only |
+| check_source_or_configuration_drift | no_go_zero_calls | diagnose_read_only |
+| metadata_correction_changes_result | no_go_zero_calls | diagnose_read_only |
+| metadata_correction_rebinds_checks_or_completion | no_go_zero_calls | diagnose_read_only |
+| inferred_commit_authority | no_go_zero_calls | diagnose_read_only |
+| exact_metadata_correction_with_original | eligible_for_checkpoint | verify_original_and_correction |
+<!-- WORKFLOW_REVIEW_BOUNDARY_END -->
 
 ## 5. Production interface reuse
 
@@ -158,7 +212,7 @@ has one review-owned source and revalidation rule.
 | Field | Review source and revalidation rule |
 | --- | --- |
 | `objective` | Exact single outcome from the frozen approved work order; unchanged by implementation or review. |
-| `objective_count` | Recount independently deliverable outcomes in the actual cumulative diff; any value other than the frozen count is drift. |
+| `objective_count` | Recount independently deliverable outcomes in the current packet delta; verify adopted history separately without hiding cumulative capability or risk. |
 | `wbs_package_ids` | Frozen package IDs checked against current WBS ownership; an added package is drift. |
 | `current_maturity` | Narrow capability maturity proven at frozen base main; unmerged commits never advance it. |
 | `target_maturity` | Exact frozen adjacent target, or exact separately approved maturity-preserving target. |
@@ -166,13 +220,13 @@ has one review-owned source and revalidation rule.
 | `base_branch` | Strict `main`; the reviewed work branch is never substituted here. |
 | `base_main_commit` | Fresh equality of local main, remote main, and the frozen base commit. |
 | `work_branch` | Exact frozen branch whose local and remote tips equal the reviewed head. |
-| `commit_message` | Exact original frozen work-order message used at planning; it remains unchanged for the entire review and is never replaced by a manual or Supervisor revision message. Actual commit subjects and their authority are validated separately through the ordered commit-authority list. |
+| `commit_message` | Exact original message of the packet being evaluated; unchanged through its review. Each historical or revision subject is checked against its own frozen authority, never substituted into this value. |
 | `push_destination` | Exact `origin/<work_branch>` destination and never `main`. |
 | `stop_conditions` | Exact frozen stop conditions; no deletion, weakening, or post hoc rewrite. |
 | `estimated_engineering_hours_lower` | Frozen approved lower estimate; review must not reduce it to obtain an allow result. |
 | `estimated_engineering_hours_upper` | Frozen upper estimate compared with actual scope and effort evidence; any required increase is drift. |
-| `allowed_files` | Exact frozen canonical relative-file scope, checked against every cumulative changed path. |
-| `prohibited_files` | Exact frozen canonical prohibited paths, checked case-insensitively against the cumulative diff. |
+| `allowed_files` | Exact current packet write scope checked against its delta; every cumulative path is separately checked against the explicitly approved historical manifest. |
+| `prohibited_files` | Exact current packet prohibited paths checked case-insensitively against its delta; historical changes require their own approved scope and prohibitions. |
 | `prohibited_capabilities` | Frozen capability, policy, merge, release, deployment, and activation exclusions checked against actual behavior. |
 | `capability_layers` | Ordered distinct frozen layers compared with actual interfaces and effects; any undeclared layer is drift. |
 | `subsystem_boundaries` | Frozen ownership boundaries checked against all imports, files, contracts, and runtime effects. |
@@ -193,16 +247,18 @@ it must not silently rewrite the approved order. A smaller or larger actual
 classification, changed reason sequence, or changed eligibility is result
 drift rather than permission to replace the frozen planning result.
 
-The initial Git commit subject must equal the evidence `commit_message`.
-Every later subject must equal its corresponding immutable manual-revision or
-Supervisor-revision message. Missing, extra, reordered, duplicated, or
-unprovable commits, subjects, roles, or authority entries are frozen-order
+The initial commit belonging to the evaluated packet must equal its evidence
+`commit_message`. Every other subject must equal its corresponding immutable
+initial, preservation, manual-revision or Supervisor-revision message.
+Missing, extra, reordered, duplicated, or unprovable commits, subjects, roles, or authority entries are frozen-order
 failure. They must not change `commit_message`, add an evidence field, or be
 converted into evaluator input.
 
 ## 7. Zero-call and one-call ordering
 
-The call accounting is deterministic:
+The call accounting is deterministic and uses JLGO planning contract section
+5.1's shared per-stage invocation ledger (including proven transport non-start
+and uncertain entry; neither is an automatic evaluator retry):
 
 - Git, frozen-order, commit-subject authority, dependency, scope,
   test-evidence, interface, or evidence-construction failure before invocation
@@ -362,7 +418,8 @@ Independent review must confirm that this document alone:
 - keeps evidence `commit_message` equal to the original frozen work-order
   value while validating every actual commit subject and authority separately;
 - distinguishes initial, manually approved revision, and bounded Supervisor
-  automatic-revision authority without a thirtieth field or persistent state;
+  automatic-revision and preservation authority without a thirtieth field or
+  autonomous state service;
 - defines all 29 evidence fields and their review-owned sources;
 - uniquely reuses `TaskSizeGateEvidence`, `TaskSizeGateResult`, public reason
   constants, and `evaluate_task_size_gate`;

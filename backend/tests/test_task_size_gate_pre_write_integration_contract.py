@@ -392,7 +392,7 @@ def test_jl_develop_requires_exact_planning_result_and_preserves_authority() -> 
     assert "checkpoint 通过只表示" in skill
     assert "当前已批准工单可以继续，不是新用户批准" in skill
     assert "不自动执行 branch、write、Skill、commit、push、merge、tag、部署或 activation" in skill
-    assert "本节不实现 `jl-supervisor` recovery、`jl-review` checkpoint、test tooling、CI" in skill
+    assert "本节不执行 `jl-supervisor` 或 `jl-review`，也不实现 test tooling、CI" in skill
 
 
 def test_jl_develop_prewrite_stop_routing_is_always_none() -> None:
@@ -434,9 +434,10 @@ def test_jl_supervisor_checks_new_revision_and_recovery_before_writes() -> None:
     assert "For an approved revision, run the checkpoint on the frozen work branch before the first revision write" in skill
     assert "cumulative scope must be exact" in skill
     assert "must not advance the frozen base-main `current_maturity`" in skill
-    assert "For Git recovery, use only current Git evidence and the frozen order" in skill
-    assert "within the remaining revision limit" in skill
-    assert "Do not create a state file, progress JSON, database, daemon, or persistent runtime log" in skill
+    assert "For Git recovery, use current Git evidence and authentic frozen audit records" in skill
+    assert "existing user authority and remaining revision limit" in skill
+    assert "Do not create an autonomous state service, progress JSON scheduler" in skill
+    assert "approved preserved state must be provable" in skill
 
 
 def test_jl_supervisor_prewrite_call_order_is_zero_or_exactly_one() -> None:
@@ -569,3 +570,69 @@ def test_non_activating_prewrite_uses_one_existing_call_without_new_authority() 
     assert "does not complete verification, grant new authority, activate anything, or authorize G174" in supervisor
     assert "Review propagation remains a separately approved stage" in develop
     assert "Review propagation remains a separately approved stage" in supervisor
+
+RECOVERY_ORACLE = (
+    ("clean_initial_or_revision", "one_fresh_attempt", "approved_first_write_after_acceptance"),
+    ("approved_preserved_state_new_revision", "one_fresh_attempt", "approved_revision_after_acceptance"),
+    ("accepted_prewrite_expected_dirty", "no_recall", "authorized_checks_or_commit"),
+    ("accepted_checks_local_commit", "no_recall", "authorized_work_branch_push"),
+    ("published_exact_head", "review_separate_attempt", "independent_read_only_review"),
+    ("unknown_or_changed_state", "no_call", "stop_read_only_diagnosis"),
+)
+
+
+def _recovery_rows(contract: str) -> tuple[tuple[str, ...], ...]:
+    start = "<!-- WORKFLOW_RECOVERY_BEGIN -->"
+    end = "<!-- WORKFLOW_RECOVERY_END -->"
+    assert contract.count(start) == contract.count(end) == 1
+    lines = tuple(
+        line.strip()
+        for line in contract.split(start, 1)[1].split(end, 1)[0].splitlines()
+        if line.strip()
+    )
+    assert all(line.startswith("|") and line.endswith("|") for line in lines)
+    return tuple(tuple(cell.strip() for cell in line.split("|")[1:-1]) for line in lines[2:])
+
+
+def test_phase_specific_recovery_does_not_recall_accepted_prewrite() -> None:
+    assert _recovery_rows(_read(CONTRACT_PATH)) == RECOVERY_ORACLE
+    assert RECOVERY_ORACLE[2][1] == RECOVERY_ORACLE[3][1] == "no_recall"
+    assert RECOVERY_ORACLE[-1][1:] == ("no_call", "stop_read_only_diagnosis")
+
+
+@pytest.mark.parametrize("row", RECOVERY_ORACLE)
+def test_recovery_mutations_cannot_reauthorize_writes_or_reset_calls(row: tuple[str, ...]) -> None:
+    contract = _read(CONTRACT_PATH)
+    original = "| " + " | ".join(row) + " |"
+    mutants = (
+        contract.replace(original, "", 1),
+        contract.replace(original, original + "\n" + original, 1),
+        contract.replace(original, "| " + " | ".join((row[0], "one_fresh_attempt", "unconditional_write")) + " |", 1),
+    )
+    for mutant in mutants:
+        with pytest.raises(AssertionError):
+            assert _recovery_rows(mutant) == RECOVERY_ORACLE
+
+
+def test_recovery_requires_content_and_phase_proof_not_just_file_names() -> None:
+    contract = _normalized(_read(CONTRACT_PATH))
+    for rule in (
+        "exact local-only commits or dirty-file content and staged/unstaged state",
+        "path-only approval is insufficient",
+        "Remote-only or unexplained changes stop",
+        "preservation-only commits which never prove acceptance",
+        "recovery cannot renew the allowance",
+        "source, dependency/config and check-set digests",
+        "Never replay planning/pre-write solely because",
+        "not a false completion or reused report for different content",
+        "including staged, unstaged and untracked files",
+        "adopted historical paths are not permission to edit them again",
+        "do not union historical paths into its 29 fields",
+        "A broader historical manifest cannot hide a current delta",
+    ):
+        assert rule in contract
+    for skill_path in (JL_DEVELOP_SKILL_PATH, JL_SUPERVISOR_SKILL_PATH):
+        skill = _read(skill_path)
+        assert "task_size_gate_jlgo_planning_integration_contract.md" in skill
+        assert "invocation ledger" in skill
+        assert "6.3-6.4" in skill

@@ -10,7 +10,7 @@ description: Perform a strict read-only review of a 巨龙出击 branch or commi
 3. 只读审查当前 branch 或用户指定 commit 相对 `main` 的状态。
 4. `/review` 可用时优先使用 Review against a base branch，并在当前任务运行，不使用 Detached review。
 5. 检查实际 diff、生产代码、测试证明范围、修改范围、Git ancestry、安全语义、输出泄露、能力陈述和 ff-only 条件。
-6. 必要时运行测试，但不得修改任何文件。
+6. 必要时运行测试，禁用仓库缓存和 bytecode 写入；临时测试输出仅在工作树外，不得修改项目文件或审计记录。
 7. 只允许以下结论：`PASS`、`PASS WITH FOLLOW-UP`、`FIX BEFORE MERGE`、`NO-GO`。
 8. 结论为 `FIX BEFORE MERGE` 时，列出精确 findings，生成最小修订工单，明确继续原分支，并将下一 Skill 指向 `$jl-develop`。
 9. 结论为 `PASS` 或明确可合并的 `PASS WITH FOLLOW-UP` 时，给出 main、branch HEAD、修改范围和测试基线，生成 merge 工单，并将下一 Skill 指向 `$jl-merge`。
@@ -28,8 +28,9 @@ base `main` and base commit, exact work branch and head, local and remote branch
 heads, ordered ordinary commit subjects with their authority sources, immutable
 work order, frozen planning result, latest accepted pre-write result, exact
 cumulative diff, required check evidence, and explicit review-only authority.
-The original work-order `commit_message` remains the evidence value for the
-whole review; ordered later commit subjects are separately proven against their
+The original work-order `commit_message` of the packet being evaluated remains
+unchanged for this review. Historical packets keep their own messages/results;
+ordered subjects are separately proven against initial, preservation,
 manual-revision or Supervisor automatic-revision authority. Missing, extra,
 reordered, duplicated, or unprovable commit evidence is a pre-call failure.
 
@@ -60,10 +61,25 @@ Before constructing evidence, independently prove that the worktree and index
 are clean and conflict-free; local `main` and `origin/main` equal the frozen
 base; local and remote work heads equal the frozen head; base is an ancestor;
 the commits are exactly the frozen linear ordinary list; the cumulative diff is
-within exact canonical allowed scope; prohibited files and capabilities are
-absent; dependencies, checks, ModelGate, risks, policies, and all Git facts are
+within the approved cumulative manifest and current delta scope; no file
+violates its owning packet's prohibitions and no prohibited capability is
+present; dependencies, checks, ModelGate, risks, policies, and all Git facts are
 still provable. The checkpoint never checks out, switches, creates, moves,
 resets, cleans, stashes, rebases, commits, pushes, merges, tags, or deletes.
+Use existing refs and `git ls-remote`; never fetch, prune, refresh tags or
+update the index. Never write audit records.
+
+Apply the shared packet and invocation ledger in
+`task_size_gate_jlgo_planning_integration_contract.md` section 5.1 and review
+contract sections 3-4. Require authentic full evidence/results, call ledger,
+ordered commit authority, source/dependency/check digests and completion.
+Verify approved cumulative scope separately from the current revision delta;
+historical permission does not expand current writes. A new recovery packet
+never retroactively certifies missing history. Metadata corrections preserve
+original records and cannot change frozen evidence/results, call count,
+check/source/dependency bindings, actual outcomes, completion facts or machine
+stage identity. Do not expose private raw proof or digests in public summaries;
+record-write authority is not an output-safety exception.
 
 Construct the following fresh, frozen, exact `TaskSizeGateEvidence` fields in
 this order from caller-owned frozen artifacts and the independently rechecked
@@ -177,7 +193,10 @@ Every checkpoint failure prevents `PASS` and `PASS WITH FOLLOW-UP`, fixes the
 formal conclusion to `NO-GO`, and fixes the next Skill to `无`. Workflow
 categories never enter `TaskSizeGateResult.reason_codes`; do not disclose
 exceptions, tracebacks, credentials, environment values, absolute paths, or
-raw user content.
+raw user content. A checkpoint block does not forbid useful independent
+read-only diagnosis of the actual code and missing evidence; label that work
+non-accepting, keep `NO-GO`, do not call the evaluator again, and describe the
+precise missing approval without executing or auto-routing another Skill.
 
 A passing checkpoint only permits continuation of the already requested
 independent read-only review. It is not a `PASS`, `PASS WITH FOLLOW-UP`, user

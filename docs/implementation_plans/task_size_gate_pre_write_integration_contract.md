@@ -107,8 +107,10 @@ Missing, mutable, ambiguous, or reconstructed planning artifacts are
 
 ## 6. Git preconditions by mode
 
-Git facts must be fetched and read again immediately before evaluation. A stale
-planning snapshot is not pre-write evidence.
+Read Git facts again immediately before evaluation using existing refs and
+`git ls-remote`, without fetch, prune, tag refresh or index writes. A stale
+planning snapshot is not pre-write evidence. Apply the shared audit packet
+and invocation ledger in JLGO planning contract section 5.1 to both callers.
 
 ### 6.1 New work
 
@@ -136,7 +138,8 @@ All conditions are required:
 - `TaskSizeGateEvidence.base_branch` remains strict `main`; the current work
   branch is represented only by the Git precondition and `work_branch`;
 - base ancestry and the exact linear commit list are provable;
-- cumulative diff remains inside the frozen allowed files;
+- cumulative diff remains inside the explicitly approved cumulative scope,
+  and the revision delta remains inside the current frozen allowed files;
 - for an unmerged revision, `current_maturity` remains the maturity proven at
   frozen base main, while `target_maturity` and `maturity_reason` remain the
   original approved transition;
@@ -147,29 +150,78 @@ All conditions are required:
   effect.
 
 An unapproved branch, local-only commit, remote-only commit, dirty revision, or
-expanded review request is `STOP_UNCERTAIN`. A standalone
+expanded review request is `STOP_UNCERTAIN`; explicit preservation recovery
+uses section 6.3 rather than silently relaxing this clean-revision mode.
+A standalone
 maturity-preserving hardening or maintenance order must receive its own
 planning result and explicit user approval; it is not inferred from an
 unmerged revision branch.
 
-### 6.3 Supervisor recovery before another write
+### 6.3 Explicit preservation recovery
 
-Recovery uses Git only; no progress JSON, state file, database, daemon, or
-persistent runtime log may be introduced. Before any recovery write:
+Both callers use current Git plus authentic frozen records, not Git alone.
+Do not create an autonomous state service, progress JSON scheduler, database,
+daemon, or persistent runtime log. Authorized external audit records follow
+JLGO planning contract section 5.1; they never bypass repository policy.
+AGENTS remains governing. Resuming a task with preserved dirty work requires
+an explicit one-time user exception covering its dirty-state stop rule and the
+exact preserved content. Without that exception, stop mutations and continue
+only non-accepting read-only diagnosis. Ordinary expected edits within an
+already accepted development phase do not restart the entry checkpoint.
 
-- exactly one relevant active branch is unambiguous;
-- its base, head, remote head, ancestry, commits, and diff are provable;
-- the worktree is clean;
-- `TaskSizeGateEvidence.base_branch` remains strict `main`, while the recovery
-  branch is represented only by the Git precondition and `work_branch`;
-- an unmerged recovery revision preserves the frozen base-main maturity and
-  original approved target transition;
-- the branch remains inside the original frozen work order;
-- the authorized revision-round limit has not been exhausted; and
-- the next recovery action is already authorized by the bounded Supervisor
-  state machine.
+Before recovery, prove exactly one relevant branch, frozen base, pre-Head,
+remote Head, complete linear history and both scopes. Default clean
+preconditions still apply unless explicit user approval adopts the exact
+local-only commits or dirty-file content and staged/unstaged state. Bind
+expected dirty content to per-file digests and the checked source tree;
+path-only approval is insufficient. Remote-only or unexplained changes stop.
+Do not stash, reset, delete, overwrite, clean or force-push to fit a checkpoint.
 
-Failure to prove any item stops recovery without a fallback path.
+`TaskSizeGateEvidence.base_branch` remains strict `main`, while the recovery
+branch is represented only by the Git precondition and `work_branch`. An
+unmerged recovery revision preserves the frozen base-main maturity and
+original approved target transition. Preserve all historical commit roles,
+including preservation-only commits which never prove acceptance.
+Supervisor's original work order and remaining revision-round limit still
+apply; recovery cannot renew the allowance.
+
+The following states are phase-specific, not permissions derived from Git:
+
+<!-- WORKFLOW_RECOVERY_BEGIN -->
+| State and proof | Evaluator action | Allowed continuation |
+| --- | --- | --- |
+| clean_initial_or_revision | one_fresh_attempt | approved_first_write_after_acceptance |
+| approved_preserved_state_new_revision | one_fresh_attempt | approved_revision_after_acceptance |
+| accepted_prewrite_expected_dirty | no_recall | authorized_checks_or_commit |
+| accepted_checks_local_commit | no_recall | authorized_work_branch_push |
+| published_exact_head | review_separate_attempt | independent_read_only_review |
+| unknown_or_changed_state | no_call | stop_read_only_diagnosis |
+<!-- WORKFLOW_RECOVERY_END -->
+
+Continuing accepted work requires unchanged authentic evidence/results and
+matching source, dependency/config and check-set digests. Recheck current
+state before each authorized action. Never replay planning/pre-write solely
+because completed development left expected modifications or a local commit.
+If prior acceptance cannot be proved, stop writes; a new explicitly approved
+recovery packet must state the missing history rather than fabricate it.
+Missing/failed checks require the authorized checks before commit/push, not a
+false completion or reused report for different content.
+
+### 6.4 Cumulative and revision scope
+
+Freeze two separately approved manifests: base-main-to-current-Head cumulative
+scope and revision-pre-Head-to-current-state delta scope, including staged,
+unstaged and untracked files. Every historical commit must have a role and
+authority source. The current packet's `allowed_files` is only the current
+write scope; adopted historical paths are not permission to edit them again.
+For an ordinary initial order the two scopes coincide. For a newly approved
+recovery/revision packet, evaluate that packet unchanged and verify adopted
+history independently; do not union historical paths into its 29 fields.
+
+Any new path, renamed/deleted/generated path, capability, risk, or scope
+expansion needs explicit approval and new planning. A broader historical
+manifest cannot hide a current delta outside its narrower scope. Neither
+manifest waives prohibited capabilities or the independent cumulative review.
 
 ## 7. Exact caller-owned evidence
 
@@ -219,7 +271,8 @@ Current work-branch identity is checked separately and must never replace
 Pre-write drift exists when current evidence differs materially from the
 approved planning evidence, including:
 
-- dirty state, main mismatch, unknown ancestry, changed or occupied branch;
+- unapproved dirty state, main mismatch, unknown ancestry, changed or occupied
+  branch contrary to the explicitly approved mode;
 - changed objective count or WBS packages;
 - added, removed, aliased, wildcard, or noncanonical scope;
 - higher engineering-hour upper bound;
@@ -264,7 +317,9 @@ evaluator call and must not trigger another call.
 
 ## 10. Fixed fail-closed behavior
 
-The following categories stop before branch creation or any write:
+The following categories stop branch creation and project writes. Read-only
+analysis may still explain verified blockers and required approval without
+calling the evaluator again; it must not produce PASS or execute a repair:
 
 ```text
 PRE_WRITE_GIT_INVALID
@@ -293,8 +348,10 @@ calls. Once all pre-evaluator checks pass, exactly one call is permitted;
 
 Failure output must not contain exception text, traceback, absolute paths,
 environment values, credentials, raw user content, or other sensitive data.
-Failure must not create, switch, reset, delete, or move a branch; write a file;
+Failure must not create, switch, reset, delete, or move a branch; write a project file;
 invoke another Skill; commit; push; merge; tag; deploy; or activate anything.
+Only an explicitly record-write-authorized owner may append the actual failure
+record outside the worktree; a read-only caller may not even do that.
 
 ## 11. Passing checkpoint does not perform the write
 

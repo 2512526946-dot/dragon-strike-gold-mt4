@@ -59,7 +59,8 @@ Required Pro resume wording must carry the same meaning as:
 Before selecting, creating, switching, or editing:
 
 1. Read AGENTS.md, all five existing Skill files, and relevant metadata.
-2. Fetch origin with prune and tags when network access is available.
+2. Inspect existing refs and use `git ls-remote` when needed; never fetch,
+   prune, refresh tags or update the index during read-only inspection.
 3. Inspect status, current branch, main, origin/main, recent commits, tags,
    visible work branches, and ancestry.
 4. Ignore retained branch tips already contained by main. Treat only branches
@@ -69,20 +70,30 @@ Before selecting, creating, switching, or editing:
 6. Inspect relevant policy, contract, tests, production implementation,
    integration, and activation evidence.
 
-Dirty, conflicting, or unprovable state is STOP_UNCERTAIN. Do not stash, reset,
+Unapproved dirty, conflicting, or unprovable state is STOP_UNCERTAIN; explicit
+preservation recovery must satisfy section 4. Do not stash, reset,
 delete, overwrite, rebase, force push, or guess.
 
 ## 4. Git recovery
 
-Do not create a supervisor state file, progress JSON, database, or persistent
-runtime log. Recover only from Git evidence and the frozen work order in the
-current task.
+Use `task_size_gate_jlgo_planning_integration_contract.md` section 5.1 for the
+shared audit packet and invocation ledger, and pre-write contract sections
+6.3-6.4 for phase-specific recovery and separately approved cumulative/revision
+scope. Do not create an autonomous state service or progress JSON scheduler,
+database, or persistent runtime log. Explicitly authorized external append-only
+audit packets are permitted; strict read-only planning/review never writes them.
 
-Recovery is allowed only when one relevant active branch is unambiguous, the
-working tree is clean, base/head and linear ancestry are proven, and the actual
-diff remains inside frozen scope. Resume at the earliest incomplete state:
-verification, ordinary commit, work-branch push, review, or an authorized
-revision round. Otherwise return STOP_UNCERTAIN and stop.
+Recover from fresh Git plus authentic records, not Git alone. Default new and
+revision preconditions remain clean. Exact dirty-file digests/index state or
+local-only commits require explicit preservation authority. Resume only an
+already authorized incomplete phase; do not replay an accepted planning or
+pre-write call because expected development changes exist. Preserve originals,
+append corrections only with record-write authority, and never fabricate
+history. Unexpected drift stops writes but permits read-only diagnosis.
+These modes do not override AGENTS: a task starting with preserved dirty work
+needs an explicit one-time exception to that stop rule. Do not infer one from
+this Skill. Safe summaries must not expose private raw proof or digests; audit
+write permission is not an output-safety exception.
 
 ## 5. Freeze exactly one work order
 
@@ -127,9 +138,12 @@ not equal deployment or activation authorization.
 
 ### NORMAL_ALLOWED
 
-Proceed only for a precise low-risk order with clean synchronized main, no
-active unmerged work, exact file scope, known tests and commit requirements,
-and no high-risk capability or policy change.
+For initial new-order selection require clean synchronized main and no active
+unmerged work. For an already approved order use the authorized revision or
+recovery branch mode from sections 4 and 7, not the initial-selection predicate.
+In every mode require exact file scope, known tests and commit requirements,
+and no high-risk capability or policy change; preserve the frozen ModelGate
+and remaining revision allowance.
 
 ## 7. TaskSizeGate pre-write checkpoint
 
@@ -182,12 +196,14 @@ base; ancestry, linear commits, and cumulative scope must be exact.
 not advance the frozen base-main `current_maturity` or change the original
 approved target transition.
 
-For Git recovery, use only current Git evidence and the frozen order. Exactly
-one relevant branch must be unambiguous, clean, synchronized, linearly based on
-the frozen main, inside exact scope, and within the remaining revision limit.
-Recovery must preserve strict `base_branch=main`, frozen base-main maturity,
-the original target transition, and existing user authority. Do not create a
-state file, progress JSON, database, daemon, or persistent runtime log.
+For Git recovery, use current Git evidence and authentic frozen audit records
+under section 4. Exactly one relevant branch, both scopes and the approved
+preserved state must be provable. Recovery must preserve strict
+`base_branch=main`, frozen base-main maturity, the original target transition,
+existing user authority and remaining revision limit. Do not create an
+autonomous state service, progress JSON scheduler, database, daemon, or
+persistent runtime log. Use the shared invocation ledger for proven transport
+non-start, uncertain entry and consumed calls; never blindly retry.
 
 ### Non-activating verification scope proof
 
@@ -326,7 +342,8 @@ For an allowed frozen order:
 4. Run related regressions.
 5. Run full backend tests and frontend tests/build when required by scope.
 6. Run isolation grep, git diff --check, and exact file-scope checks.
-7. Confirm no forbidden capability, policy, state file, or secret was added.
+7. Confirm no forbidden capability, policy, autonomous state service, or secret
+   was added; external audit writes require their own exact approval.
 8. Create an ordinary new commit and push only the work branch.
 
 Do not amend. Do not force push. Do not weaken safety tests or expand scope to
@@ -341,9 +358,14 @@ Pass only:
 
 - immutable base and head;
 - work branch and commit list;
-- frozen work order and allowed files;
-- actual Git diff;
-- executed test commands, results, warnings, and skips;
+- frozen work order and allowed files, with approved cumulative and current
+  revision scope manifests;
+- actual Git diff and ordered commit subjects, roles and authority, including
+  preservation-only commits which do not prove acceptance;
+- original 29-field evidence, complete frozen planning result and latest
+  accepted pre-write result, authentic raw records and per-stage call ledger;
+- executed test commands, results, warnings, and skips bound to source-tree,
+  dependency/config and check-set digests, plus actual completion records;
 - relevant repository contracts and safety rules.
 
 Do not pass developer private reasoning, chain-of-thought, or self-assessment.
@@ -373,7 +395,8 @@ direction.
 One run is limited to one work order, one work branch, one initial development
 commit, at most two revision commits, one initial reviewer, and at most two new
 reviewer rounds. Use only the frozen test/build/check set. Do not start a daemon,
-polling loop, progress JSON, database, or persistent runtime log.
+polling loop, progress JSON scheduler, database, or persistent runtime log.
+Authorized external audit packets are not a scheduler or renewed revision budget.
 
 Hard stops: no merge; no push main; no tag; no deploy; no activation. Never
 activate MT4, automatic Demo execution, live trading, an EA, or any execution

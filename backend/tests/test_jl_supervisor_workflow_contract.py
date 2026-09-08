@@ -229,7 +229,7 @@ def test_supervisor_does_not_treat_existing_skills_as_nested_functions() -> None
     assert "runtime actually activated" in combined or "运行时确实激活" in combined
 
 
-def test_supervisor_has_no_persistent_state_file() -> None:
+def test_supervisor_has_no_repository_state_service() -> None:
     forbidden_suffixes = {".json", ".db", ".sqlite", ".log"}
     forbidden = [
         path
@@ -266,3 +266,61 @@ def test_contract_freezes_one_order_one_branch_and_resource_limits() -> None:
     assert "resource" in combined
     assert "progress json" in combined
     assert "persistent runtime log" in combined
+
+HANDOFF_REQUIREMENTS = (
+    ("planning result", "latest accepted pre-write", "29-field"),
+    ("cumulative", "revision", "scope"),
+    ("commit", "roles", "authority"),
+    ("call ledger",),
+    ("source", "dependenc", "digest"),
+    ("completion",),
+)
+
+
+def _assert_handoff_requirements(text: str) -> None:
+    normalized = _normalized(text)
+    for group in HANDOFF_REQUIREMENTS:
+        assert all(term in normalized for term in group)
+
+
+def test_all_reviewer_entrypoints_receive_the_same_complete_packet() -> None:
+    skill = _read(SUPERVISOR_SKILL_PATH).split("## 9. Independent reviewer subagent", 1)[1].split("## 10.", 1)[0]
+    contract = _read(CONTRACT_PATH).split("## 11. Reviewer evidence", 1)[1].split("## 12.", 1)[0]
+    config = tomllib.loads(_read(REVIEWER_PATH))["developer_instructions"]
+    for text in (skill, contract, config):
+        _assert_handoff_requirements(text)
+        assert "self-assessment" in text or "developer" in text
+        for group in HANDOFF_REQUIREMENTS:
+            # A missing category must fail even when the rest of the handoff remains.
+            normalized = _normalized(text).replace(group[0], "")
+            try:
+                _assert_handoff_requirements(normalized)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError(f"Missing handoff group accepted: {group}")
+
+
+def test_record_storage_is_not_a_readonly_or_revision_budget_exception() -> None:
+    skill = _normalized(_read(SUPERVISOR_SKILL_PATH))
+    contract = _normalized(_read(CONTRACT_PATH))
+    for text in (skill, contract):
+        assert "external append-only audit" in text
+        assert "strict read-only planning/review never writes" in text or "strict read-only planning/review cannot write" in text
+        assert "task_size_gate_jlgo_planning_integration_contract.md" in text
+        assert "6.3-6.4" in text
+        assert "at most two" in text
+        assert "no merge" in text and "activation" in text
+        assert "prune and tags when network access is available" not in text
+    assert "| Activate MT4 or a reader | No | No | Always |" in _read(CONTRACT_PATH)
+    assert "| Activate Demo automatic execution | No | No | Always |" in _read(CONTRACT_PATH)
+    assert "never renew revision limits" in contract
+    assert "instead of the initial-selection predicate" in contract
+    assert "not the initial-selection predicate" in skill
+    assert "explicit one-time user exception" in contract
+    assert "audit write permission" in contract
+    assert "output-safety" in contract
+    config = tomllib.loads(_read(REVIEWER_PATH))
+    assert config["sandbox_mode"] == "read-only"
+    assert "model" not in config
+    assert "do not fetch, prune" in _normalized(config["developer_instructions"])
