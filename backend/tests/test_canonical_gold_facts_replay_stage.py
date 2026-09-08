@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
+from decimal import DecimalException
 import inspect
 from pathlib import Path
 
@@ -147,6 +149,7 @@ def _install_delegating_capsule(
     monkeypatch: pytest.MonkeyPatch,
     *,
     mutation_stage: str | None = None,
+    result_transform: tuple[str, Callable[[object], object]] | None = None,
 ) -> list[str]:
     calls: list[str] = []
     originals = {
@@ -159,40 +162,45 @@ def _install_delegating_capsule(
         "economic": stage.economic.build_canonical_gold_economic_window_facts_v1,
     }
 
+    def finish(name: str, result: object) -> object:
+        if result_transform is not None and result_transform[0] == name:
+            return result_transform[1](result)
+        return result
+
     def diagnostics(*, replay_case: object) -> object:
         calls.append("diagnostics")
-        return originals["diagnostics"](replay_case=replay_case)
+        return finish("diagnostics", originals["diagnostics"](replay_case=replay_case))
 
     def source() -> object:
         calls.append("source")
-        return originals["source"]()
+        return finish("source", originals["source"]())
 
     def snapshot(*, validated_source: object) -> object:
         calls.append("snapshot")
         if mutation_stage == "source":
             object.__setattr__(validated_source.live_tick, "bid", validated_source.live_tick.bid + 1.0)
-        return originals["snapshot"](validated_source=validated_source)
+        return finish("snapshot", originals["snapshot"](validated_source=validated_source))
 
     def session(*, market_facts_snapshot: object) -> object:
         calls.append("session")
         if mutation_stage == "snapshot":
             object.__setattr__(market_facts_snapshot.quote, "bid_decimal", "9999.99")
-        return originals["session"](market_facts_snapshot=market_facts_snapshot)
+        return finish("session", originals["session"](market_facts_snapshot=market_facts_snapshot))
 
     def volatility(*, market_facts_snapshot: object) -> object:
         calls.append("volatility")
-        return originals["volatility"](market_facts_snapshot=market_facts_snapshot)
+        return finish("volatility", originals["volatility"](market_facts_snapshot=market_facts_snapshot))
 
     def calendar(*, authority: object) -> object:
         calls.append("calendar")
-        return originals["calendar"](authority=authority)
+        return finish("calendar", originals["calendar"](authority=authority))
 
     def economic(*, market_facts_snapshot: object, economic_calendar_snapshot: object) -> object:
         calls.append("economic")
-        return originals["economic"](
+        return finish("economic", originals["economic"](
             market_facts_snapshot=market_facts_snapshot,
             economic_calendar_snapshot=economic_calendar_snapshot,
-        )
+        ))
 
     bindings = (
         (stage.replay_v1, "run_canonical_bundle_replay_case", "_EXPECTED_RUN_DIAGNOSTICS", "diagnostics_runner", diagnostics),
@@ -409,6 +417,266 @@ def test_polluted_blocked_dependency_results_are_invalid() -> None:
                 replace(blocked, **{field_name: "drifted"}),
                 record,
             ) == "invalid"
+
+
+CALL_ORDER = ("diagnostics", "source", "snapshot", "session", "volatility", "calendar", "economic")
+
+
+class _StringSubclass(str):
+    pass
+
+
+class _TupleSubclass(tuple):
+    pass
+
+
+def _assert_terminal_failure(result: object, status: str, reason: str) -> None:
+    assert type(result) is stage.CanonicalGoldFactsReplayResultV1
+    assert result.status_code == status
+    assert result.reason_codes == (reason,)
+    assert result.passed is False
+    assert result.identity_available is False
+    assert result.case_id is result.fixture_id is None
+    assert type(result.completed_stage_ids) is tuple and result.completed_stage_ids == ()
+    assert all(value is None for value in _nested_results(result))
+    assert result.read_only is result.demo_only is True
+    for name in ("is_tradable", "can_execute", "is_trading_permission",
+                 "is_execution_instruction", "allowed_to_call_ea", "allowed_to_modify_risk"):
+        assert getattr(result, name) is False
+    assert "CONTROLLED_SECRET" not in repr(result)
+
+
+def _blocked_result(index: int) -> object:
+    if index == 0:
+        return stage.replay_v1._failure_result(
+            status_code=stage.replay_v1.CANONICAL_BUNDLE_REPLAY_INPUT_INVALID,
+            reason_code=stage.replay_v1.REPLAY_CASE_INPUT_INVALID,
+        )
+    if index == 1:
+        return stage.market_fixture._EXPECTED_BUILD_SAFE_FAILURE()
+    if index == 2:
+        return stage.market_facts._failure(stage.market_facts._INPUT_INVALID_STATUS, stage.market_facts._SOURCE_TYPE_INVALID)
+    if index == 3:
+        return stage.session_facts._failure(stage.session_facts._INPUT_INVALID_STATUS, stage.session_facts._INPUT_TYPE_INVALID)
+    if index == 4:
+        return stage.volatility._failure(stage.volatility._INPUT_INVALID_STATUS, stage.volatility._INPUT_TYPE_INVALID)
+    if index == 5:
+        return stage.calendar._failure(*stage.calendar._FAILURES[0])
+    return stage.economic._failure(*stage.economic._FAILURES[0])
+
+
+@pytest.mark.parametrize("index", range(7), ids=CALL_ORDER)
+@pytest.mark.parametrize("blocked", (False, True), ids=("ready", "blocked"))
+@pytest.mark.parametrize("mutation", (
+    "wrong_container", "subclass", "passed_int", "passed_none", "status_subclass",
+    "reason_list", "reason_element", "warning_list", "warning_element", "missing_slot", "unsafe_flag",
+))
+def test_public_boundary_rejects_malformed_dependency_envelopes(
+    monkeypatch: pytest.MonkeyPatch, index: int, blocked: bool, mutation: str,
+) -> None:
+    def corrupt(ready: object) -> object:
+        result = _blocked_result(index) if blocked else ready
+        reason_name = "replay_reason_codes" if index == 0 else "reason_codes"
+        warning_name = "canonical_warning_codes" if index == 0 else "warning_codes"
+        if mutation == "wrong_container":
+            return {field.name: getattr(result, field.name) for field in fields(result)}
+        if mutation == "subclass":
+            child_type = type("ImpostorResult", (type(result),), {})
+            return child_type(**{field.name: getattr(result, field.name) for field in fields(result)})
+        if mutation == "missing_slot":
+            object.__delattr__(result, warning_name)
+            return result
+        changes = {
+            "passed_int": ("passed", int(result.passed)),
+            "passed_none": ("passed", None),
+            "status_subclass": ("status_code", _StringSubclass(result.status_code)),
+            "reason_list": (reason_name, list(getattr(result, reason_name))),
+            "reason_element": (reason_name, (123,)),
+            "warning_list": (warning_name, []),
+            "warning_element": (warning_name, (123,)),
+            "unsafe_flag": ("can_execute", 0),
+        }
+        name, value = changes[mutation]
+        return replace(result, **{name: value})
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=(CALL_ORDER[index], corrupt))
+    result = _run()
+    _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert calls == list(CALL_ORDER[:index + 1])
+
+
+@pytest.mark.parametrize("index", range(7), ids=CALL_ORDER)
+def test_public_boundary_preserves_safe_blocked_stage_mapping(monkeypatch: pytest.MonkeyPatch, index: int) -> None:
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=(CALL_ORDER[index], lambda ready: _blocked_result(index)),
+    )
+    result = _run()
+    _assert_terminal_failure(result, *stage._BLOCKED_BY_STAGE[index])
+    assert calls == list(CALL_ORDER[:index + 1])
+
+
+@pytest.mark.parametrize("index,transform", (
+    (0, lambda value: replace(value, canonical_summary={1: "wrong key type"})),
+    (1, lambda value: replace(value, source=replace(value.source, live_tick=replace(value.source.live_tick, bid=float("nan"))))),
+    (1, lambda value: replace(value, source=replace(value.source, timeframes=_TupleSubclass(value.source.timeframes)))),
+    (2, lambda value: replace(value, quote=replace(value.quote, bid_decimal=123))),
+    (2, lambda value: replace(value, quote=replace(value.quote, bid_decimal=_StringSubclass(value.quote.bid_decimal)))),
+    (2, lambda value: replace(value, quote=replace(value.quote, spread_points=True))),
+    (2, lambda value: replace(value, timeframes=("M15",))),
+    (2, lambda value: replace(value, timeframes=(replace(value.timeframes[0], bars=[value.timeframes[0].bars[0]]), *value.timeframes[1:]))),
+    (3, lambda value: replace(value, spread=replace(value.spread, spread_points=False))),
+    (4, lambda value: replace(value, timeframes=(replace(value.timeframes[0], bar_pairs=(123,)), *value.timeframes[1:]))),
+    (5, lambda value: replace(value, snapshot=replace(value.snapshot, events=(replace(value.snapshot.events[0], source_revision=True), *value.snapshot.events[1:])))),
+    (6, lambda value: replace(value, summary=replace(value.summary, relevant_event_count=False))),
+    (6, lambda value: replace(value, event_windows=(replace(value.event_windows[0], is_active_observation_window=1), *value.event_windows[1:]))),
+))
+def test_public_boundary_rejects_nested_wrong_types(
+    monkeypatch: pytest.MonkeyPatch, index: int, transform: Callable[[object], object],
+) -> None:
+    calls = _install_delegating_capsule(monkeypatch, result_transform=(CALL_ORDER[index], transform))
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert calls == list(CALL_ORDER[:index + 1])
+
+
+@pytest.mark.parametrize("index,changes", (
+    (0, {"passed": False}), (0, {"canonical_block_reasons": ("BLOCKED",)}),
+    (1, {"source_available": False}), (1, {"source": None}),
+    (2, {"identity_available": False}), (2, {"quote": None}), (2, {"timeframes": ()}),
+    (2, {"contract_version": "drifted"}), (2, {"bundle_id": "different_identity"}),
+    (3, {"session": None}), (3, {"facts_profile_version": "drifted"}),
+    (4, {"timeframes": ()}), (4, {"total_pair_count": 0}),
+    (5, {"snapshot_available": False}), (6, {"summary": None}),
+))
+def test_public_boundary_rejects_contradictory_ready_states(
+    monkeypatch: pytest.MonkeyPatch, index: int, changes: dict[str, object],
+) -> None:
+    calls = _install_delegating_capsule(
+        monkeypatch, result_transform=(CALL_ORDER[index], lambda value: replace(value, **changes)),
+    )
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert calls == list(CALL_ORDER[:index + 1])
+
+
+def test_public_boundary_preserves_legitimate_oracle_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    def change_observation(value: object) -> object:
+        return replace(value, session=replace(value.session, observed_writer_session_status_label="CLOSED"))
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=("session", change_observation))
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_MISMATCH, stage.GOLD_FACTS_REPLAY_EXPECTATION_MISMATCH)
+    assert calls == list(CALL_ORDER[:4])
+
+
+@pytest.mark.parametrize("name,value", (
+    ("passed", 1), ("passed", False), ("can_execute", True),
+    ("status_code", "POLLUTED"), ("readiness_notes", [123]),
+    ("warning_reasons", ["CONTROLLED_SECRET"]), ("component_statuses", []),
+))
+def test_public_boundary_rejects_malformed_diagnostics_summary(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: object,
+) -> None:
+    def corrupt(result: object) -> object:
+        return replace(result, canonical_summary={**result.canonical_summary, name: value})
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=("diagnostics", corrupt))
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert calls == ["diagnostics"]
+
+
+def test_valid_diagnostics_content_change_remains_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    def changed(result: object) -> object:
+        return replace(result, canonical_summary={**result.canonical_summary, "readiness_notes": ["Changed observation"]})
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=("diagnostics", changed))
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_MISMATCH, stage.GOLD_FACTS_REPLAY_EXPECTATION_MISMATCH)
+    assert calls == ["diagnostics"]
+
+
+@pytest.mark.parametrize("error", (ValueError, TypeError, OverflowError, AttributeError, RecursionError, DecimalException, RuntimeError))
+@pytest.mark.parametrize("location", ("dependency", "encoder", "shape", "final_validator"))
+def test_unexpected_internal_exceptions_remain_sanitized(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception], location: str,
+) -> None:
+    target: list[object] = []
+
+    def observe(value: object) -> object:
+        if location == "dependency":
+            raise error("CONTROLLED_SECRET")
+        target.append(value)
+        return value
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=("snapshot", observe))
+    if location in {"encoder", "shape"}:
+        name = "_freeze_value" if location == "encoder" else "_matches_declared_type"
+        original = getattr(stage, name)
+
+        def fail_on_target(value: object, *args: object, **kwargs: object) -> object:
+            if target and value is target[0]:
+                raise error("CONTROLLED_SECRET")
+            return original(value, *args, **kwargs)
+
+        monkeypatch.setattr(stage, name, fail_on_target)
+    elif location == "final_validator":
+        def broken_validator(value: object) -> bool:
+            raise error("CONTROLLED_SECRET")
+
+        monkeypatch.setattr(stage, "_result_is_safe", broken_validator)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE, stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED)
+    assert calls == list(CALL_ORDER if location == "final_validator" else CALL_ORDER[:3])
+
+
+@pytest.mark.parametrize("matched,changes", (
+    (True, {"passed": 1}), (False, {"passed": None}), (False, {"identity_available": 0}),
+    (True, {"passed": False}),
+    (False, {"status_code": stage.CANONICAL_GOLD_FACTS_REPLAY_MATCHED, "reason_codes": ()}),
+    (True, {"completed_stage_ids": list(stage.STAGE_ORDER)}),
+    (True, {"case_id": _StringSubclass("canonical_docs_ready")}),
+    (False, {"reason_codes": _TupleSubclass((stage.GOLD_FACTS_REPLAY_RESULT_INVALID,))}),
+    (False, {"can_execute": 0}),
+))
+def test_independent_final_validator_rejects_illegal_types_and_states(matched: bool, changes: dict[str, object]) -> None:
+    original = _run() if matched else stage._failure(stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert stage._result_is_safe(replace(original, **changes)) is False
+
+
+@pytest.mark.parametrize("changes", (
+    {"passed": 1}, {"passed": None}, {"passed": False}, {"identity_available": 1},
+    {"status_code": stage.CANONICAL_GOLD_FACTS_REPLAY_MISMATCH, "reason_codes": (stage.GOLD_FACTS_REPLAY_EXPECTATION_MISMATCH,)},
+))
+def test_public_boundary_rejects_corrupted_matched_construction(monkeypatch: pytest.MonkeyPatch, changes: dict[str, object]) -> None:
+    original = stage.CanonicalGoldFactsReplayResultV1.__init__
+
+    def polluted_init(self: object, **kwargs: object) -> None:
+        original(self, **kwargs)
+        if kwargs["passed"] is True:
+            for name, value in changes.items():
+                object.__setattr__(self, name, value)
+
+    monkeypatch.setattr(stage.CanonicalGoldFactsReplayResultV1, "__init__", polluted_init)
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+
+
+def test_malformed_failure_construction_uses_terminal_safe_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = stage.CanonicalGoldFactsReplayResultV1.__init__
+
+    def polluted_init(self: object, **kwargs: object) -> None:
+        original(self, **kwargs)
+        if kwargs["status_code"] == stage.CANONICAL_GOLD_FACTS_REPLAY_INPUT_INVALID:
+            object.__setattr__(self, "passed", None)
+
+    monkeypatch.setattr(stage.CanonicalGoldFactsReplayResultV1, "__init__", polluted_init)
+    result = stage.run_canonical_gold_facts_replay_case_v1(replay_case=replace(_case(), stage_id="wrong"))
+    _assert_terminal_failure(result, stage.CANONICAL_GOLD_FACTS_REPLAY_SAFE_FAILURE, stage.GOLD_FACTS_REPLAY_EXCEPTION_SANITIZED)
+
+
+def test_public_boundary_rejects_cyclic_summary_without_leaking(monkeypatch: pytest.MonkeyPatch) -> None:
+    def cyclic(value: object) -> object:
+        summary: dict[str, object] = {}
+        summary["cycle"] = summary
+        return replace(value, canonical_summary=summary)
+
+    calls = _install_delegating_capsule(monkeypatch, result_transform=("diagnostics", cyclic))
+    _assert_terminal_failure(_run(), stage.CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, stage.GOLD_FACTS_REPLAY_RESULT_INVALID)
+    assert calls == ["diagnostics"]
 
 
 def test_module_ast_has_no_direct_forbidden_runtime_surface() -> None:

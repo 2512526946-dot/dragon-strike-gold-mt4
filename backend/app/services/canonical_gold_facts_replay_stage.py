@@ -4,7 +4,8 @@ from dataclasses import dataclass, fields, is_dataclass
 import math
 from pathlib import Path
 import re
-from typing import Any, Final
+from types import UnionType
+from typing import Any, Final, get_args, get_origin, get_type_hints
 
 from app.services import canonical_bundle_replay_runner as replay_v1
 from app.services import canonical_gold_economic_calendar_source_adapter as calendar
@@ -191,6 +192,10 @@ class _AuthorityCapsule:
     calendar_fixture_path: Path
 
 
+class _MalformedStageResult(TypeError):
+    """A dependency value cannot be represented by the declared result schema."""
+
+
 _PRODUCTION_SCHEMAS: Final = (
     _ProductionSchema(replay_v1.CanonicalBundleReplayResultV1, 'CANONICAL_BUNDLE_REPLAY_RESULT_V1', ('replay_contract_version', 'registry_version', 'pipeline_contract_version', 'policy_profile_version', 'case_id', 'fixture_id', 'passed', 'status_code', 'canonical_summary', 'replay_reason_codes', 'canonical_block_reasons', 'canonical_warning_codes', 'read_only', 'demo_only', 'is_tradable', 'can_execute', 'is_execution_instruction', 'allowed_to_call_ea')),
     _ProductionSchema(CanonicalGoldMarketFactsSourceAdapterResultV1, 'CANONICAL_GOLD_MARKET_FACTS_SOURCE_ADAPTER_RESULT_V1', ('contract_version', 'passed', 'status_code', 'reason_codes', 'warning_codes', 'source_available', 'source', 'read_only', 'demo_only', 'is_tradable', 'can_execute', 'is_trading_permission', 'is_execution_instruction', 'allowed_to_call_ea', 'allowed_to_modify_risk')),
@@ -223,6 +228,10 @@ _PRODUCTION_SCHEMAS: Final = (
 )
 _SCHEMA_BY_CLASS: Final = {schema.class_object: schema for schema in _PRODUCTION_SCHEMAS}
 _SCHEMA_BY_TYPE_CODE: Final = {schema.type_code: schema for schema in _PRODUCTION_SCHEMAS}
+_DECLARED_FIELDS: Final = {
+    class_object: tuple(get_type_hints(class_object).items())
+    for class_object in (*_SCHEMA_BY_CLASS, CanonicalGoldFactsReplayResultV1)
+}
 
 _EXPECTED_ORACLE: Final = CanonicalGoldFactsReplayExpectedOracleV1(
     diagnostics_result=
@@ -1270,6 +1279,11 @@ def _assess_stage(
 ) -> str:
     if type(result) is not _RESULT_TYPES[index] or not _has_exact_registered_shape(result):
         return "invalid"
+    try:
+        if not _matches_declared_type(result, _RESULT_TYPES[index]):
+            return "invalid"
+    except _MalformedStageResult:
+        return "invalid"
     if index == 1:
         valid = market_fixture._EXPECTED_VALIDATE_RESULT(result=result)
         if type(valid) is not bool or valid is not True:
@@ -1278,23 +1292,78 @@ def _assess_stage(
         valid = calendar._is_safe_canonical_gold_economic_calendar_source_adapter_result_v1(adapter_result=result, authority=calendar_authority)
         if type(valid) is not bool or valid is not True:
             return "invalid"
-    frozen = _freeze_value(result, allow_summary_containers=index == 0, allow_market_floats=index == 1)
     if result.passed is True:
-        if not _ready_shape_is_safe(index, result):
+        if not _ready_shape_is_safe(index, result, record):
             return "invalid"
+    elif result.passed is False:
+        if not _blocked_shape_is_safe(index, result):
+            return "invalid"
+    else:
+        return "invalid"
+    try:
+        frozen = _freeze_value(
+            result,
+            allow_summary_containers=index == 0,
+            allow_market_floats=index == 1,
+        )
+    except _MalformedStageResult:
+        return "invalid"
+    if result.passed is True:
         return "ready" if frozen == _FROZEN_ORACLES[index] else "mismatch"
-    if result.passed is False and _blocked_shape_is_safe(index, result):
-        return "blocked"
-    return "invalid"
+    return "blocked"
 
 
-def _ready_shape_is_safe(index: int, result: object) -> bool:
+def _ready_shape_is_safe(
+    index: int,
+    result: object,
+    record: CanonicalGoldFactsReplayRegistryRecordV1,
+) -> bool:
     reasons = result.replay_reason_codes if index == 0 else result.reason_codes
-    return (
+    if not (
         result.status_code == _READY_STATUSES[index]
         and type(reasons) is tuple
         and reasons == ()
+        and _contract_fields_are_safe(index, result)
         and _safety_flags_are_safe(result)
+        and all(getattr(result, name) is not None for name, _ in _DECLARED_FIELDS[type(result)])
+    ):
+        return False
+    if index == 0:
+        return (
+            result.canonical_block_reasons == result.canonical_warning_codes == ()
+            and _summary_matches_registered_shape(
+                result.canonical_summary,
+                dict(_FROZEN_ORACLES[0][2])["canonical_summary"],
+            )
+            and (result.replay_contract_version, result.registry_version,
+                 result.pipeline_contract_version, result.policy_profile_version,
+                 result.case_id, result.fixture_id)
+            == (UPSTREAM_REPLAY_CONTRACT_VERSION, UPSTREAM_REPLAY_REGISTRY_VERSION,
+                "canonical_diagnostics_pipeline_g153_v1", "canonical_diagnostics_default_policy_v1",
+                record.diagnostics_case.case_id, record.diagnostics_case.fixture_id)
+        )
+    if index == 1:
+        return result.source_available is True and _market_identity_from_source(result.source) == record.expected_market_identity
+    if index == 5:
+        return result.snapshot_available is True and _calendar_identity_from_snapshot(result.snapshot) == record.expected_calendar_identity
+    if result.identity_available is not True:
+        return False
+    if index in {2, 4}:
+        if tuple(value.timeframe for value in result.timeframes) != ("M15", "H1", "H4", "D1"):
+            return False
+        if index == 2:
+            return all(value.bars for value in result.timeframes) and _market_identity_from_snapshot(result) == record.expected_market_identity
+        return (
+            all(value.bar_pairs and value.pair_count == len(value.bar_pairs)
+                and value.source_bar_count == value.pair_count + 1 for value in result.timeframes)
+            and result.total_pair_count == sum(value.pair_count for value in result.timeframes)
+            and _market_identity_from_volatility(result) == record.expected_market_identity
+        )
+    if index == 3:
+        return _market_identity_from_facts(result) == record.expected_market_identity[1:]
+    return (
+        _market_identity_from_economic(result) == record.expected_market_identity
+        and _calendar_identity_from_economic(result) == record.expected_calendar_identity
     )
 
 
@@ -1310,13 +1379,21 @@ def _blocked_shape_is_safe(index: int, result: object) -> bool:
             index in {1, 5}
             or (result.status_code, reasons[0]) in _BLOCKED_STATUS_REASONS[index]
         )
-        and _blocked_contract_fields_are_safe(index, result)
+        and _contract_fields_are_safe(index, result)
         and _failure_evidence_is_cleared(index, result)
         and _safety_flags_are_safe(result)
     )
 
 
-def _blocked_contract_fields_are_safe(index: int, result: object) -> bool:
+def _contract_fields_are_safe(index: int, result: object) -> bool:
+    if index == 0:
+        identity = (result.registry_version, result.pipeline_contract_version,
+                    result.policy_profile_version, result.case_id, result.fixture_id)
+        return result.replay_contract_version == UPSTREAM_REPLAY_CONTRACT_VERSION and identity in (
+            (UPSTREAM_REPLAY_REGISTRY_VERSION, replay_v1.PIPELINE_CONTRACT_VERSION,
+             replay_v1.POLICY_PROFILE_VERSION, "canonical_docs_ready", "canonical_docs_fixture_v1"),
+            ("unavailable",) * 5,
+        )
     if index == 2:
         return (
             type(result.contract_version) is str
@@ -1525,7 +1602,78 @@ def _has_exact_registered_shape(value: object) -> bool:
     return schema is not None and tuple(field.name for field in fields(value)) == schema.ordered_fields
 
 
-def _freeze_value(value: object, *, allow_summary_containers: bool = False, allow_market_floats: bool = False) -> tuple[object, ...]:
+def _matches_declared_type(value: object, annotation: object) -> bool:
+    # Only annotations from the registered production classes reach this check.
+    if annotation is Any:
+        _freeze_value(value, allow_summary_containers=True)
+        return True
+    origin = get_origin(annotation)
+    arguments = get_args(annotation)
+    if origin is UnionType:
+        return any(_matches_declared_type(value, item) for item in arguments)
+    if origin is tuple:
+        return (
+            type(value) is tuple
+            and len(arguments) == 2 and arguments[1] is Ellipsis
+            and all(_matches_declared_type(item, arguments[0]) for item in value)
+        )
+    if origin is dict:
+        return type(value) is dict and all(
+            _matches_declared_type(key, arguments[0])
+            and _matches_declared_type(item, arguments[1])
+            for key, item in value.items()
+        )
+    if type(value) is not annotation:
+        return False
+    if annotation in (str, int, bool, type(None)):
+        return True
+    if annotation is float:
+        return math.isfinite(value)
+    declared = _DECLARED_FIELDS.get(annotation)
+    if declared is None or tuple(field.name for field in fields(value)) != tuple(name for name, _ in declared):
+        return False
+    missing = object()
+    return all(
+        _matches_declared_type(getattr(value, name, missing), field_type)
+        for name, field_type in declared
+    )
+
+
+def _summary_matches_registered_shape(
+    value: object, oracle: tuple[object, ...], field_name: str = "",
+) -> bool:
+    # The v1 Any-valued summary uses the registry grammar, not a second G151 call.
+    tag = oracle[0]
+    if tag == "DICT_V1":
+        if type(value) is not dict or any(type(key) is not str for key in value):
+            return False
+        expected = tuple((key[1], child) for key, child in oracle[1])
+        return len(value) == len(expected) and all(
+            key in value and _summary_matches_registered_shape(value[key], child, key)
+            for key, child in expected
+        )
+    if tag == "LIST_V1":
+        return (
+            type(value) is list and all(type(item) is str for item in value)
+            and (field_name not in {"block_reasons", "warning_reasons"} or value == [])
+        )
+    if tag == "BOOL_V1":
+        return type(value) is bool and value is oracle[1]
+    if tag == "STRING_V1":
+        return type(value) is str and (
+            field_name not in {"status_code", "source_scope", "validation_stage", "fixture_source"}
+            or value == oracle[1]
+        )
+    return False
+
+
+def _freeze_value(
+    value: object,
+    *,
+    allow_summary_containers: bool = False,
+    allow_market_floats: bool = False,
+    _ancestors: frozenset[int] = frozenset(),
+) -> tuple[object, ...]:
     value_type = type(value)
     if value is None:
         return ("NONE_V1",)
@@ -1537,29 +1685,36 @@ def _freeze_value(value: object, *, allow_summary_containers: bool = False, allo
         return ("STRING_V1", value)
     if value_type is float:
         if not allow_market_floats or not math.isfinite(value):
-            raise TypeError
+            raise _MalformedStageResult
         payload = value.hex()
         if float.fromhex(payload).hex() != payload:
-            raise TypeError
+            raise _MalformedStageResult
         return ("FLOAT_HEX_V1", payload)
+    if id(value) in _ancestors:
+        raise _MalformedStageResult
+    ancestors = _ancestors | {id(value)}
     if value_type is tuple:
-        return ("TUPLE_V1", tuple(_freeze_value(item, allow_summary_containers=allow_summary_containers, allow_market_floats=allow_market_floats) for item in value))
+        return ("TUPLE_V1", tuple(_freeze_value(item, allow_summary_containers=allow_summary_containers, allow_market_floats=allow_market_floats, _ancestors=ancestors) for item in value))
     if value_type is list and allow_summary_containers:
-        return ("LIST_V1", tuple(_freeze_value(item, allow_summary_containers=True) for item in value))
+        return ("LIST_V1", tuple(_freeze_value(item, allow_summary_containers=True, _ancestors=ancestors) for item in value))
     if value_type is dict and allow_summary_containers:
-        pairs = tuple((_freeze_value(key, allow_summary_containers=True), _freeze_value(item, allow_summary_containers=True)) for key, item in value.items())
+        pairs = tuple((_freeze_value(key, allow_summary_containers=True, _ancestors=ancestors), _freeze_value(item, allow_summary_containers=True, _ancestors=ancestors)) for key, item in value.items())
         if len({key for key, _ in pairs}) != len(pairs):
-            raise TypeError
+            raise _MalformedStageResult
         return ("DICT_V1", pairs)
     if is_dataclass(value) and not isinstance(value, type):
         schema = _SCHEMA_BY_CLASS.get(value_type)
         if schema is None or tuple(field.name for field in fields(value)) != schema.ordered_fields:
-            raise TypeError
+            raise _MalformedStageResult
         encoded = []
         for name in schema.ordered_fields:
-            encoded.append((name, _freeze_value(getattr(value, name), allow_summary_containers=value_type is CanonicalBundleReplayResultV1 and name == "canonical_summary", allow_market_floats=allow_market_floats)))
+            try:
+                item = getattr(value, name)
+            except AttributeError:
+                raise _MalformedStageResult from None
+            encoded.append((name, _freeze_value(item, allow_summary_containers=value_type is CanonicalBundleReplayResultV1 and name == "canonical_summary", allow_market_floats=allow_market_floats, _ancestors=ancestors)))
         return ("DATACLASS_V1", schema.type_code, tuple(encoded))
-    raise TypeError
+    raise _MalformedStageResult
 
 
 def _is_valid_frozen_value(value: object) -> bool:
@@ -1676,7 +1831,7 @@ def _matched_result(record: CanonicalGoldFactsReplayRegistryRecordV1, results: t
         economic_window_facts=detached[6],
         **_safety_values(),
     )
-    return result if _result_is_safe(result) else _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
+    return result if _result_is_safe(result) is True else _failure(CANONICAL_GOLD_FACTS_REPLAY_RESULT_INVALID, GOLD_FACTS_REPLAY_RESULT_INVALID)
 
 
 def _failure(status: str, reason: str) -> CanonicalGoldFactsReplayResultV1:
@@ -1701,8 +1856,12 @@ def _failure(status: str, reason: str) -> CanonicalGoldFactsReplayResultV1:
         economic_window_facts=None,
         **_safety_values(),
     )
-    if _result_is_safe(result):
-        return result
+    try:
+        if _result_is_safe(result) is True:
+            return result
+    except Exception:
+        # Failure construction is terminal, including a broken internal validator.
+        pass
     return CanonicalGoldFactsReplayResultV1(
         replay_contract_version=REPLAY_CONTRACT_VERSION,
         stage_contract_version=STAGE_CONTRACT_VERSION,
@@ -1728,17 +1887,17 @@ def _failure(status: str, reason: str) -> CanonicalGoldFactsReplayResultV1:
 
 def _result_is_safe(result: object) -> bool:
     try:
-        if type(result) is not CanonicalGoldFactsReplayResultV1 or tuple(field.name for field in fields(result)) != tuple(field.name for field in fields(CanonicalGoldFactsReplayResultV1)):
+        if not _matches_declared_type(result, CanonicalGoldFactsReplayResultV1):
             return False
         if result.replay_contract_version != REPLAY_CONTRACT_VERSION or result.stage_contract_version != STAGE_CONTRACT_VERSION or result.registry_version != REGISTRY_VERSION or result.stage_id != STAGE_ID or not _safety_flags_are_safe(result):
             return False
         if (result.status_code, result.reason_codes) not in _STATUS_REASONS:
             return False
-        if result.passed:
+        if result.passed is True:
             nested = (result.diagnostics_result, result.market_source_result, result.market_facts_snapshot, result.session_spread_freshness_facts, result.volatility_structure_facts, result.economic_calendar_result, result.economic_window_facts)
             return result.status_code == CANONICAL_GOLD_FACTS_REPLAY_MATCHED and result.identity_available is True and result.case_id == "canonical_docs_ready" and result.fixture_id == "canonical_docs_fixture_v1" and result.completed_stage_ids == STAGE_ORDER and all(type(value) is expected for value, expected in zip(nested, _RESULT_TYPES, strict=True)) and all(_freeze_value(value, allow_summary_containers=index == 0, allow_market_floats=index == 1) == _FROZEN_ORACLES[index] for index, value in enumerate(nested))
-        return not result.identity_available and result.case_id is None and result.fixture_id is None and result.completed_stage_ids == () and all(getattr(result, name) is None for name in ("diagnostics_result", "market_source_result", "market_facts_snapshot", "session_spread_freshness_facts", "volatility_structure_facts", "economic_calendar_result", "economic_window_facts"))
-    except Exception:
+        return result.status_code != CANONICAL_GOLD_FACTS_REPLAY_MATCHED and result.identity_available is False and result.case_id is None and result.fixture_id is None and result.completed_stage_ids == () and all(getattr(result, name) is None for name in ("diagnostics_result", "market_source_result", "market_facts_snapshot", "session_spread_freshness_facts", "volatility_structure_facts", "economic_calendar_result", "economic_window_facts"))
+    except _MalformedStageResult:
         return False
 
 
