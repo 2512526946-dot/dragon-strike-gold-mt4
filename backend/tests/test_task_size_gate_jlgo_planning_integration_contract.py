@@ -1107,7 +1107,7 @@ PACKET_SECTION_ORACLE = (
     ("record_identity", "Unique packet and attempt IDs, stage, format version, predecessor digest."),
     ("approval", "Exact user-approved action, scope, stop conditions, model and record-write authority sources."),
     ("git_state", "Repository/worktree identity, base, pre-Head, local/remote heads, branch mode, index and worktree state."),
-    ("scope_manifest", "Approved cumulative scope and current revision scope, each with immutable base/head and authority."),
+    ("scope_manifest", "Approved cumulative scope and current revision scope, with immutable base/head, approved preserved-content snapshot when applicable, and authority."),
     ("frozen_evidence", "All 29 ordered fields with exact built-in types, original values and provenance."),
     ("frozen_results", "Complete planning and latest accepted pre-write results, ordered reasons and their attempt IDs."),
     ("commit_authority", "Ordered commit hashes, subjects, roles, packet ownership and explicit authority sources."),
@@ -1211,3 +1211,121 @@ def test_records_preserve_authority_types_and_readonly_boundary() -> None:
     assert "git fetch origin --prune --tags" not in skill
     assert "6.3-6.4" in skill
     assert "task_size_gate_jlgo_planning_integration_contract.md" in skill
+
+
+SUCCESSOR_ORACLE = (
+    ("accepted_same_checkpoint", "existing_action_authority", "0", "resume_without_recall"),
+    ("failed_same_checkpoint", "new_explicit_attempt_approval", "0", "stop"),
+    ("uncertain_same_checkpoint", "new_explicit_attempt_approval", "0", "stop"),
+    ("accepted_next_phase", "existing_phase_authority", "1", "fresh_attempt"),
+    ("supervisor_revision_one", "existing_bounded_authority", "1", "fresh_attempt"),
+    ("supervisor_revision_two", "existing_bounded_authority", "1", "fresh_attempt"),
+    ("supervisor_revision_three", "user_direction_required", "0", "stop"),
+    ("missing_revision_review", "not_authorized", "0", "stop"),
+    ("changed_revision_scope", "new_planning_and_approval", "0", "stop"),
+    ("relabelled_failed_checkpoint", "new_explicit_attempt_approval", "0", "stop"),
+)
+
+# Synthetic traces prove caller authority relationships; no checkpoint is run.
+# Fields: case, previous key, next key, accepted, phase-ready, bounded approval,
+# independent fix request, same scope, target already entered, new-call claim.
+SUCCESSOR_TRACES = (
+    ("accepted_same_checkpoint", ("order", "pre-write", 0), ("order", "pre-write", 0), True, True, True, True, True, True, 0),
+    ("failed_same_checkpoint", ("order", "pre-write", 0), ("order", "pre-write", 0), False, True, True, True, True, True, 0),
+    ("uncertain_same_checkpoint", ("order", "pre-write", 0), ("order", "pre-write", 0), None, True, True, True, True, True, 0),
+    ("accepted_next_phase", ("order", "planning", 0), ("order", "pre-write", 0), True, True, True, False, True, False, 1),
+    ("supervisor_revision_one", ("order", "review", 0), ("order", "pre-write", 1), True, True, True, True, True, False, 1),
+    ("supervisor_revision_two", ("order", "review", 1), ("order", "pre-write", 2), True, True, True, True, True, False, 1),
+    ("supervisor_revision_three", ("order", "review", 2), ("order", "pre-write", 3), True, True, True, True, True, False, 0),
+    ("missing_revision_review", ("order", "review", 0), ("order", "pre-write", 1), True, True, True, False, True, False, 0),
+    ("changed_revision_scope", ("order", "review", 0), ("order", "pre-write", 1), True, True, True, True, False, False, 0),
+    ("relabelled_failed_checkpoint", ("order", "pre-write", 0), ("order", "review", 0), False, True, True, True, True, False, 0),
+)
+
+
+def _successor_new_call_bound(
+    previous: tuple[str, str, int],
+    following: tuple[str, str, int],
+    accepted: bool | None,
+    phase_ready: bool,
+    bounded_approval: bool,
+    independent_fix: bool,
+    same_scope: bool,
+    target_entered: bool,
+) -> int:
+    if accepted is not True or not phase_ready or not same_scope or target_entered:
+        return 0
+    if previous == following or previous[0] != following[0]:
+        return 0
+    next_phase = (
+        previous[2] == following[2]
+        and (previous[1], following[1]) in (
+            ("planning", "pre-write"), ("pre-write", "review")
+        )
+    )
+    next_revision = (
+        bounded_approval
+        and independent_fix
+        and (previous[1], following[1]) == ("review", "pre-write")
+        and following[2] == previous[2] + 1
+        and 1 <= following[2] <= 2
+    )
+    return int(next_phase or next_revision)
+
+
+def test_successor_contract_distinguishes_phase_round_and_attempt() -> None:
+    text = CONTRACT_PATH.read_text(encoding="utf-8")
+    assert _protocol_rows(text, "WORKFLOW_SUCCESSOR") == SUCCESSOR_ORACLE
+    normalized = " ".join(text.split())
+    for rule in (
+        "Logical checkpoint identity is (approved order, phase, revision round)",
+        "separate from the invocation attempt ID",
+        "Re-entering the same logical checkpoint after a failed/uncertain attempt",
+        "no new per-round user approval is required",
+        "independent FIX BEFORE MERGE review before a revision",
+        "freeze its commit subject before writing",
+        "neither new records nor recovery reset the at-most-two automatic revision budget",
+        "Manual revisions still need explicit approval",
+    ):
+        assert rule in normalized
+
+
+@pytest.mark.parametrize("trace", SUCCESSOR_TRACES, ids=lambda trace: trace[0])
+def test_authorized_successor_scenarios_do_not_replay_calls(trace: tuple) -> None:
+    case, *facts, expected = trace
+    rows = _protocol_rows(CONTRACT_PATH.read_text(encoding="utf-8"), "WORKFLOW_SUCCESSOR")
+    contract_claim = next(row[2] for row in rows if row[0] == case)
+    assert type(trace) is tuple and type(trace[1]) is tuple and type(trace[2]) is tuple
+    assert _successor_new_call_bound(*facts) == expected
+    assert contract_claim == str(expected)
+
+
+def test_fresh_labels_cannot_reset_order_round_or_consumed_target() -> None:
+    previous, following = ("order", "review", 1), ("order", "pre-write", 2)
+    assert _successor_new_call_bound(previous, following, True, True, True, True, True, False) == 1
+    for changed_next in (
+        ("different-order", "pre-write", 2),
+        ("order", "pre-write", 0),
+        ("order", "pre-write", 3),
+    ):
+        assert _successor_new_call_bound(previous, changed_next, True, True, True, True, True, False) == 0
+    for approval, ready, entered in ((False, True, False), (True, False, False), (True, True, True)):
+        assert _successor_new_call_bound(previous, following, True, ready, approval, True, True, entered) == 0
+    assert _successor_new_call_bound(("order", "review", 0), following, True, True, True, True, True, False) == 0
+
+
+def test_successor_call_and_authority_mutations_are_rejected() -> None:
+    text = CONTRACT_PATH.read_text(encoding="utf-8")
+    for row in SUCCESSOR_ORACLE:
+        original = "| " + " | ".join(row) + " |"
+        for mutant_row in (
+            (row[0], "automatic_unbounded_authority", row[2], row[3]),
+            (row[0], row[1], "1" if row[2] == "0" else "0", row[3]),
+        ):
+            mutant = text.replace(original, "| " + " | ".join(mutant_row) + " |", 1)
+            with pytest.raises(AssertionError):
+                assert _protocol_rows(mutant, "WORKFLOW_SUCCESSOR") == SUCCESSOR_ORACLE
+    # Both historic bypasses contradict concrete traces, not merely prose.
+    expected = tuple(trace[-1] for trace in SUCCESSOR_TRACES)
+    assert tuple(0 for _ in SUCCESSOR_TRACES) != expected
+    assert tuple(1 for _ in SUCCESSOR_TRACES) != expected

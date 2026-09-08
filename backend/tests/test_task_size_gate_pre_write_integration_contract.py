@@ -636,3 +636,140 @@ def test_recovery_requires_content_and_phase_proof_not_just_file_names() -> None
         assert "task_size_gate_jlgo_planning_integration_contract.md" in skill
         assert "invocation ledger" in skill
         assert "6.3-6.4" in skill
+
+
+# Exact synthetic worktree/index entries; no files, Git or checkpoint are used.
+# Entry fields: worktree kind/content, index kind/content, tracked flag.
+HEAD_ENTRIES = MappingProxyType({
+    "A": ("file", b"a0", "file", b"a0", True),
+    "B": ("file", b"b0", "file", b"b0", True),
+})
+PRESERVED_B_ENTRIES = (
+    ("unstaged", ("file", b"b1", "file", b"b0", True)),
+    ("staged", ("file", b"b1", "file", b"b1", True)),
+    ("untracked", ("file", b"b1", None, None, False)),
+    ("deleted", (None, None, "file", b"b0", True)),
+    ("kind", ("symlink", b"literal-target", "file", b"b0", True)),
+)
+WRITE_SCOPE = frozenset({"A"})
+
+
+def _snapshot_delta(before: MappingProxyType, after: MappingProxyType) -> frozenset[str]:
+    return frozenset(
+        path for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path)
+    )
+
+
+def _assert_preserved_scope(
+    approved: MappingProxyType,
+    baseline: MappingProxyType,
+    current: MappingProxyType,
+) -> None:
+    assert type(approved) is type(baseline) is type(current) is MappingProxyType
+    assert baseline == approved
+    assert _snapshot_delta(baseline, current) <= WRITE_SCOPE
+
+
+def test_scope_contract_keeps_git_inventory_and_content_baseline_separate() -> None:
+    contract = _normalized(_read(CONTRACT_PATH))
+    for rule in (
+        "full pre-Head-to-current-state Git inventory",
+        "never filter preserved paths out of the cumulative audit",
+        "exact user-adopted content snapshot, NOT pre-Head alone",
+        "existence, file kind, exact worktree content/digest, exact index entry/content and tracked/untracked state",
+        "Missing, stale or substituted baseline proof stops",
+        "untouched preserved file outside current write scope is not a new modification",
+        "byte-for-byte and index-state identical",
+        "Preservation approval is not permission to stage or commit preserved content",
+        "Formal review still requires a clean, synchronized reviewed Head",
+        "original in-scope revision authority covers its fresh pre-write attempt",
+        "not a retry of a failed or uncertain checkpoint",
+    ):
+        assert rule in contract
+
+
+@pytest.mark.parametrize("case,entry", PRESERVED_B_ENTRIES)
+def test_untouched_preserved_content_is_not_a_new_write(case: str, entry: tuple) -> None:
+    approved = MappingProxyType({
+        "A": ("file", b"a1", "file", b"a0", True),
+        "B": entry,
+    })
+    current = MappingProxyType({**approved, "A": ("file", b"a2", "file", b"a0", True)})
+    _assert_preserved_scope(approved, approved, current)
+    assert _snapshot_delta(approved, current) == frozenset({"A"})
+    assert current["B"] == approved["B"] == entry
+    assert _snapshot_delta(HEAD_ENTRIES, current) == frozenset({"A", "B"})
+    # The old pre-Head baseline would reject untouched B in every saved state.
+    with pytest.raises(AssertionError):
+        assert _snapshot_delta(HEAD_ENTRIES, current) <= WRITE_SCOPE
+    assert tuple(approved) == ("A", "B") and type(entry) is tuple
+    with pytest.raises(TypeError):
+        approved["B"] = HEAD_ENTRIES["B"]  # type: ignore[index]
+
+
+@pytest.mark.parametrize("mutation", (
+    "content", "restore_head_content", "index", "kind", "tracked",
+    "delete", "rename", "new_untracked",
+))
+def test_changes_to_preserved_or_new_paths_fail_closed(mutation: str) -> None:
+    approved = MappingProxyType({
+        "A": ("file", b"a1", "file", b"a0", True),
+        "B": ("file", b"b1", "file", b"b0", True),
+    })
+    entries = {**approved, "A": ("file", b"a2", "file", b"a0", True)}
+    replacements = {
+        "content": ("file", b"b2", "file", b"b0", True),
+        "restore_head_content": HEAD_ENTRIES["B"],
+        "index": ("file", b"b1", "file", b"b1", True),
+        "kind": ("symlink", b"b1", "file", b"b0", True),
+        "tracked": ("file", b"b1", "file", b"b0", False),
+    }
+    if mutation in replacements:
+        entries["B"] = replacements[mutation]
+    elif mutation == "delete":
+        del entries["B"]
+    elif mutation == "rename":
+        entries["C"] = entries.pop("B")
+    else:
+        entries["C"] = ("file", b"generated", None, None, False)
+    with pytest.raises(AssertionError):
+        _assert_preserved_scope(approved, approved, MappingProxyType(entries))
+
+
+def test_preserved_baseline_cannot_be_replaced_by_head_or_recaptured_content() -> None:
+    approved = MappingProxyType({
+        "A": ("file", b"a1", "file", b"a0", True),
+        "B": ("file", b"b1", "file", b"b0", True),
+    })
+    polluted = MappingProxyType({**approved, "B": ("file", b"b2", "file", b"b0", True)})
+    for substitute in (HEAD_ENTRIES, polluted, MappingProxyType({"A": approved["A"]})):
+        with pytest.raises(AssertionError):
+            _assert_preserved_scope(approved, substitute, polluted)
+
+
+def test_preservation_does_not_authorize_commit_inclusion_or_hide_history() -> None:
+    approved = MappingProxyType({
+        "A": ("file", b"a1", "file", b"a0", True),
+        "B": ("file", b"b1", "file", b"b1", True),
+    })
+    staged = MappingProxyType({**approved, "A": ("file", b"a2", "file", b"a2", True)})
+    _assert_preserved_scope(approved, approved, staged)
+    staged_paths = frozenset(
+        path for path in staged
+        if staged[path][2:4] != HEAD_ENTRIES[path][2:4]
+    )
+    assert staged_paths == frozenset({"A", "B"})
+    with pytest.raises(AssertionError):
+        assert staged_paths <= WRITE_SCOPE
+    assert staged_paths <= frozenset({"A", "B"})  # Only a separate inclusion approval.
+
+    base = MappingProxyType({**HEAD_ENTRIES, "C": ("file", b"c0", "file", b"c0", True)})
+    pre_head = MappingProxyType({**base, "C": ("file", b"c1", "file", b"c1", True)})
+    after = MappingProxyType({**pre_head, "A": ("file", b"a2", "file", b"a2", True)})
+    assert _snapshot_delta(pre_head, after) == WRITE_SCOPE
+    cumulative = _snapshot_delta(base, after)
+    assert cumulative == frozenset({"A", "C"})
+    with pytest.raises(AssertionError):
+        assert cumulative <= WRITE_SCOPE
+    assert cumulative <= frozenset({"A", "C"})

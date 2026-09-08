@@ -181,7 +181,7 @@ new `TaskSizeGateEvidence` fields or production types:
 | record_identity | Unique packet and attempt IDs, stage, format version, predecessor digest. |
 | approval | Exact user-approved action, scope, stop conditions, model and record-write authority sources. |
 | git_state | Repository/worktree identity, base, pre-Head, local/remote heads, branch mode, index and worktree state. |
-| scope_manifest | Approved cumulative scope and current revision scope, each with immutable base/head and authority. |
+| scope_manifest | Approved cumulative scope and current revision scope, with immutable base/head, approved preserved-content snapshot when applicable, and authority. |
 | frozen_evidence | All 29 ordered fields with exact built-in types, original values and provenance. |
 | frozen_results | Complete planning and latest accepted pre-write results, ordered reasons and their attempt IDs. |
 | commit_authority | Ordered commit hashes, subjects, roles, packet ownership and explicit authority sources. |
@@ -234,9 +234,47 @@ same frozen packet with explicit retry authority and fresh precondition checks.
 Failure before invocation for another reason is not transport retry authority.
 Unknown invocation state forbids blind retry. An exception or validation
 failure after evaluator entry consumes the call. Re-running tests is not a
-checkpoint call and cannot replace checkpoint evidence. A new checkpoint after
-a consumed/uncertain attempt requires separate explicit user approval, a new
-attempt ID and preserved history; no automatic loop or reset of call count.
+checkpoint call and cannot replace checkpoint evidence. Re-entering the same
+logical checkpoint after a failed/uncertain attempt requires separate explicit
+user approval, a new attempt ID and preserved history; no automatic loop or
+reset of call count. Accepted checkpoints resume without another call.
+
+Logical checkpoint identity is (approved order, phase, revision round), separate
+from the invocation attempt ID. An authorized next phase or next bounded
+Supervisor revision is a different checkpoint, not a retry. Existing approval
+may cover it; no new per-round user approval is required inside the original
+Supervisor allowance. Prove accepted predecessor checkpoints, any required
+completed checks/commit/push, and an independent FIX BEFORE MERGE review before
+a revision. Revalidate scope, ModelGate, frozen evidence and remaining budget;
+freeze its commit subject before writing. Each new checkpoint gets one fresh
+attempt and its own ledger entry, never another call on the predecessor.
+
+Changing packet/attempt labels, phase or round cannot turn a failed/unknown
+checkpoint into an authorized successor. Transition provenance must prove the
+actual predecessor and original order; neither new records nor recovery reset
+the at-most-two automatic revision budget. Missing authority, a skipped round,
+exhausted budget or changed scope stops. Manual revisions still need explicit
+approval. This distinction supplies no merge, tag, second-order or activation
+authority.
+
+The following scenarios count permitted NEW calls without a new retry/scope
+approval; all other Git, evidence and phase prerequisites must already hold.
+An independent code finding is not a failed TaskSizeGate checkpoint.
+
+<!-- WORKFLOW_SUCCESSOR_BEGIN -->
+| Scenario | Authority source | New calls | Continuation |
+| --- | --- | --- | --- |
+| accepted_same_checkpoint | existing_action_authority | 0 | resume_without_recall |
+| failed_same_checkpoint | new_explicit_attempt_approval | 0 | stop |
+| uncertain_same_checkpoint | new_explicit_attempt_approval | 0 | stop |
+| accepted_next_phase | existing_phase_authority | 1 | fresh_attempt |
+| supervisor_revision_one | existing_bounded_authority | 1 | fresh_attempt |
+| supervisor_revision_two | existing_bounded_authority | 1 | fresh_attempt |
+| supervisor_revision_three | user_direction_required | 0 | stop |
+| missing_revision_review | not_authorized | 0 | stop |
+| changed_revision_scope | new_planning_and_approval | 0 | stop |
+| relabelled_failed_checkpoint | new_explicit_attempt_approval | 0 | stop |
+<!-- WORKFLOW_SUCCESSOR_END -->
 
 Checkpoint failure blocks writes and formal PASS, not useful read-only
 diagnosis. Report verified facts, missing evidence and the precise approval

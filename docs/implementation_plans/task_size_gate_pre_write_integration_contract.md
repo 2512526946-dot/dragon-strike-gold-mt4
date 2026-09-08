@@ -152,6 +152,11 @@ All conditions are required:
 An unapproved branch, local-only commit, remote-only commit, dirty revision, or
 expanded review request is `STOP_UNCERTAIN`; explicit preservation recovery
 uses section 6.3 rather than silently relaxing this clean-revision mode.
+For a bounded Supervisor revision, use the logical checkpoint identity and
+successor rules in JLGO planning contract section 5.1. The original in-scope
+revision authority covers its fresh pre-write attempt, not a retry of a failed
+or uncertain checkpoint. A prior accepted call does not require another user
+approval merely to enter that authorized next round; it is never called again.
 A standalone
 maturity-preserving hardening or maintenance order must receive its own
 planning result and explicit user approval; it is not inferred from an
@@ -210,13 +215,38 @@ false completion or reused report for different content.
 ### 6.4 Cumulative and revision scope
 
 Freeze two separately approved manifests: base-main-to-current-Head cumulative
-scope and revision-pre-Head-to-current-state delta scope, including staged,
-unstaged and untracked files. Every historical commit must have a role and
-authority source. The current packet's `allowed_files` is only the current
-write scope; adopted historical paths are not permission to edit them again.
+scope and current revision write scope. Keep the full pre-Head-to-current-state
+Git inventory, including staged, unstaged and untracked files; never filter
+preserved paths out of the cumulative audit. Every historical commit must have
+a role and authority source. The current packet's `allowed_files` is only the
+current write scope; adopted historical paths are not permission to edit them again.
 For an ordinary initial order the two scopes coincide. For a newly approved
 recovery/revision packet, evaluate that packet unchanged and verify adopted
 history independently; do not union historical paths into its 29 fields.
+
+For clean entry, the revision baseline is pre-Head. For approved preserved
+dirty entry, it is the exact user-adopted content snapshot, NOT pre-Head alone.
+Bind that immutable snapshot to pre-Head and its approval: for every relevant
+path capture existence, file kind, exact worktree content/digest, exact index
+entry/content and tracked/untracked state. The baseline inventory must be
+complete and rechecked before any write. Missing, stale or substituted baseline
+proof stops; do not recapture changed content and label it approved.
+
+Compute newly changed paths against that preserved-content snapshot. An
+untouched preserved file outside current write scope is not a new modification;
+it must remain byte-for-byte and index-state identical. Any new edit, deletion,
+rename, file-kind replacement, generated/untracked path or unauthorized index
+change must be inside current write authority. Still account for every preserved
+path under its separate approval and every committed path in the full cumulative
+manifest. These are different comparisons, not a choice of a smaller diff.
+
+Preservation approval is not permission to stage or commit preserved content.
+Check the exact staged delta against explicit commit-inclusion authority before
+commit; authorized staging must be separately accounted for, not silently
+treated as content drift or permission to include other files. Leftover approved
+dirty content remains disclosed, never reported as clean. Formal review still
+requires a clean, synchronized reviewed Head; another file's disposition needs
+its own approval, not automatic cleaning or a widened revision scope.
 
 Any new path, renamed/deleted/generated path, capability, risk, or scope
 expansion needs explicit approval and new planning. A broader historical
